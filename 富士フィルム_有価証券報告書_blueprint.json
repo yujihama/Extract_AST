@@ -1,0 +1,196 @@
+{
+  "hierarchy_structure": [
+    {
+      "level": 0,
+      "name": "MetaBracket",
+      "regex": "^\\s*【(?P<title>[^】]+)】\\s*$",
+      "parent_level": null,
+      "description": "表紙・提出書類・根拠条文などのメタ情報ブロック（【...】単独行）。本文中にも【...】は出るが、単独行は主に冒頭メタで出現。",
+      "validation_rules": {
+        "max_length": 40,
+        "must_contain": null,
+        "must_not_contain": null,
+        "must_not_end_with": [
+          "。"
+        ],
+        "requires_line_start": true,
+        "requires_prev_empty_line": null,
+        "min_line": 1,
+        "max_line": 120,
+        "exclude_lines": null,
+        "prev_line_regex": null,
+        "next_line_regex": null,
+        "only_after_first_match_of": null,
+        "context_filters": null
+      }
+    },
+    {
+      "level": 1,
+      "name": "Part",
+      "regex": "^\\s*(?P<label>第[一二三四五六七八九十0-9]+部)【(?P<title>[^】]+)】\\s*$",
+      "parent_level": null,
+      "description": "最上位の部（例：第1部【企業情報】）。",
+      "validation_rules": {
+        "max_length": 60,
+        "must_contain": null,
+        "must_not_contain": null,
+        "must_not_end_with": [
+          "。"
+        ],
+        "requires_line_start": true,
+        "requires_prev_empty_line": null,
+        "min_line": null,
+        "max_line": null,
+        "exclude_lines": null,
+        "prev_line_regex": null,
+        "next_line_regex": null,
+        "only_after_first_match_of": null,
+        "context_filters": null
+      }
+    },
+    {
+      "level": 2,
+      "name": "ChapterInPart",
+      "regex": "^\\s*(?P<label>第[０-９0-9]+)【(?P<title>[^】]+)】\\s*$",
+      "parent_level": 1,
+      "description": "部の直下の章（例：第１【企業の概況】）。全角数字の『第１』等。",
+      "validation_rules": {
+        "max_length": 60,
+        "must_contain": null,
+        "must_not_contain": null,
+        "must_not_end_with": [
+          "。"
+        ],
+        "requires_line_start": true,
+        "requires_prev_empty_line": null,
+        "min_line": null,
+        "max_line": null,
+        "exclude_lines": null,
+        "prev_line_regex": null,
+        "next_line_regex": null,
+        "only_after_first_match_of": "name:Part",
+        "context_filters": null
+      }
+    },
+    {
+      "level": 3,
+      "name": "SectionBoxNumbered",
+      "regex": "^\\s*(?P<num>[0-9０-９]+)【(?P<title>[^】]+)】\\s*$",
+      "parent_level": 2,
+      "description": "『１【...】』型の節・項目（章内の主要見出し）。",
+      "validation_rules": {
+        "max_length": 120,
+        "must_contain": null,
+        "must_not_contain": [
+          "/",
+          "EDINET提出書類"
+        ],
+        "must_not_end_with": [
+          "。"
+        ],
+        "requires_line_start": true,
+        "requires_prev_empty_line": null,
+        "min_line": null,
+        "max_line": null,
+        "exclude_lines": null,
+        "prev_line_regex": null,
+        "next_line_regex": null,
+        "only_after_first_match_of": "name:Part",
+        "context_filters": null
+      }
+    },
+    {
+      "level": 4,
+      "name": "ParenNumber",
+      "regex": "^\\s*[（(](?P<num>[0-9０-９]+)[）)]\\s*(?P<title>\\S.+?)\\s*$",
+      "parent_level": 3,
+      "description": "(1)（1）型の小見出し。表や本文中の括弧番号を誤検知し得るため、短め・句点終わり除外。",
+      "validation_rules": {
+        "max_length": 80,
+        "must_contain": null,
+        "must_not_contain": [
+          "/",
+          "http"
+        ],
+        "must_not_end_with": [
+          "。"
+        ],
+        "requires_line_start": true,
+        "requires_prev_empty_line": null,
+        "min_line": null,
+        "max_line": null,
+        "exclude_lines": null,
+        "prev_line_regex": null,
+        "next_line_regex": null,
+        "only_after_first_match_of": "name:Part",
+        "context_filters": null
+      }
+    },
+    {
+      "level": 5,
+      "name": "CircledNumber",
+      "regex": "^\\s*(?P<label>[①-⑳])\\s*(?P<title>\\S.+?)\\s*$",
+      "parent_level": 3,
+      "description": "①②…の丸数字見出し（中項目）。直上が『１【...】』などの場合もあるため parent をL3に寄せる。",
+      "validation_rules": {
+        "max_length": 80,
+        "must_contain": null,
+        "must_not_contain": null,
+        "must_not_end_with": [
+          "。"
+        ],
+        "requires_line_start": true,
+        "requires_prev_empty_line": null,
+        "min_line": null,
+        "max_line": null,
+        "exclude_lines": null,
+        "prev_line_regex": null,
+        "next_line_regex": null,
+        "only_after_first_match_of": "name:Part",
+        "context_filters": null
+      }
+    },
+    {
+      "level": 6,
+      "name": "RomanSubItem",
+      "regex": "^\\s*(?P<label>[\\u2170-\\u2179])\\s*[)）]\\s*(?P<title>\\S.+?)\\s*$",
+      "parent_level": 3,
+      "description": "小文字ローマ数字（Unicode: U+2170〜U+2179 の ⅰ〜ⅹ）＋) の小項目。直上がL4/L5を欠くケースがあるため parent をL3に寄せる。",
+      "validation_rules": {
+        "max_length": 120,
+        "must_contain": null,
+        "must_not_contain": null,
+        "must_not_end_with": [
+          "。"
+        ],
+        "requires_line_start": true,
+        "requires_prev_empty_line": null,
+        "min_line": null,
+        "max_line": null,
+        "exclude_lines": null,
+        "prev_line_regex": null,
+        "next_line_regex": null,
+        "only_after_first_match_of": "name:Part",
+        "context_filters": null
+      }
+    }
+  ],
+  "global_exclusion_rules": {
+    "edinet_header": {
+      "regex": "^\\s*EDINET提出書類\\s*$",
+      "description": "各ページに繰り返し出るEDINETヘッダ"
+    },
+    "page_counter": {
+      "regex": "^\\s*\\d+\\s*/\\s*\\d+\\s*$",
+      "description": "ページ番号（例: 1/225）"
+    },
+    "company_header_line": {
+      "regex": "^\\s*.+\\(E\\d{5}\\)\\s*$",
+      "description": "繰り返し出る会社名(Eコード)行"
+    },
+    "report_title": {
+      "regex": "^\\s*有価証券報告書\\s*$",
+      "description": "繰り返し出るタイトル行"
+    }
+  }
+}

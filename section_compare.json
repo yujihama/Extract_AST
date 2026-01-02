@@ -1,0 +1,217 @@
+[
+  {
+    "docA_section_title": "仕訳定義書>1. 概要>1.1. 適用範囲",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>1. 概要>1.2. バージョン履歴",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>2. 仕訳生成ルール>2.1. 取引日付",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>2. 仕訳生成ルール>2.2. 勘定科目",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>2. 仕訳生成ルール>2.3. 金額",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>2. 仕訳生成ルール>2.4. 摘要",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>2. 仕訳生成ルール>2.5. 補助科目",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>3. データ仕様>3.1. 取引日付",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>3. データ仕様>3.2. 金額",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>3. データ仕様>3.3. 勘定科目",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>3. データ仕様>3.4. 摘要",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>3. データ仕様>3.5. 補助科目",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>4. 例外処理>4.1. 勘定科目の不一致",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>4. 例外処理>4.2. 必須項目の欠損",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>4. 例外処理>4.3. データ形式の不正",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>4. 例外処理>4.4. 金額の上限超過",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>4. 例外処理>4.5. ベンダー情報の不正",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>5. 処理フロー>5.1. データ取得",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>5. 処理フロー>5.2. データ検証",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>5. 処理フロー>5.3. 仕訳データ生成",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>5. 処理フロー>5.4. データ連携",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>5. 処理フロー>5.5. ログ出力",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>6. 検証ルール>6.1. 仕訳データの整合性チェック",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>6. 検証ルール>6.2. バッチ処理の検証",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>7. パフォーマンス要件>7.1. 処理速度",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>7. パフォーマンス要件>7.2. 同時処理",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>7. パフォーマンス要件>7.3. リソース使用量",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>8. セキュリティ要件>8.1. データ暗号化",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>8. セキュリティ要件>8.2. アクセス制御",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>8. セキュリティ要件>8.3. 監査ログ",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>9. 運用要件>9.1. バックアップ",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>9. 運用要件>9.2. 監視",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>9. 運用要件>9.3. メンテナンス",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>10. テスト要件>10.1. 単体テスト",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>10. テスト要件>10.2. 結合テスト",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>10. テスト要件>10.3. パフォーマンステスト",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>11. 付録>11.1. エラーコード一覧",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>11. 付録>11.2. サポート連絡先",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>11. 付録>11.3. 参考資料",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>12. 変更履歴",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>13. 承認",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>14. 関連ドキュメント",
+    "docB_section_title": "",
+    "compare_result": ""
+  },
+  {
+    "docA_section_title": "仕訳定義書>15. 用語集",
+    "docB_section_title": "",
+    "compare_result": ""
+  }
+]

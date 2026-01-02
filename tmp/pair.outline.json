@@ -1,0 +1,3949 @@
+{
+  "file_name": "富士フィルム_有価証券報告書.txt",
+  "__meta__": {
+    "rev": 0,
+    "updated_at": "2025-12-31T05:22:00.044453+00:00",
+    "generated_from": "富士フィルム_有価証券報告書_blueprint.json",
+    "mode": "outline",
+    "total_lines": 18517,
+    "total_headings": 143
+  },
+  "root": {
+    "section_title": "富士フィルム_有価証券報告書",
+    "children": [
+      {
+        "section_title": "【表紙】",
+        "children": [],
+        "__heading__": {
+          "line_number": 1,
+          "level": 1,
+          "name": "Cover_Metadata_Field"
+        }
+      },
+      {
+        "section_title": "【提出書類】",
+        "children": [],
+        "__heading__": {
+          "line_number": 3,
+          "level": 1,
+          "name": "Cover_Metadata_Field"
+        }
+      },
+      {
+        "section_title": "【根拠条文】",
+        "children": [],
+        "__heading__": {
+          "line_number": 5,
+          "level": 1,
+          "name": "Cover_Metadata_Field"
+        }
+      },
+      {
+        "section_title": "【提出先】",
+        "children": [],
+        "__heading__": {
+          "line_number": 7,
+          "level": 1,
+          "name": "Cover_Metadata_Field"
+        }
+      },
+      {
+        "section_title": "【提出日】",
+        "children": [],
+        "__heading__": {
+          "line_number": 9,
+          "level": 1,
+          "name": "Cover_Metadata_Field"
+        }
+      },
+      {
+        "section_title": "【事業年度】",
+        "children": [],
+        "__heading__": {
+          "line_number": 11,
+          "level": 1,
+          "name": "Cover_Metadata_Field"
+        }
+      },
+      {
+        "section_title": "【会社名】",
+        "children": [],
+        "__heading__": {
+          "line_number": 13,
+          "level": 1,
+          "name": "Cover_Metadata_Field"
+        }
+      },
+      {
+        "section_title": "【英訳名】",
+        "children": [],
+        "__heading__": {
+          "line_number": 15,
+          "level": 1,
+          "name": "Cover_Metadata_Field"
+        }
+      },
+      {
+        "section_title": "【代表者の役職氏名】",
+        "children": [],
+        "__heading__": {
+          "line_number": 17,
+          "level": 1,
+          "name": "Cover_Metadata_Field"
+        }
+      },
+      {
+        "section_title": "【本店の所在の場所】",
+        "children": [],
+        "__heading__": {
+          "line_number": 19,
+          "level": 1,
+          "name": "Cover_Metadata_Field"
+        }
+      },
+      {
+        "section_title": "【電話番号】",
+        "children": [],
+        "__heading__": {
+          "line_number": 23,
+          "level": 1,
+          "name": "Cover_Metadata_Field"
+        }
+      },
+      {
+        "section_title": "【事務連絡者氏名】",
+        "children": [],
+        "__heading__": {
+          "line_number": 25,
+          "level": 1,
+          "name": "Cover_Metadata_Field"
+        }
+      },
+      {
+        "section_title": "【最寄りの連絡場所】",
+        "children": [],
+        "__heading__": {
+          "line_number": 27,
+          "level": 1,
+          "name": "Cover_Metadata_Field"
+        }
+      },
+      {
+        "section_title": "【電話番号】",
+        "children": [],
+        "__heading__": {
+          "line_number": 29,
+          "level": 1,
+          "name": "Cover_Metadata_Field"
+        }
+      },
+      {
+        "section_title": "【事務連絡者氏名】",
+        "children": [],
+        "__heading__": {
+          "line_number": 31,
+          "level": 1,
+          "name": "Cover_Metadata_Field"
+        }
+      },
+      {
+        "section_title": "【縦覧に供する場所】",
+        "children": [],
+        "__heading__": {
+          "line_number": 33,
+          "level": 1,
+          "name": "Cover_Metadata_Field"
+        }
+      },
+      {
+        "section_title": "第一部【企業情報】",
+        "children": [
+          {
+            "section_title": "第１【企業の概況】",
+            "children": [
+              {
+                "section_title": "１【主要な経営指標等の推移】",
+                "children": [
+                  {
+                    "section_title": "(2) 提出会社の経営指標等",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 209,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  }
+                ],
+                "__heading__": {
+                  "line_number": 44,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              },
+              {
+                "section_title": "２【沿革】",
+                "children": [],
+                "__heading__": {
+                  "line_number": 398,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              },
+              {
+                "section_title": "３【事業の内容】",
+                "children": [],
+                "__heading__": {
+                  "line_number": 500,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              },
+              {
+                "section_title": "４【関係会社の状況】",
+                "children": [],
+                "__heading__": {
+                  "line_number": 601,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              },
+              {
+                "section_title": "５【従業員の状況】",
+                "children": [
+                  {
+                    "section_title": "(2) 提出会社の状況",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 1875,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(3) 管理職に占める女性労働者の割合、男性労働者の育児休業取得率及び労働者の男女の賃金の差異",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 1912,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  }
+                ],
+                "__heading__": {
+                  "line_number": 1849,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              }
+            ],
+            "__heading__": {
+              "line_number": 43,
+              "level": 2,
+              "name": "Chapter_in_Part"
+            }
+          },
+          {
+            "section_title": "第２【事業の状況】",
+            "children": [
+              {
+                "section_title": "１【経営方針、経営環境及び対処すべき課題等】",
+                "children": [],
+                "__heading__": {
+                  "line_number": 1982,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              },
+              {
+                "section_title": "２【サステナビリティに関する考え方及び取組】",
+                "children": [],
+                "__heading__": {
+                  "line_number": 2261,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              },
+              {
+                "section_title": "３【事業等のリスク】",
+                "children": [
+                  {
+                    "section_title": "(4)ビジネスイノベーション領域における環境変化・競合に係るリスク",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 2754,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  }
+                ],
+                "__heading__": {
+                  "line_number": 2703,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              },
+              {
+                "section_title": "４【経営者による財政状態、経営成績及びキャッシュ・フローの状況の分析】",
+                "children": [],
+                "__heading__": {
+                  "line_number": 2945,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              },
+              {
+                "section_title": "５【重要な契約等】",
+                "children": [],
+                "__heading__": {
+                  "line_number": 3448,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              },
+              {
+                "section_title": "６【研究開発活動】",
+                "children": [
+                  {
+                    "section_title": "(2)エレクトロニクスセグメント",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 3551,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(3)ビジネスイノベーションセグメント",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 3576,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(4)イメージングセグメント",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 3602,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  }
+                ],
+                "__heading__": {
+                  "line_number": 3456,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              }
+            ],
+            "__heading__": {
+              "line_number": 1981,
+              "level": 2,
+              "name": "Chapter_in_Part"
+            }
+          },
+          {
+            "section_title": "第３【設備の状況】",
+            "children": [
+              {
+                "section_title": "１【設備投資等の概要】",
+                "children": [],
+                "__heading__": {
+                  "line_number": 3633,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              },
+              {
+                "section_title": "２【主要な設備の状況】",
+                "children": [
+                  {
+                    "section_title": "(2) 国内子会社",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 3708,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(3) 海外子会社",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 4056,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  }
+                ],
+                "__heading__": {
+                  "line_number": 3663,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              },
+              {
+                "section_title": "３【設備の新設、除却等の計画】",
+                "children": [],
+                "__heading__": {
+                  "line_number": 4326,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              }
+            ],
+            "__heading__": {
+              "line_number": 3632,
+              "level": 2,
+              "name": "Chapter_in_Part"
+            }
+          },
+          {
+            "section_title": "第４【提出会社の状況】",
+            "children": [
+              {
+                "section_title": "１【株式等の状況】",
+                "children": [
+                  {
+                    "section_title": "(8) 新株予約権の取得条項",
+                    "children": [
+                      {
+                        "section_title": "b.富士フイルムホールディングス株式会社第６ノ１回新株予約権",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 4552,
+                          "level": 5,
+                          "name": "Subsubsection_LetterDot"
+                        }
+                      }
+                    ],
+                    "__heading__": {
+                      "line_number": 4528,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(8) 新株予約権の取得条項",
+                    "children": [
+                      {
+                        "section_title": "c.富士フイルムホールディングス株式会社第７ノ１回新株予約権",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 4696,
+                          "level": 5,
+                          "name": "Subsubsection_LetterDot"
+                        }
+                      }
+                    ],
+                    "__heading__": {
+                      "line_number": 4672,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(8) 新株予約権の取得条項",
+                    "children": [
+                      {
+                        "section_title": "d.富士フイルムホールディングス株式会社第８ノ１回新株予約権",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 4840,
+                          "level": 5,
+                          "name": "Subsubsection_LetterDot"
+                        }
+                      }
+                    ],
+                    "__heading__": {
+                      "line_number": 4816,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(8) 新株予約権の取得条項",
+                    "children": [
+                      {
+                        "section_title": "e.富士フイルムホールディングス株式会社第９ノ１回新株予約権",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 4984,
+                          "level": 5,
+                          "name": "Subsubsection_LetterDot"
+                        }
+                      }
+                    ],
+                    "__heading__": {
+                      "line_number": 4960,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(8) 新株予約権の取得条項",
+                    "children": [
+                      {
+                        "section_title": "f.富士フイルムホールディングス株式会社第９ノ２回新株予約権",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 5128,
+                          "level": 5,
+                          "name": "Subsubsection_LetterDot"
+                        }
+                      },
+                      {
+                        "section_title": "g.富士フイルムホールディングス株式会社第10ノ１回新株予約権",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 5248,
+                          "level": 5,
+                          "name": "Subsubsection_LetterDot"
+                        }
+                      }
+                    ],
+                    "__heading__": {
+                      "line_number": 5104,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(4) 新株予約権者が新株予約権を放棄した場合には、当該新株予約権を行使することができないものとしま",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 5313,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(8) 新株予約権の取得条項",
+                    "children": [
+                      {
+                        "section_title": "h.富士フイルムホールディングス株式会社第10ノ２回新株予約権",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 5398,
+                          "level": 5,
+                          "name": "Subsubsection_LetterDot"
+                        }
+                      },
+                      {
+                        "section_title": "i.富士フイルムホールディングス株式会社第11ノ１回新株予約権",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 5521,
+                          "level": 5,
+                          "name": "Subsubsection_LetterDot"
+                        }
+                      }
+                    ],
+                    "__heading__": {
+                      "line_number": 5371,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(4) 新株予約権者が新株予約権を放棄した場合には、当該新株予約権を行使することができないものとしま",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 5586,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(8) 新株予約権の取得条項",
+                    "children": [
+                      {
+                        "section_title": "j.富士フイルムホールディングス株式会社第11ノ２回新株予約権",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 5671,
+                          "level": 5,
+                          "name": "Subsubsection_LetterDot"
+                        }
+                      },
+                      {
+                        "section_title": "k.富士フイルムホールディングス株式会社第12ノ１回新株予約権",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 5794,
+                          "level": 5,
+                          "name": "Subsubsection_LetterDot"
+                        }
+                      }
+                    ],
+                    "__heading__": {
+                      "line_number": 5644,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(4) 新株予約権者が新株予約権を放棄した場合には、当該新株予約権を行使することができないものとしま",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 5859,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(8) 新株予約権の取得条項",
+                    "children": [
+                      {
+                        "section_title": "l.富士フイルムホールディングス株式会社第12ノ２回新株予約権",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 5944,
+                          "level": 5,
+                          "name": "Subsubsection_LetterDot"
+                        }
+                      },
+                      {
+                        "section_title": "m.富士フイルムホールディングス株式会社第13ノ１回新株予約権",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 6067,
+                          "level": 5,
+                          "name": "Subsubsection_LetterDot"
+                        }
+                      }
+                    ],
+                    "__heading__": {
+                      "line_number": 5917,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(4) 新株予約権者が新株予約権を放棄した場合には、当該新株予約権を行使することができないものとしま",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 6132,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(8) 新株予約権の取得条項",
+                    "children": [
+                      {
+                        "section_title": "n.富士フイルムホールディングス株式会社第13ノ２回新株予約権",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 6217,
+                          "level": 5,
+                          "name": "Subsubsection_LetterDot"
+                        }
+                      },
+                      {
+                        "section_title": "o.富士フイルムホールディングス株式会社第14ノ１回新株予約権",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 6340,
+                          "level": 5,
+                          "name": "Subsubsection_LetterDot"
+                        }
+                      }
+                    ],
+                    "__heading__": {
+                      "line_number": 6190,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(4) 新株予約権者が新株予約権を放棄した場合には、当該新株予約権を行使することができないものとしま",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 6405,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(8) その他の新株予約権の行使の条件",
+                    "children": [
+                      {
+                        "section_title": "p.富士フイルムホールディングス株式会社第14ノ２回新株予約権",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 6474,
+                          "level": 5,
+                          "name": "Subsubsection_LetterDot"
+                        }
+                      },
+                      {
+                        "section_title": "②【ライツプランの内容】",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 6581,
+                          "level": 5,
+                          "name": "Subsubsection_CircledNumber"
+                        }
+                      },
+                      {
+                        "section_title": "③【その他の新株予約権等の状況】",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 6584,
+                          "level": 5,
+                          "name": "Subsubsection_CircledNumber"
+                        }
+                      },
+                      {
+                        "section_title": "②【自己株式等】",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 6847,
+                          "level": 5,
+                          "name": "Subsubsection_CircledNumber"
+                        }
+                      },
+                      {
+                        "section_title": "②受益者に交付等が行われる当社株式等の数",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 6926,
+                          "level": 5,
+                          "name": "Subsubsection_CircledNumber"
+                        }
+                      }
+                    ],
+                    "__heading__": {
+                      "line_number": 6463,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  }
+                ],
+                "__heading__": {
+                  "line_number": 4366,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              },
+              {
+                "section_title": "２【自己株式の取得等の状況】",
+                "children": [],
+                "__heading__": {
+                  "line_number": 6947,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              },
+              {
+                "section_title": "３【配当政策】",
+                "children": [],
+                "__heading__": {
+                  "line_number": 7013,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              },
+              {
+                "section_title": "４【コーポレート・ガバナンスの状況等】",
+                "children": [],
+                "__heading__": {
+                  "line_number": 7047,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              }
+            ],
+            "__heading__": {
+              "line_number": 4365,
+              "level": 2,
+              "name": "Chapter_in_Part"
+            }
+          },
+          {
+            "section_title": "第５【経理の状況】",
+            "children": [
+              {
+                "section_title": "１【連結財務諸表等】",
+                "children": [
+                  {
+                    "section_title": "(1)営業債権",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 10342,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(2)リース債権",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 10348,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(3)関連会社等に対する債権",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 10354,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(4)信用損失引当金",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 10360,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(1) 営業債務",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 10566,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(2) 設備関係債務",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 10572,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(3) 関連会社等に対する債務",
+                    "children": [
+                      {
+                        "section_title": "②【連結損益計算書】",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 10781,
+                          "level": 5,
+                          "name": "Subsubsection_CircledNumber"
+                        }
+                      },
+                      {
+                        "section_title": "③【連結包括利益計算書】",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 10945,
+                          "level": 5,
+                          "name": "Subsubsection_CircledNumber"
+                        }
+                      },
+                      {
+                        "section_title": "④【連結資本勘定計算書】",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 11003,
+                          "level": 5,
+                          "name": "Subsubsection_CircledNumber"
+                        }
+                      },
+                      {
+                        "section_title": "⑤【連結キャッシュ・フロー計算書】",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 11360,
+                          "level": 5,
+                          "name": "Subsubsection_CircledNumber"
+                        }
+                      }
+                    ],
+                    "__heading__": {
+                      "line_number": 10578,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(1) 減価償却費",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 11392,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(2) 持分証券に関する損益",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 11398,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(3) 法人税等調整額",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 11404,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(4) 持分法による投資損益(受取配当金控除後)",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 11410,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(5) 資産及び負債の増減",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 11416,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(6) その他",
+                    "children": [
+                      {
+                        "section_title": "①ヘルスケア",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 15996,
+                          "level": 5,
+                          "name": "Subsubsection_CircledNumber"
+                        }
+                      },
+                      {
+                        "section_title": "②エレクトロニクス",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 16006,
+                          "level": 5,
+                          "name": "Subsubsection_CircledNumber"
+                        }
+                      },
+                      {
+                        "section_title": "③ビジネスイノベーション",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 16012,
+                          "level": 5,
+                          "name": "Subsubsection_CircledNumber"
+                        }
+                      },
+                      {
+                        "section_title": "④イメージング",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 16021,
+                          "level": 5,
+                          "name": "Subsubsection_CircledNumber"
+                        }
+                      },
+                      {
+                        "section_title": "a. セグメント損益",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 16164,
+                          "level": 5,
+                          "name": "Subsubsection_LetterDot"
+                        }
+                      },
+                      {
+                        "section_title": "b. 総資産",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 16269,
+                          "level": 5,
+                          "name": "Subsubsection_LetterDot"
+                        }
+                      },
+                      {
+                        "section_title": "c. その他の主要項目",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 16311,
+                          "level": 5,
+                          "name": "Subsubsection_LetterDot"
+                        }
+                      }
+                    ],
+                    "__heading__": {
+                      "line_number": 11453,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(2) 地域別セグメント情報",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 16400,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  },
+                  {
+                    "section_title": "(3) 主要顧客及びその他情報",
+                    "children": [
+                      {
+                        "section_title": "⑥【連結附属明細表】",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 16505,
+                          "level": 5,
+                          "name": "Subsubsection_CircledNumber"
+                        }
+                      }
+                    ],
+                    "__heading__": {
+                      "line_number": 16465,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  }
+                ],
+                "__heading__": {
+                  "line_number": 10304,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              },
+              {
+                "section_title": "２【財務諸表等】",
+                "children": [
+                  {
+                    "section_title": "(2)その他の情報",
+                    "children": [
+                      {
+                        "section_title": "④【附属明細表】",
+                        "children": [],
+                        "__heading__": {
+                          "line_number": 17667,
+                          "level": 5,
+                          "name": "Subsubsection_CircledNumber"
+                        }
+                      }
+                    ],
+                    "__heading__": {
+                      "line_number": 17348,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  }
+                ],
+                "__heading__": {
+                  "line_number": 16542,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              }
+            ],
+            "__heading__": {
+              "line_number": 10280,
+              "level": 2,
+              "name": "Chapter_in_Part"
+            }
+          },
+          {
+            "section_title": "第６【提出会社の株式事務の概要】",
+            "children": [],
+            "__heading__": {
+              "line_number": 17785,
+              "level": 2,
+              "name": "Chapter_in_Part"
+            }
+          },
+          {
+            "section_title": "第７【提出会社の参考情報】",
+            "children": [
+              {
+                "section_title": "１【提出会社の親会社等の情報】",
+                "children": [],
+                "__heading__": {
+                  "line_number": 17842,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              },
+              {
+                "section_title": "２【その他の参考情報】",
+                "children": [
+                  {
+                    "section_title": "(2) 管理職に占める女性労働者の割合、男性労働者の育児休業取得率及び労働者の男女の賃金の差異",
+                    "children": [],
+                    "__heading__": {
+                      "line_number": 17879,
+                      "level": 4,
+                      "name": "Subsection_ParenNumber"
+                    }
+                  }
+                ],
+                "__heading__": {
+                  "line_number": 17844,
+                  "level": 3,
+                  "name": "Section_in_Chapter"
+                }
+              }
+            ],
+            "__heading__": {
+              "line_number": 17841,
+              "level": 2,
+              "name": "Chapter_in_Part"
+            }
+          }
+        ],
+        "__heading__": {
+          "line_number": 42,
+          "level": 1,
+          "name": "Part"
+        }
+      },
+      {
+        "section_title": "①仕事の基盤となる課題形成力を強化する「See-Think-Plan-Do（STPD）」の浸透",
+        "children": [],
+        "__heading__": {
+          "line_number": 2530,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "②従業員の自己成長の基盤となる＋STORY（プラストーリー）展開",
+        "children": [],
+        "__heading__": {
+          "line_number": 2537,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "③DX人材育成強化",
+        "children": [],
+        "__heading__": {
+          "line_number": 2549,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "②キャッシュ・フローの状況",
+        "children": [],
+        "__heading__": {
+          "line_number": 3065,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "②経営成績",
+        "children": [],
+        "__heading__": {
+          "line_number": 3145,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "③次期の見通し",
+        "children": [],
+        "__heading__": {
+          "line_number": 3304,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "④重要な会計上の見積り",
+        "children": [],
+        "__heading__": {
+          "line_number": 3353,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "②【発行済株式】",
+        "children": [],
+        "__heading__": {
+          "line_number": 4377,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "③企業統治に関するその他の事項",
+        "children": [],
+        "__heading__": {
+          "line_number": 7127,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "⑩取締役会等の活動状況",
+        "children": [],
+        "__heading__": {
+          "line_number": 7237,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "⑪会社の支配に関する基本方針について",
+        "children": [],
+        "__heading__": {
+          "line_number": 7340,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "② 2025年６月27日開催予定の定時株主総会の議案承認可決後の役員一覧予定",
+        "children": [],
+        "__heading__": {
+          "line_number": 7807,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "③ 社外役員の状況",
+        "children": [],
+        "__heading__": {
+          "line_number": 7854,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "③ 社外取締役又は社外監査役による監督又は監査と内部監査、監査役監査及び会計監査との相互連携",
+        "children": [],
+        "__heading__": {
+          "line_number": 7976,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "② 内部監査の状況",
+        "children": [],
+        "__heading__": {
+          "line_number": 8210,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "③ 会計監査の状況",
+        "children": [],
+        "__heading__": {
+          "line_number": 8243,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "④ 監査報酬の内容等",
+        "children": [],
+        "__heading__": {
+          "line_number": 8278,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "② 役員区分ごとの報酬等の総額、報酬等の種類別の総額及び対象となる役員の員数",
+        "children": [],
+        "__heading__": {
+          "line_number": 8525,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "③ 役員ごとの連結報酬等の総額等",
+        "children": [],
+        "__heading__": {
+          "line_number": 8703,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "②保有の検証方法",
+        "children": [],
+        "__heading__": {
+          "line_number": 9012,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "③保有状況",
+        "children": [],
+        "__heading__": {
+          "line_number": 9022,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "②【損益計算書】",
+        "children": [],
+        "__heading__": {
+          "line_number": 16772,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "③【株主資本等変動計算書】",
+        "children": [],
+        "__heading__": {
+          "line_number": 16876,
+          "level": 5,
+          "name": "Subsubsection_CircledNumber"
+        }
+      },
+      {
+        "section_title": "第二部【提出会社の保証会社等の情報】",
+        "children": [],
+        "__heading__": {
+          "line_number": 18053,
+          "level": 1,
+          "name": "Part"
+        }
+      }
+    ]
+  },
+  "outline": [
+    {
+      "node_path": [],
+      "depth": 0,
+      "section_title": "富士フィルム_有価証券報告書",
+      "title_path": [
+        "富士フィルム_有価証券報告書"
+      ]
+    },
+    {
+      "node_path": [
+        0
+      ],
+      "depth": 1,
+      "section_title": "【表紙】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "【表紙】"
+      ],
+      "line_number": 1,
+      "level": 1,
+      "rule_name": "Cover_Metadata_Field"
+    },
+    {
+      "node_path": [
+        1
+      ],
+      "depth": 1,
+      "section_title": "【提出書類】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "【提出書類】"
+      ],
+      "line_number": 3,
+      "level": 1,
+      "rule_name": "Cover_Metadata_Field"
+    },
+    {
+      "node_path": [
+        2
+      ],
+      "depth": 1,
+      "section_title": "【根拠条文】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "【根拠条文】"
+      ],
+      "line_number": 5,
+      "level": 1,
+      "rule_name": "Cover_Metadata_Field"
+    },
+    {
+      "node_path": [
+        3
+      ],
+      "depth": 1,
+      "section_title": "【提出先】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "【提出先】"
+      ],
+      "line_number": 7,
+      "level": 1,
+      "rule_name": "Cover_Metadata_Field"
+    },
+    {
+      "node_path": [
+        4
+      ],
+      "depth": 1,
+      "section_title": "【提出日】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "【提出日】"
+      ],
+      "line_number": 9,
+      "level": 1,
+      "rule_name": "Cover_Metadata_Field"
+    },
+    {
+      "node_path": [
+        5
+      ],
+      "depth": 1,
+      "section_title": "【事業年度】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "【事業年度】"
+      ],
+      "line_number": 11,
+      "level": 1,
+      "rule_name": "Cover_Metadata_Field"
+    },
+    {
+      "node_path": [
+        6
+      ],
+      "depth": 1,
+      "section_title": "【会社名】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "【会社名】"
+      ],
+      "line_number": 13,
+      "level": 1,
+      "rule_name": "Cover_Metadata_Field"
+    },
+    {
+      "node_path": [
+        7
+      ],
+      "depth": 1,
+      "section_title": "【英訳名】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "【英訳名】"
+      ],
+      "line_number": 15,
+      "level": 1,
+      "rule_name": "Cover_Metadata_Field"
+    },
+    {
+      "node_path": [
+        8
+      ],
+      "depth": 1,
+      "section_title": "【代表者の役職氏名】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "【代表者の役職氏名】"
+      ],
+      "line_number": 17,
+      "level": 1,
+      "rule_name": "Cover_Metadata_Field"
+    },
+    {
+      "node_path": [
+        9
+      ],
+      "depth": 1,
+      "section_title": "【本店の所在の場所】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "【本店の所在の場所】"
+      ],
+      "line_number": 19,
+      "level": 1,
+      "rule_name": "Cover_Metadata_Field"
+    },
+    {
+      "node_path": [
+        10
+      ],
+      "depth": 1,
+      "section_title": "【電話番号】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "【電話番号】"
+      ],
+      "line_number": 23,
+      "level": 1,
+      "rule_name": "Cover_Metadata_Field"
+    },
+    {
+      "node_path": [
+        11
+      ],
+      "depth": 1,
+      "section_title": "【事務連絡者氏名】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "【事務連絡者氏名】"
+      ],
+      "line_number": 25,
+      "level": 1,
+      "rule_name": "Cover_Metadata_Field"
+    },
+    {
+      "node_path": [
+        12
+      ],
+      "depth": 1,
+      "section_title": "【最寄りの連絡場所】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "【最寄りの連絡場所】"
+      ],
+      "line_number": 27,
+      "level": 1,
+      "rule_name": "Cover_Metadata_Field"
+    },
+    {
+      "node_path": [
+        13
+      ],
+      "depth": 1,
+      "section_title": "【電話番号】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "【電話番号】"
+      ],
+      "line_number": 29,
+      "level": 1,
+      "rule_name": "Cover_Metadata_Field"
+    },
+    {
+      "node_path": [
+        14
+      ],
+      "depth": 1,
+      "section_title": "【事務連絡者氏名】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "【事務連絡者氏名】"
+      ],
+      "line_number": 31,
+      "level": 1,
+      "rule_name": "Cover_Metadata_Field"
+    },
+    {
+      "node_path": [
+        15
+      ],
+      "depth": 1,
+      "section_title": "【縦覧に供する場所】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "【縦覧に供する場所】"
+      ],
+      "line_number": 33,
+      "level": 1,
+      "rule_name": "Cover_Metadata_Field"
+    },
+    {
+      "node_path": [
+        16
+      ],
+      "depth": 1,
+      "section_title": "第一部【企業情報】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】"
+      ],
+      "line_number": 42,
+      "level": 1,
+      "rule_name": "Part"
+    },
+    {
+      "node_path": [
+        16,
+        0
+      ],
+      "depth": 2,
+      "section_title": "第１【企業の概況】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第１【企業の概況】"
+      ],
+      "line_number": 43,
+      "level": 2,
+      "rule_name": "Chapter_in_Part"
+    },
+    {
+      "node_path": [
+        16,
+        0,
+        0
+      ],
+      "depth": 3,
+      "section_title": "１【主要な経営指標等の推移】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第１【企業の概況】",
+        "１【主要な経営指標等の推移】"
+      ],
+      "line_number": 44,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        0,
+        0,
+        0
+      ],
+      "depth": 4,
+      "section_title": "(2) 提出会社の経営指標等",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第１【企業の概況】",
+        "１【主要な経営指標等の推移】",
+        "(2) 提出会社の経営指標等"
+      ],
+      "line_number": 209,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        0,
+        1
+      ],
+      "depth": 3,
+      "section_title": "２【沿革】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第１【企業の概況】",
+        "２【沿革】"
+      ],
+      "line_number": 398,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        0,
+        2
+      ],
+      "depth": 3,
+      "section_title": "３【事業の内容】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第１【企業の概況】",
+        "３【事業の内容】"
+      ],
+      "line_number": 500,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        0,
+        3
+      ],
+      "depth": 3,
+      "section_title": "４【関係会社の状況】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第１【企業の概況】",
+        "４【関係会社の状況】"
+      ],
+      "line_number": 601,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        0,
+        4
+      ],
+      "depth": 3,
+      "section_title": "５【従業員の状況】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第１【企業の概況】",
+        "５【従業員の状況】"
+      ],
+      "line_number": 1849,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        0,
+        4,
+        0
+      ],
+      "depth": 4,
+      "section_title": "(2) 提出会社の状況",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第１【企業の概況】",
+        "５【従業員の状況】",
+        "(2) 提出会社の状況"
+      ],
+      "line_number": 1875,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        0,
+        4,
+        1
+      ],
+      "depth": 4,
+      "section_title": "(3) 管理職に占める女性労働者の割合、男性労働者の育児休業取得率及び労働者の男女の賃金の差異",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第１【企業の概況】",
+        "５【従業員の状況】",
+        "(3) 管理職に占める女性労働者の割合、男性労働者の育児休業取得率及び労働者の男女の賃金の差異"
+      ],
+      "line_number": 1912,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        1
+      ],
+      "depth": 2,
+      "section_title": "第２【事業の状況】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第２【事業の状況】"
+      ],
+      "line_number": 1981,
+      "level": 2,
+      "rule_name": "Chapter_in_Part"
+    },
+    {
+      "node_path": [
+        16,
+        1,
+        0
+      ],
+      "depth": 3,
+      "section_title": "１【経営方針、経営環境及び対処すべき課題等】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第２【事業の状況】",
+        "１【経営方針、経営環境及び対処すべき課題等】"
+      ],
+      "line_number": 1982,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        1,
+        1
+      ],
+      "depth": 3,
+      "section_title": "２【サステナビリティに関する考え方及び取組】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第２【事業の状況】",
+        "２【サステナビリティに関する考え方及び取組】"
+      ],
+      "line_number": 2261,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        1,
+        2
+      ],
+      "depth": 3,
+      "section_title": "３【事業等のリスク】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第２【事業の状況】",
+        "３【事業等のリスク】"
+      ],
+      "line_number": 2703,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        1,
+        2,
+        0
+      ],
+      "depth": 4,
+      "section_title": "(4)ビジネスイノベーション領域における環境変化・競合に係るリスク",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第２【事業の状況】",
+        "３【事業等のリスク】",
+        "(4)ビジネスイノベーション領域における環境変化・競合に係るリスク"
+      ],
+      "line_number": 2754,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        1,
+        3
+      ],
+      "depth": 3,
+      "section_title": "４【経営者による財政状態、経営成績及びキャッシュ・フローの状況の分析】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第２【事業の状況】",
+        "４【経営者による財政状態、経営成績及びキャッシュ・フローの状況の分析】"
+      ],
+      "line_number": 2945,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        1,
+        4
+      ],
+      "depth": 3,
+      "section_title": "５【重要な契約等】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第２【事業の状況】",
+        "５【重要な契約等】"
+      ],
+      "line_number": 3448,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        1,
+        5
+      ],
+      "depth": 3,
+      "section_title": "６【研究開発活動】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第２【事業の状況】",
+        "６【研究開発活動】"
+      ],
+      "line_number": 3456,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        1,
+        5,
+        0
+      ],
+      "depth": 4,
+      "section_title": "(2)エレクトロニクスセグメント",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第２【事業の状況】",
+        "６【研究開発活動】",
+        "(2)エレクトロニクスセグメント"
+      ],
+      "line_number": 3551,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        1,
+        5,
+        1
+      ],
+      "depth": 4,
+      "section_title": "(3)ビジネスイノベーションセグメント",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第２【事業の状況】",
+        "６【研究開発活動】",
+        "(3)ビジネスイノベーションセグメント"
+      ],
+      "line_number": 3576,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        1,
+        5,
+        2
+      ],
+      "depth": 4,
+      "section_title": "(4)イメージングセグメント",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第２【事業の状況】",
+        "６【研究開発活動】",
+        "(4)イメージングセグメント"
+      ],
+      "line_number": 3602,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        2
+      ],
+      "depth": 2,
+      "section_title": "第３【設備の状況】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第３【設備の状況】"
+      ],
+      "line_number": 3632,
+      "level": 2,
+      "rule_name": "Chapter_in_Part"
+    },
+    {
+      "node_path": [
+        16,
+        2,
+        0
+      ],
+      "depth": 3,
+      "section_title": "１【設備投資等の概要】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第３【設備の状況】",
+        "１【設備投資等の概要】"
+      ],
+      "line_number": 3633,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        2,
+        1
+      ],
+      "depth": 3,
+      "section_title": "２【主要な設備の状況】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第３【設備の状況】",
+        "２【主要な設備の状況】"
+      ],
+      "line_number": 3663,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        2,
+        1,
+        0
+      ],
+      "depth": 4,
+      "section_title": "(2) 国内子会社",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第３【設備の状況】",
+        "２【主要な設備の状況】",
+        "(2) 国内子会社"
+      ],
+      "line_number": 3708,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        2,
+        1,
+        1
+      ],
+      "depth": 4,
+      "section_title": "(3) 海外子会社",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第３【設備の状況】",
+        "２【主要な設備の状況】",
+        "(3) 海外子会社"
+      ],
+      "line_number": 4056,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        2,
+        2
+      ],
+      "depth": 3,
+      "section_title": "３【設備の新設、除却等の計画】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第３【設備の状況】",
+        "３【設備の新設、除却等の計画】"
+      ],
+      "line_number": 4326,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        3
+      ],
+      "depth": 2,
+      "section_title": "第４【提出会社の状況】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】"
+      ],
+      "line_number": 4365,
+      "level": 2,
+      "rule_name": "Chapter_in_Part"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0
+      ],
+      "depth": 3,
+      "section_title": "１【株式等の状況】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】"
+      ],
+      "line_number": 4366,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        0
+      ],
+      "depth": 4,
+      "section_title": "(8) 新株予約権の取得条項",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項"
+      ],
+      "line_number": 4528,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        0,
+        0
+      ],
+      "depth": 5,
+      "section_title": "b.富士フイルムホールディングス株式会社第６ノ１回新株予約権",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項",
+        "b.富士フイルムホールディングス株式会社第６ノ１回新株予約権"
+      ],
+      "line_number": 4552,
+      "level": 5,
+      "rule_name": "Subsubsection_LetterDot"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        1
+      ],
+      "depth": 4,
+      "section_title": "(8) 新株予約権の取得条項",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項"
+      ],
+      "line_number": 4672,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        1,
+        0
+      ],
+      "depth": 5,
+      "section_title": "c.富士フイルムホールディングス株式会社第７ノ１回新株予約権",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項",
+        "c.富士フイルムホールディングス株式会社第７ノ１回新株予約権"
+      ],
+      "line_number": 4696,
+      "level": 5,
+      "rule_name": "Subsubsection_LetterDot"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        2
+      ],
+      "depth": 4,
+      "section_title": "(8) 新株予約権の取得条項",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項"
+      ],
+      "line_number": 4816,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        2,
+        0
+      ],
+      "depth": 5,
+      "section_title": "d.富士フイルムホールディングス株式会社第８ノ１回新株予約権",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項",
+        "d.富士フイルムホールディングス株式会社第８ノ１回新株予約権"
+      ],
+      "line_number": 4840,
+      "level": 5,
+      "rule_name": "Subsubsection_LetterDot"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        3
+      ],
+      "depth": 4,
+      "section_title": "(8) 新株予約権の取得条項",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項"
+      ],
+      "line_number": 4960,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        3,
+        0
+      ],
+      "depth": 5,
+      "section_title": "e.富士フイルムホールディングス株式会社第９ノ１回新株予約権",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項",
+        "e.富士フイルムホールディングス株式会社第９ノ１回新株予約権"
+      ],
+      "line_number": 4984,
+      "level": 5,
+      "rule_name": "Subsubsection_LetterDot"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        4
+      ],
+      "depth": 4,
+      "section_title": "(8) 新株予約権の取得条項",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項"
+      ],
+      "line_number": 5104,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        4,
+        0
+      ],
+      "depth": 5,
+      "section_title": "f.富士フイルムホールディングス株式会社第９ノ２回新株予約権",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項",
+        "f.富士フイルムホールディングス株式会社第９ノ２回新株予約権"
+      ],
+      "line_number": 5128,
+      "level": 5,
+      "rule_name": "Subsubsection_LetterDot"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        4,
+        1
+      ],
+      "depth": 5,
+      "section_title": "g.富士フイルムホールディングス株式会社第10ノ１回新株予約権",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項",
+        "g.富士フイルムホールディングス株式会社第10ノ１回新株予約権"
+      ],
+      "line_number": 5248,
+      "level": 5,
+      "rule_name": "Subsubsection_LetterDot"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        5
+      ],
+      "depth": 4,
+      "section_title": "(4) 新株予約権者が新株予約権を放棄した場合には、当該新株予約権を行使することができないものとしま",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(4) 新株予約権者が新株予約権を放棄した場合には、当該新株予約権を行使することができないものとしま"
+      ],
+      "line_number": 5313,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        6
+      ],
+      "depth": 4,
+      "section_title": "(8) 新株予約権の取得条項",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項"
+      ],
+      "line_number": 5371,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        6,
+        0
+      ],
+      "depth": 5,
+      "section_title": "h.富士フイルムホールディングス株式会社第10ノ２回新株予約権",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項",
+        "h.富士フイルムホールディングス株式会社第10ノ２回新株予約権"
+      ],
+      "line_number": 5398,
+      "level": 5,
+      "rule_name": "Subsubsection_LetterDot"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        6,
+        1
+      ],
+      "depth": 5,
+      "section_title": "i.富士フイルムホールディングス株式会社第11ノ１回新株予約権",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項",
+        "i.富士フイルムホールディングス株式会社第11ノ１回新株予約権"
+      ],
+      "line_number": 5521,
+      "level": 5,
+      "rule_name": "Subsubsection_LetterDot"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        7
+      ],
+      "depth": 4,
+      "section_title": "(4) 新株予約権者が新株予約権を放棄した場合には、当該新株予約権を行使することができないものとしま",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(4) 新株予約権者が新株予約権を放棄した場合には、当該新株予約権を行使することができないものとしま"
+      ],
+      "line_number": 5586,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        8
+      ],
+      "depth": 4,
+      "section_title": "(8) 新株予約権の取得条項",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項"
+      ],
+      "line_number": 5644,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        8,
+        0
+      ],
+      "depth": 5,
+      "section_title": "j.富士フイルムホールディングス株式会社第11ノ２回新株予約権",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項",
+        "j.富士フイルムホールディングス株式会社第11ノ２回新株予約権"
+      ],
+      "line_number": 5671,
+      "level": 5,
+      "rule_name": "Subsubsection_LetterDot"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        8,
+        1
+      ],
+      "depth": 5,
+      "section_title": "k.富士フイルムホールディングス株式会社第12ノ１回新株予約権",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項",
+        "k.富士フイルムホールディングス株式会社第12ノ１回新株予約権"
+      ],
+      "line_number": 5794,
+      "level": 5,
+      "rule_name": "Subsubsection_LetterDot"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        9
+      ],
+      "depth": 4,
+      "section_title": "(4) 新株予約権者が新株予約権を放棄した場合には、当該新株予約権を行使することができないものとしま",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(4) 新株予約権者が新株予約権を放棄した場合には、当該新株予約権を行使することができないものとしま"
+      ],
+      "line_number": 5859,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        10
+      ],
+      "depth": 4,
+      "section_title": "(8) 新株予約権の取得条項",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項"
+      ],
+      "line_number": 5917,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        10,
+        0
+      ],
+      "depth": 5,
+      "section_title": "l.富士フイルムホールディングス株式会社第12ノ２回新株予約権",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項",
+        "l.富士フイルムホールディングス株式会社第12ノ２回新株予約権"
+      ],
+      "line_number": 5944,
+      "level": 5,
+      "rule_name": "Subsubsection_LetterDot"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        10,
+        1
+      ],
+      "depth": 5,
+      "section_title": "m.富士フイルムホールディングス株式会社第13ノ１回新株予約権",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項",
+        "m.富士フイルムホールディングス株式会社第13ノ１回新株予約権"
+      ],
+      "line_number": 6067,
+      "level": 5,
+      "rule_name": "Subsubsection_LetterDot"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        11
+      ],
+      "depth": 4,
+      "section_title": "(4) 新株予約権者が新株予約権を放棄した場合には、当該新株予約権を行使することができないものとしま",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(4) 新株予約権者が新株予約権を放棄した場合には、当該新株予約権を行使することができないものとしま"
+      ],
+      "line_number": 6132,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        12
+      ],
+      "depth": 4,
+      "section_title": "(8) 新株予約権の取得条項",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項"
+      ],
+      "line_number": 6190,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        12,
+        0
+      ],
+      "depth": 5,
+      "section_title": "n.富士フイルムホールディングス株式会社第13ノ２回新株予約権",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項",
+        "n.富士フイルムホールディングス株式会社第13ノ２回新株予約権"
+      ],
+      "line_number": 6217,
+      "level": 5,
+      "rule_name": "Subsubsection_LetterDot"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        12,
+        1
+      ],
+      "depth": 5,
+      "section_title": "o.富士フイルムホールディングス株式会社第14ノ１回新株予約権",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) 新株予約権の取得条項",
+        "o.富士フイルムホールディングス株式会社第14ノ１回新株予約権"
+      ],
+      "line_number": 6340,
+      "level": 5,
+      "rule_name": "Subsubsection_LetterDot"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        13
+      ],
+      "depth": 4,
+      "section_title": "(4) 新株予約権者が新株予約権を放棄した場合には、当該新株予約権を行使することができないものとしま",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(4) 新株予約権者が新株予約権を放棄した場合には、当該新株予約権を行使することができないものとしま"
+      ],
+      "line_number": 6405,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        14
+      ],
+      "depth": 4,
+      "section_title": "(8) その他の新株予約権の行使の条件",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) その他の新株予約権の行使の条件"
+      ],
+      "line_number": 6463,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        14,
+        0
+      ],
+      "depth": 5,
+      "section_title": "p.富士フイルムホールディングス株式会社第14ノ２回新株予約権",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) その他の新株予約権の行使の条件",
+        "p.富士フイルムホールディングス株式会社第14ノ２回新株予約権"
+      ],
+      "line_number": 6474,
+      "level": 5,
+      "rule_name": "Subsubsection_LetterDot"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        14,
+        1
+      ],
+      "depth": 5,
+      "section_title": "②【ライツプランの内容】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) その他の新株予約権の行使の条件",
+        "②【ライツプランの内容】"
+      ],
+      "line_number": 6581,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        14,
+        2
+      ],
+      "depth": 5,
+      "section_title": "③【その他の新株予約権等の状況】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) その他の新株予約権の行使の条件",
+        "③【その他の新株予約権等の状況】"
+      ],
+      "line_number": 6584,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        14,
+        3
+      ],
+      "depth": 5,
+      "section_title": "②【自己株式等】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) その他の新株予約権の行使の条件",
+        "②【自己株式等】"
+      ],
+      "line_number": 6847,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        0,
+        14,
+        4
+      ],
+      "depth": 5,
+      "section_title": "②受益者に交付等が行われる当社株式等の数",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "１【株式等の状況】",
+        "(8) その他の新株予約権の行使の条件",
+        "②受益者に交付等が行われる当社株式等の数"
+      ],
+      "line_number": 6926,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        1
+      ],
+      "depth": 3,
+      "section_title": "２【自己株式の取得等の状況】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "２【自己株式の取得等の状況】"
+      ],
+      "line_number": 6947,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        2
+      ],
+      "depth": 3,
+      "section_title": "３【配当政策】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "３【配当政策】"
+      ],
+      "line_number": 7013,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        3,
+        3
+      ],
+      "depth": 3,
+      "section_title": "４【コーポレート・ガバナンスの状況等】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第４【提出会社の状況】",
+        "４【コーポレート・ガバナンスの状況等】"
+      ],
+      "line_number": 7047,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        4
+      ],
+      "depth": 2,
+      "section_title": "第５【経理の状況】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】"
+      ],
+      "line_number": 10280,
+      "level": 2,
+      "rule_name": "Chapter_in_Part"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0
+      ],
+      "depth": 3,
+      "section_title": "１【連結財務諸表等】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】"
+      ],
+      "line_number": 10304,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        0
+      ],
+      "depth": 4,
+      "section_title": "(1)営業債権",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(1)営業債権"
+      ],
+      "line_number": 10342,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        1
+      ],
+      "depth": 4,
+      "section_title": "(2)リース債権",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(2)リース債権"
+      ],
+      "line_number": 10348,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        2
+      ],
+      "depth": 4,
+      "section_title": "(3)関連会社等に対する債権",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(3)関連会社等に対する債権"
+      ],
+      "line_number": 10354,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        3
+      ],
+      "depth": 4,
+      "section_title": "(4)信用損失引当金",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(4)信用損失引当金"
+      ],
+      "line_number": 10360,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        4
+      ],
+      "depth": 4,
+      "section_title": "(1) 営業債務",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(1) 営業債務"
+      ],
+      "line_number": 10566,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        5
+      ],
+      "depth": 4,
+      "section_title": "(2) 設備関係債務",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(2) 設備関係債務"
+      ],
+      "line_number": 10572,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        6
+      ],
+      "depth": 4,
+      "section_title": "(3) 関連会社等に対する債務",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(3) 関連会社等に対する債務"
+      ],
+      "line_number": 10578,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        6,
+        0
+      ],
+      "depth": 5,
+      "section_title": "②【連結損益計算書】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(3) 関連会社等に対する債務",
+        "②【連結損益計算書】"
+      ],
+      "line_number": 10781,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        6,
+        1
+      ],
+      "depth": 5,
+      "section_title": "③【連結包括利益計算書】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(3) 関連会社等に対する債務",
+        "③【連結包括利益計算書】"
+      ],
+      "line_number": 10945,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        6,
+        2
+      ],
+      "depth": 5,
+      "section_title": "④【連結資本勘定計算書】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(3) 関連会社等に対する債務",
+        "④【連結資本勘定計算書】"
+      ],
+      "line_number": 11003,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        6,
+        3
+      ],
+      "depth": 5,
+      "section_title": "⑤【連結キャッシュ・フロー計算書】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(3) 関連会社等に対する債務",
+        "⑤【連結キャッシュ・フロー計算書】"
+      ],
+      "line_number": 11360,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        7
+      ],
+      "depth": 4,
+      "section_title": "(1) 減価償却費",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(1) 減価償却費"
+      ],
+      "line_number": 11392,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        8
+      ],
+      "depth": 4,
+      "section_title": "(2) 持分証券に関する損益",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(2) 持分証券に関する損益"
+      ],
+      "line_number": 11398,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        9
+      ],
+      "depth": 4,
+      "section_title": "(3) 法人税等調整額",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(3) 法人税等調整額"
+      ],
+      "line_number": 11404,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        10
+      ],
+      "depth": 4,
+      "section_title": "(4) 持分法による投資損益(受取配当金控除後)",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(4) 持分法による投資損益(受取配当金控除後)"
+      ],
+      "line_number": 11410,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        11
+      ],
+      "depth": 4,
+      "section_title": "(5) 資産及び負債の増減",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(5) 資産及び負債の増減"
+      ],
+      "line_number": 11416,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        12
+      ],
+      "depth": 4,
+      "section_title": "(6) その他",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(6) その他"
+      ],
+      "line_number": 11453,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        12,
+        0
+      ],
+      "depth": 5,
+      "section_title": "①ヘルスケア",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(6) その他",
+        "①ヘルスケア"
+      ],
+      "line_number": 15996,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        12,
+        1
+      ],
+      "depth": 5,
+      "section_title": "②エレクトロニクス",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(6) その他",
+        "②エレクトロニクス"
+      ],
+      "line_number": 16006,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        12,
+        2
+      ],
+      "depth": 5,
+      "section_title": "③ビジネスイノベーション",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(6) その他",
+        "③ビジネスイノベーション"
+      ],
+      "line_number": 16012,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        12,
+        3
+      ],
+      "depth": 5,
+      "section_title": "④イメージング",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(6) その他",
+        "④イメージング"
+      ],
+      "line_number": 16021,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        12,
+        4
+      ],
+      "depth": 5,
+      "section_title": "a. セグメント損益",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(6) その他",
+        "a. セグメント損益"
+      ],
+      "line_number": 16164,
+      "level": 5,
+      "rule_name": "Subsubsection_LetterDot"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        12,
+        5
+      ],
+      "depth": 5,
+      "section_title": "b. 総資産",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(6) その他",
+        "b. 総資産"
+      ],
+      "line_number": 16269,
+      "level": 5,
+      "rule_name": "Subsubsection_LetterDot"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        12,
+        6
+      ],
+      "depth": 5,
+      "section_title": "c. その他の主要項目",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(6) その他",
+        "c. その他の主要項目"
+      ],
+      "line_number": 16311,
+      "level": 5,
+      "rule_name": "Subsubsection_LetterDot"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        13
+      ],
+      "depth": 4,
+      "section_title": "(2) 地域別セグメント情報",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(2) 地域別セグメント情報"
+      ],
+      "line_number": 16400,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        14
+      ],
+      "depth": 4,
+      "section_title": "(3) 主要顧客及びその他情報",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(3) 主要顧客及びその他情報"
+      ],
+      "line_number": 16465,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        0,
+        14,
+        0
+      ],
+      "depth": 5,
+      "section_title": "⑥【連結附属明細表】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "１【連結財務諸表等】",
+        "(3) 主要顧客及びその他情報",
+        "⑥【連結附属明細表】"
+      ],
+      "line_number": 16505,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        1
+      ],
+      "depth": 3,
+      "section_title": "２【財務諸表等】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "２【財務諸表等】"
+      ],
+      "line_number": 16542,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        1,
+        0
+      ],
+      "depth": 4,
+      "section_title": "(2)その他の情報",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "２【財務諸表等】",
+        "(2)その他の情報"
+      ],
+      "line_number": 17348,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        16,
+        4,
+        1,
+        0,
+        0
+      ],
+      "depth": 5,
+      "section_title": "④【附属明細表】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第５【経理の状況】",
+        "２【財務諸表等】",
+        "(2)その他の情報",
+        "④【附属明細表】"
+      ],
+      "line_number": 17667,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        16,
+        5
+      ],
+      "depth": 2,
+      "section_title": "第６【提出会社の株式事務の概要】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第６【提出会社の株式事務の概要】"
+      ],
+      "line_number": 17785,
+      "level": 2,
+      "rule_name": "Chapter_in_Part"
+    },
+    {
+      "node_path": [
+        16,
+        6
+      ],
+      "depth": 2,
+      "section_title": "第７【提出会社の参考情報】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第７【提出会社の参考情報】"
+      ],
+      "line_number": 17841,
+      "level": 2,
+      "rule_name": "Chapter_in_Part"
+    },
+    {
+      "node_path": [
+        16,
+        6,
+        0
+      ],
+      "depth": 3,
+      "section_title": "１【提出会社の親会社等の情報】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第７【提出会社の参考情報】",
+        "１【提出会社の親会社等の情報】"
+      ],
+      "line_number": 17842,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        6,
+        1
+      ],
+      "depth": 3,
+      "section_title": "２【その他の参考情報】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第７【提出会社の参考情報】",
+        "２【その他の参考情報】"
+      ],
+      "line_number": 17844,
+      "level": 3,
+      "rule_name": "Section_in_Chapter"
+    },
+    {
+      "node_path": [
+        16,
+        6,
+        1,
+        0
+      ],
+      "depth": 4,
+      "section_title": "(2) 管理職に占める女性労働者の割合、男性労働者の育児休業取得率及び労働者の男女の賃金の差異",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第一部【企業情報】",
+        "第７【提出会社の参考情報】",
+        "２【その他の参考情報】",
+        "(2) 管理職に占める女性労働者の割合、男性労働者の育児休業取得率及び労働者の男女の賃金の差異"
+      ],
+      "line_number": 17879,
+      "level": 4,
+      "rule_name": "Subsection_ParenNumber"
+    },
+    {
+      "node_path": [
+        17
+      ],
+      "depth": 1,
+      "section_title": "①仕事の基盤となる課題形成力を強化する「See-Think-Plan-Do（STPD）」の浸透",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "①仕事の基盤となる課題形成力を強化する「See-Think-Plan-Do（STPD）」の浸透"
+      ],
+      "line_number": 2530,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        18
+      ],
+      "depth": 1,
+      "section_title": "②従業員の自己成長の基盤となる＋STORY（プラストーリー）展開",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "②従業員の自己成長の基盤となる＋STORY（プラストーリー）展開"
+      ],
+      "line_number": 2537,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        19
+      ],
+      "depth": 1,
+      "section_title": "③DX人材育成強化",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "③DX人材育成強化"
+      ],
+      "line_number": 2549,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        20
+      ],
+      "depth": 1,
+      "section_title": "②キャッシュ・フローの状況",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "②キャッシュ・フローの状況"
+      ],
+      "line_number": 3065,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        21
+      ],
+      "depth": 1,
+      "section_title": "②経営成績",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "②経営成績"
+      ],
+      "line_number": 3145,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        22
+      ],
+      "depth": 1,
+      "section_title": "③次期の見通し",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "③次期の見通し"
+      ],
+      "line_number": 3304,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        23
+      ],
+      "depth": 1,
+      "section_title": "④重要な会計上の見積り",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "④重要な会計上の見積り"
+      ],
+      "line_number": 3353,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        24
+      ],
+      "depth": 1,
+      "section_title": "②【発行済株式】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "②【発行済株式】"
+      ],
+      "line_number": 4377,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        25
+      ],
+      "depth": 1,
+      "section_title": "③企業統治に関するその他の事項",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "③企業統治に関するその他の事項"
+      ],
+      "line_number": 7127,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        26
+      ],
+      "depth": 1,
+      "section_title": "⑩取締役会等の活動状況",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "⑩取締役会等の活動状況"
+      ],
+      "line_number": 7237,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        27
+      ],
+      "depth": 1,
+      "section_title": "⑪会社の支配に関する基本方針について",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "⑪会社の支配に関する基本方針について"
+      ],
+      "line_number": 7340,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        28
+      ],
+      "depth": 1,
+      "section_title": "② 2025年６月27日開催予定の定時株主総会の議案承認可決後の役員一覧予定",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "② 2025年６月27日開催予定の定時株主総会の議案承認可決後の役員一覧予定"
+      ],
+      "line_number": 7807,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        29
+      ],
+      "depth": 1,
+      "section_title": "③ 社外役員の状況",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "③ 社外役員の状況"
+      ],
+      "line_number": 7854,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        30
+      ],
+      "depth": 1,
+      "section_title": "③ 社外取締役又は社外監査役による監督又は監査と内部監査、監査役監査及び会計監査との相互連携",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "③ 社外取締役又は社外監査役による監督又は監査と内部監査、監査役監査及び会計監査との相互連携"
+      ],
+      "line_number": 7976,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        31
+      ],
+      "depth": 1,
+      "section_title": "② 内部監査の状況",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "② 内部監査の状況"
+      ],
+      "line_number": 8210,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        32
+      ],
+      "depth": 1,
+      "section_title": "③ 会計監査の状況",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "③ 会計監査の状況"
+      ],
+      "line_number": 8243,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        33
+      ],
+      "depth": 1,
+      "section_title": "④ 監査報酬の内容等",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "④ 監査報酬の内容等"
+      ],
+      "line_number": 8278,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        34
+      ],
+      "depth": 1,
+      "section_title": "② 役員区分ごとの報酬等の総額、報酬等の種類別の総額及び対象となる役員の員数",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "② 役員区分ごとの報酬等の総額、報酬等の種類別の総額及び対象となる役員の員数"
+      ],
+      "line_number": 8525,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        35
+      ],
+      "depth": 1,
+      "section_title": "③ 役員ごとの連結報酬等の総額等",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "③ 役員ごとの連結報酬等の総額等"
+      ],
+      "line_number": 8703,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        36
+      ],
+      "depth": 1,
+      "section_title": "②保有の検証方法",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "②保有の検証方法"
+      ],
+      "line_number": 9012,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        37
+      ],
+      "depth": 1,
+      "section_title": "③保有状況",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "③保有状況"
+      ],
+      "line_number": 9022,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        38
+      ],
+      "depth": 1,
+      "section_title": "②【損益計算書】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "②【損益計算書】"
+      ],
+      "line_number": 16772,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        39
+      ],
+      "depth": 1,
+      "section_title": "③【株主資本等変動計算書】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "③【株主資本等変動計算書】"
+      ],
+      "line_number": 16876,
+      "level": 5,
+      "rule_name": "Subsubsection_CircledNumber"
+    },
+    {
+      "node_path": [
+        40
+      ],
+      "depth": 1,
+      "section_title": "第二部【提出会社の保証会社等の情報】",
+      "title_path": [
+        "富士フィルム_有価証券報告書",
+        "第二部【提出会社の保証会社等の情報】"
+      ],
+      "line_number": 18053,
+      "level": 1,
+      "rule_name": "Part"
+    }
+  ]
+}

@@ -1,0 +1,361 @@
+{
+  "meta": {
+    "template_version": "1.0",
+    "created_at": "2026-01-01",
+    "base_document": {
+      "id": "docA",
+      "name": "富士フィルム_有価証券報告書",
+      "path": "富士フィルム_有価証券報告書.txt.ast.json"
+    },
+    "target_document": {
+      "id": "docB",
+      "name": "三菱ケミカル_有価証券報告書",
+      "path": "三菱ケミカル_有価証券報告書.txt.ast.json"
+    },
+    "granularity_rule": {
+      "default_depth": 2,
+      "expand_if": "子セクション5件以上、または内容が大きく構造差がある場合",
+      "note": "2階層目を基本とし、必要に応じて3階層目に展開"
+    }
+  },
+
+  "section_mapping": [
+    {
+      "id": "SEC-001",
+      "docA": {
+        "chunk_id": "0/0/0",
+        "title": "第１【企業の概況】",
+        "depth": 2,
+        "child_count": 5,
+        "children_titles": [
+          "１【主要な経営指標等の推移】",
+          "２【沿革】",
+          "３【事業の内容】",
+          "４【関係会社の状況】",
+          "５【従業員の状況】"
+        ]
+      },
+      "docB_match": {
+        "status": "",
+        "chunk_id": "",
+        "title": "",
+        "similarity": null,
+        "mapping_confidence": ""
+      },
+      "expanded": false,
+      "comparison": {
+        "diff_type": "",
+        "noise_items": [],
+        "semantic_diffs": [],
+        "notes": ""
+      }
+    },
+    {
+      "id": "SEC-002",
+      "docA": {
+        "chunk_id": "0/0/1",
+        "title": "第２【事業の状況】",
+        "depth": 2,
+        "child_count": 6,
+        "children_titles": [
+          "１【経営方針、経営環境及び対処すべき課題等】",
+          "２【サステナビリティに関する考え方及び取組】",
+          "３【事業等のリスク】",
+          "４【経営者による財政状態、経営成績及びキャッシュ・フローの状況の分析】",
+          "５【重要な契約等】",
+          "６【研究開発活動】"
+        ]
+      },
+      "docB_match": {
+        "status": "",
+        "chunk_id": "",
+        "title": "",
+        "similarity": null,
+        "mapping_confidence": ""
+      },
+      "expanded": true,
+      "comparison": {
+        "diff_type": "",
+        "noise_items": [],
+        "semantic_diffs": [],
+        "notes": ""
+      },
+      "children": [
+        {
+          "id": "SEC-002-01",
+          "docA": {
+            "chunk_id": "0/0/1/0",
+            "title": "１【経営方針、経営環境及び対処すべき課題等】",
+            "depth": 3
+          },
+          "docB_match": {
+            "status": "",
+            "chunk_id": "",
+            "title": "",
+            "similarity": null
+          },
+          "comparison": {
+            "diff_type": "",
+            "key_diffs": [],
+            "notes": ""
+          }
+        },
+        {
+          "id": "SEC-002-02",
+          "docA": {
+            "chunk_id": "0/0/1/1",
+            "title": "２【サステナビリティに関する考え方及び取組】",
+            "depth": 3
+          },
+          "docB_match": {
+            "status": "",
+            "chunk_id": "",
+            "title": "",
+            "similarity": null
+          },
+          "comparison": {
+            "diff_type": "",
+            "key_diffs": [],
+            "notes": ""
+          }
+        },
+        {
+          "id": "SEC-002-03",
+          "docA": {
+            "chunk_id": "0/0/1/2",
+            "title": "３【事業等のリスク】",
+            "depth": 3
+          },
+          "docB_match": {
+            "status": "",
+            "chunk_id": "",
+            "title": "",
+            "similarity": null
+          },
+          "comparison": {
+            "diff_type": "",
+            "key_diffs": [],
+            "notes": ""
+          }
+        },
+        {
+          "id": "SEC-002-04",
+          "docA": {
+            "chunk_id": "0/0/1/3",
+            "title": "４【経営者による財政状態、経営成績及びキャッシュ・フローの状況の分析】",
+            "depth": 3
+          },
+          "docB_match": {
+            "status": "",
+            "chunk_id": "",
+            "title": "",
+            "similarity": null
+          },
+          "comparison": {
+            "diff_type": "",
+            "key_diffs": [],
+            "notes": ""
+          }
+        },
+        {
+          "id": "SEC-002-05",
+          "docA": {
+            "chunk_id": "0/0/1/4",
+            "title": "５【重要な契約等】",
+            "depth": 3
+          },
+          "docB_match": {
+            "status": "",
+            "chunk_id": "",
+            "title": "",
+            "similarity": null
+          },
+          "comparison": {
+            "diff_type": "",
+            "key_diffs": [],
+            "notes": ""
+          }
+        },
+        {
+          "id": "SEC-002-06",
+          "docA": {
+            "chunk_id": "0/0/1/5",
+            "title": "６【研究開発活動】",
+            "depth": 3
+          },
+          "docB_match": {
+            "status": "",
+            "chunk_id": "",
+            "title": "",
+            "similarity": null
+          },
+          "comparison": {
+            "diff_type": "",
+            "key_diffs": [],
+            "notes": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": "SEC-003",
+      "docA": {
+        "chunk_id": "0/0/2",
+        "title": "第３【設備の状況】",
+        "depth": 2,
+        "child_count": 3,
+        "children_titles": [
+          "１【設備投資等の概要】",
+          "２【主要な設備の状況】",
+          "３【設備の新設、除却等の計画】"
+        ]
+      },
+      "docB_match": {
+        "status": "",
+        "chunk_id": "",
+        "title": "",
+        "similarity": null,
+        "mapping_confidence": ""
+      },
+      "expanded": false,
+      "comparison": {
+        "diff_type": "",
+        "noise_items": [],
+        "semantic_diffs": [],
+        "notes": ""
+      }
+    },
+    {
+      "id": "SEC-004",
+      "docA": {
+        "chunk_id": "0/0/3",
+        "title": "第４【提出会社の状況】",
+        "depth": 2,
+        "child_count": 4,
+        "children_titles": [
+          "１【株式等の状況】",
+          "２【自己株式の取得等の状況】",
+          "３【配当政策】",
+          "４【コーポレート・ガバナンスの状況等】"
+        ]
+      },
+      "docB_match": {
+        "status": "",
+        "chunk_id": "",
+        "title": "",
+        "similarity": null,
+        "mapping_confidence": ""
+      },
+      "expanded": false,
+      "comparison": {
+        "diff_type": "",
+        "noise_items": [],
+        "semantic_diffs": [],
+        "notes": ""
+      }
+    },
+    {
+      "id": "SEC-005",
+      "docA": {
+        "chunk_id": "0/0/4",
+        "title": "第５【経理の状況】",
+        "depth": 2,
+        "child_count": 2,
+        "children_titles": [
+          "１【連結財務諸表等】",
+          "２【財務諸表等】"
+        ]
+      },
+      "docB_match": {
+        "status": "",
+        "chunk_id": "",
+        "title": "",
+        "similarity": null,
+        "mapping_confidence": ""
+      },
+      "expanded": false,
+      "comparison": {
+        "diff_type": "",
+        "noise_items": [],
+        "semantic_diffs": [],
+        "notes": ""
+      }
+    },
+    {
+      "id": "SEC-006",
+      "docA": {
+        "chunk_id": "0/0/5",
+        "title": "第６【提出会社の株式事務の概要】",
+        "depth": 2,
+        "child_count": 0,
+        "children_titles": []
+      },
+      "docB_match": {
+        "status": "",
+        "chunk_id": "",
+        "title": "",
+        "similarity": null,
+        "mapping_confidence": ""
+      },
+      "expanded": false,
+      "comparison": {
+        "diff_type": "",
+        "noise_items": [],
+        "semantic_diffs": [],
+        "notes": ""
+      }
+    },
+    {
+      "id": "SEC-007",
+      "docA": {
+        "chunk_id": "0/0/6",
+        "title": "第７【提出会社の参考情報】",
+        "depth": 2,
+        "child_count": 2,
+        "children_titles": [
+          "１【提出会社の親会社等の情報】",
+          "２【その他の参考情報】"
+        ]
+      },
+      "docB_match": {
+        "status": "",
+        "chunk_id": "",
+        "title": "",
+        "similarity": null,
+        "mapping_confidence": ""
+      },
+      "expanded": false,
+      "comparison": {
+        "diff_type": "",
+        "noise_items": [],
+        "semantic_diffs": [],
+        "notes": ""
+      }
+    }
+  ],
+
+  "unmapped_docB_sections": [
+    {
+      "id": "UNMAPPED-001",
+      "chunk_id": "",
+      "title": "",
+      "title_path": [],
+      "category": "",
+      "possible_reason": "",
+      "notes": ""
+    }
+  ],
+
+  "summary": {
+    "total_docA_sections": 7,
+    "mapped_count": null,
+    "partial_count": null,
+    "none_count": null,
+    "expanded_sections": ["SEC-002"],
+    "unmapped_docB_count": null,
+    "key_structural_diffs": [],
+    "key_semantic_diffs": [],
+    "overall_assessment": ""
+  }
+}
+
