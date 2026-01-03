@@ -41,5 +41,13 @@ Thumbs.db
 .env
 .env.local
 
+.embedding_cache.json
+.embedding_cache.json.lock
 
+*.jsonl
+*.pdf
+*.txt
+*.json
+*.md
 
+data/

@@ -192,6 +192,120 @@ def _collect_subtree_content(node: Dict[str, Any]) -> str:
     return "\n\n".join(parts)
 
 
+def _collect_subtree_content_with_titles(
+    node: Dict[str, Any],
+    *,
+    max_chars_per_content: int = 0,
+    chunk_id_for_reference: str = "",
+) -> str:
+    """
+    ノード配下（自身を含む）のすべての content をセクションタイトル付きで再帰的に結合して返す。
+    
+    Args:
+        node: 対象ノード
+        max_chars_per_content: 各contentの最大文字数（0以下は無制限）
+        chunk_id_for_reference: 切り詰め時の参照用チャンクID
+    """
+    parts: List[str] = []
+    
+    def walk(n: Dict[str, Any], depth: int = 0) -> None:
+        # セクションタイトルを取得
+        title = n.get("section_title")
+        title_str = title.strip() if isinstance(title, str) else ""
+        
+        # contentを取得
+        content = n.get("content")
+        content_str = content.strip() if isinstance(content, str) else ""
+        
+        # タイトルとcontentを追加
+        if title_str or content_str:
+            section_parts: List[str] = []
+            if title_str:
+                # 深さに応じた見出しレベル
+                prefix = "#" * min(depth + 1, 4)
+                section_parts.append(f"{prefix} {title_str}")
+            if content_str:
+                # 文字数制限
+                if max_chars_per_content > 0 and len(content_str) > max_chars_per_content:
+                    truncated = content_str[:max_chars_per_content].rstrip()
+                    ref_msg = f"※全文を参照する場合はチャンク {chunk_id_for_reference} を直接参照してください" if chunk_id_for_reference else "※全文は省略されています"
+                    section_parts.append(f"{truncated}\n...(truncated) {ref_msg}")
+                else:
+                    section_parts.append(content_str)
+            if section_parts:
+                parts.append("\n".join(section_parts))
+        
+        # 子ノードを再帰処理
+        children = n.get("children") or []
+        if isinstance(children, list):
+            for ch in children:
+                if isinstance(ch, dict):
+                    walk(ch, depth + 1)
+    
+    walk(node, 0)
+    return "\n\n".join(parts)
+
+
+def _collect_subtree_content_with_summaries(
+    node: Dict[str, Any],
+    *,
+    max_chars_per_content: int = 0,
+    chunk_id_for_reference: str = "",
+) -> str:
+    """
+    ノード配下（自身を含む）のすべての content_summary と content を
+    セクションタイトル付きで再帰的に結合して返す（LLM比較用）。
+    
+    Args:
+        node: 対象ノード
+        max_chars_per_content: 各contentの最大文字数（0以下は無制限）
+        chunk_id_for_reference: 切り詰め時の参照用チャンクID
+    """
+    parts: List[str] = []
+    
+    def walk(n: Dict[str, Any], depth: int = 0) -> None:
+        # セクションタイトルを取得
+        title = n.get("section_title")
+        title_str = title.strip() if isinstance(title, str) else ""
+        
+        # content_summaryを取得
+        summary = n.get("content_summary")
+        summary_str = summary.strip() if isinstance(summary, str) else ""
+        
+        # contentを取得
+        content = n.get("content")
+        content_str = content.strip() if isinstance(content, str) else ""
+        
+        # タイトル、summary、contentを追加
+        if title_str or summary_str or content_str:
+            section_parts: List[str] = []
+            if title_str:
+                prefix = "#" * min(depth + 1, 4)
+                section_parts.append(f"{prefix} {title_str}")
+            if summary_str:
+                section_parts.append(f"[コンテキスト]: {summary_str}")
+            if content_str:
+                # 文字数制限
+                if max_chars_per_content > 0 and len(content_str) > max_chars_per_content:
+                    truncated = content_str[:max_chars_per_content].rstrip()
+                    ref_msg = f"※全文を参照する場合はチャンク {chunk_id_for_reference} を直接参照してください" if chunk_id_for_reference else "※全文は省略されています"
+                    section_parts.append(f"[比較対象の文章]: {truncated}\n...(truncated) {ref_msg}")
+                else:
+                    section_parts.append(f"[比較対象の文章]: {content_str}")
+            if section_parts:
+                parts.append("\n".join(section_parts))
+        
+        # 子ノードを再帰処理
+        children = n.get("children") or []
+        if isinstance(children, list):
+            for ch in children:
+                if isinstance(ch, dict):
+                    walk(ch, depth + 1)
+    
+    walk(node, 0)
+    return "\n\n".join(parts)
+
+
 def _get_node_by_path(root: Dict[str, Any], node_path: Sequence[int]) -> Dict[str, Any]:
     cur: Dict[str, Any] = root
     for idx in node_path:
@@ -978,33 +1092,151 @@ def _get_ancestor_context(chain: List[Dict[str, Any]], fallback_to_content: bool
     return contexts
 
 
+def build_merged_compare_text_for_diff(
+    *,
+    ast: Dict[str, Any],
+    chunks: List["Chunk"],
+    max_chars_per_content: int = 0,
+) -> str:
+    """
+    【diff用】複数チャンクをマージして比較用テキストを作る。
+    
+    - content_summaryは使用しない（LLM生成のため必ず差分になる）
+    - 上位チャンク（非leaf）の場合は配下のcontentを全て結合
+    - 階層パスは含めない
+    - セクションタイトルは含める
+    - 複数チャンク指定時は重複を統合
+    
+    Args:
+        ast: ASTデータ
+        chunks: チャンクリスト
+        max_chars_per_content: 各contentの最大文字数（0以下は無制限）
+    """
+    if not chunks:
+        return ""
+
+    root = ast.get("root")
+    if not isinstance(root, dict):
+        return ""
+
+    # node_pathで重複を除去し、親子関係を整理
+    # 親が含まれている場合は子を除外（親の配下に含まれるため）
+    unique_paths: List[Tuple[int, ...]] = []
+    sorted_chunks = sorted(chunks, key=lambda c: len(c.node_path))  # 短いパス（上位階層）を先に
+    
+    for ch in sorted_chunks:
+        path_tuple = tuple(ch.node_path)
+        # 既存のパスの子孫かどうかをチェック
+        is_descendant = False
+        for existing_path in unique_paths:
+            if len(path_tuple) >= len(existing_path) and path_tuple[:len(existing_path)] == existing_path:
+                is_descendant = True
+                break
+        if not is_descendant:
+            unique_paths.append(path_tuple)
+
+    # 重複除去後のチャンクを取得
+    unique_chunks = [ch for ch in chunks if tuple(ch.node_path) in unique_paths]
+
+    # 各チャンクのテキストを生成
+    all_parts: List[str] = []
+    for ch in unique_chunks:
+        try:
+            node = _get_node_by_path(root, ch.node_path)
+        except KeyError:
+            continue
+        
+        # 配下のcontentをセクションタイトル付きで収集
+        text = _collect_subtree_content_with_titles(
+            node,
+            max_chars_per_content=max_chars_per_content,
+            chunk_id_for_reference=ch.chunk_id,
+        )
+        if text:
+            all_parts.append(text)
+
+    return "\n\n".join(all_parts)
+
+
 def build_merged_compare_text(
     *,
     ast: Dict[str, Any],
     chunks: List["Chunk"],
     fallback_to_ancestor_content: bool = True,
+    max_chars_per_content: int = 0,
 ) -> str:
     """
-    複数チャンクを階層構造を保持しながらマージして比較用テキストを作る。
+    【LLM用】複数チャンクを階層構造を保持しながらマージして比較用テキストを作る。
     
-    同一の上位階層（content_summary）を持つチャンクはグループ化し、
-    階層構造がLLMに分かるようにフォーマットする。
+    - 上位階層のcontent_summaryをコンテキストとして含める
+    - 上位チャンク（非leaf）の場合は配下のcontent_summary+contentを全て含める
+    - 同一の上位階層を持つチャンクはグループ化
+    
+    Args:
+        ast: ASTデータ
+        chunks: チャンクリスト
+        fallback_to_ancestor_content: content_summaryがない場合にcontentを使うか
+        max_chars_per_content: 各contentの最大文字数（0以下は無制限）
     """
     if not chunks:
         return ""
 
+    root = ast.get("root")
+    if not isinstance(root, dict):
+        return ""
+
+    # node_pathで重複を除去し、親子関係を整理
+    # 親が含まれている場合は子を除外（親の配下に含まれるため）
+    unique_paths: List[Tuple[int, ...]] = []
+    sorted_chunks = sorted(chunks, key=lambda c: len(c.node_path))  # 短いパス（上位階層）を先に
+    
+    for ch in sorted_chunks:
+        path_tuple = tuple(ch.node_path)
+        # 既存のパスの子孫かどうかをチェック
+        is_descendant = False
+        for existing_path in unique_paths:
+            if len(path_tuple) >= len(existing_path) and path_tuple[:len(existing_path)] == existing_path:
+                is_descendant = True
+                break
+        if not is_descendant:
+            unique_paths.append(path_tuple)
+
+    # 重複除去後のチャンクを取得
+    unique_chunks = [ch for ch in chunks if tuple(ch.node_path) in unique_paths]
+
     # 各チャンクのnode_chainと祖先コンテキストを取得
     chunk_data: List[Dict[str, Any]] = []
-    for ch in chunks:
+    for ch in unique_chunks:
         chain = _get_node_chain(ast, ch.node_path)
         ancestor_contexts = _get_ancestor_context(chain, fallback_to_ancestor_content)
-        leaf_content = chain[-1].get("content") if chain else ""
-        leaf_content = leaf_content.strip() if isinstance(leaf_content, str) else ""
+        
+        # 対象ノードを取得
+        target_node = chain[-1] if chain else None
+        
+        # 非leafの場合は配下のcontent_summary+contentを全て含める
+        if target_node and not _is_leaf(target_node):
+            # 配下の内容をセクションタイトル・content_summary・content付きで収集
+            subtree_content = _collect_subtree_content_with_summaries(
+                target_node,
+                max_chars_per_content=max_chars_per_content,
+                chunk_id_for_reference=ch.chunk_id,
+            )
+            leaf_content = subtree_content
+        else:
+            # leafの場合は従来通り
+            leaf_content = target_node.get("content") if target_node else ""
+            leaf_content = leaf_content.strip() if isinstance(leaf_content, str) else ""
+            # 文字数制限
+            if max_chars_per_content > 0 and len(leaf_content) > max_chars_per_content:
+                leaf_content = leaf_content[:max_chars_per_content].rstrip()
+                leaf_content += f"\n...(truncated) ※全文を参照する場合はチャンク {ch.chunk_id} を直接参照してください"
+        
         chunk_data.append({
             "chunk": ch,
             "chain": chain,
             "ancestor_contexts": ancestor_contexts,
             "leaf_content": leaf_content,
+            "is_leaf": target_node is None or _is_leaf(target_node),
         })
 
     # 共通の祖先コンテキストを特定
@@ -1017,7 +1249,12 @@ def build_merged_compare_text(
         for ctx in cd["ancestor_contexts"]:
             parts.append(f"[文章のコンテキスト]: {ctx}")
         if cd["leaf_content"]:
-            parts.append(f"[比較対象の文章]: {cd['leaf_content']}")
+            if cd["is_leaf"]:
+                parts.append(f"[比較対象の文章]: {cd['leaf_content']}")
+            else:
+                # 非leafの場合は配下の内容をそのまま追加（既にフォーマット済み）
+                parts.append("[配下のセクション内容]:")
+                parts.append(cd["leaf_content"])
         return "\n\n".join(parts)
 
     # 複数チャンクの場合: 共通祖先を見つけてグループ化
@@ -1061,7 +1298,12 @@ def build_merged_compare_text(
                 parts.append(f"[階層{depth}のコンテキスト]: {ctx}")
         
         if cd["leaf_content"]:
-            parts.append(f"[比較対象の文章]: {cd['leaf_content']}")
+            if cd["is_leaf"]:
+                parts.append(f"[比較対象の文章]: {cd['leaf_content']}")
+            else:
+                # 非leafの場合は配下の内容をそのまま追加
+                parts.append("[配下のセクション内容]:")
+                parts.append(cd["leaf_content"])
 
     return "\n".join(parts)
 
@@ -1306,6 +1548,7 @@ def _llm_extract_differences_batch(
         "あなたはドキュメントの差分抽出アシスタントです。\n"
         "与えられたドキュメントA（複数チャンクを含む場合あり）とドキュメントB（複数チャンクを含む場合あり）を比較し、差分を抽出してください。\n"
         "各チャンクには「チャンクID」が付与されています。差分を報告する際は、どのチャンクに関する差分かを明記してください。\n"
+        "各チャンクには[文章のコンテキスト]が付与されていますがこれは該当チャンクの上位階層の要約なので比較に使用する必要はありません。比較作業は[比較対象の文章]を対象に行ってください。\n"
         "日本語で、根拠（A/Bのどの記述に基づくか）が分かるように短い引用も添えてください。\n"
         "出力は必ず JSON のみ（前後に余計な説明文を付けない）で返してください。"
     )
@@ -1369,12 +1612,24 @@ def compare_chunks(
     chunk_ids_b: Sequence[str],
     llm_model: Optional[str] = None,
     max_input_chars_per_text: int = 12000,
+    max_chars_per_content: int = 3000,
 ) -> Dict[str, Any]:
     """
     指定チャンクの比較（1:1, 1:N, N:1, N:N）。
     複数チャンクを階層構造を保持しながらまとめて1回のLLM呼び出しで比較する。
 
     差分抽出は LLM で実施する（非LLMの difflib 差分は使用しない）。
+    
+    Args:
+        ast_a: docAのASTデータ
+        ast_b: docBのASTデータ
+        chunks_a_by_id: docAのchunk_id→Chunkマップ
+        chunks_b_by_id: docBのchunk_id→Chunkマップ
+        chunk_ids_a: 比較するdocAのchunk_idリスト
+        chunk_ids_b: 比較するdocBのchunk_idリスト
+        llm_model: LLMモデル名（オプション）
+        max_input_chars_per_text: LLMに渡すテキストの最大文字数
+        max_chars_per_content: 各contentの最大文字数（超過分は切り詰め、参照メッセージ付与）
     """
     a_ids = list(chunk_ids_a)
     b_ids = list(chunk_ids_b)
@@ -1412,9 +1667,9 @@ def compare_chunks(
     if not chunks_a or not chunks_b:
         return {"ok": False, "error": "有効なチャンクがありません。"}
 
-    # 複数チャンクを階層構造を保持しながらマージ
-    text_a = build_merged_compare_text(ast=ast_a, chunks=chunks_a)
-    text_b = build_merged_compare_text(ast=ast_b, chunks=chunks_b)
+    # 複数チャンクを階層構造を保持しながらマージ（LLM用：content_summary含む）
+    text_a = build_merged_compare_text(ast=ast_a, chunks=chunks_a, max_chars_per_content=max_chars_per_content)
+    text_b = build_merged_compare_text(ast=ast_b, chunks=chunks_b, max_chars_per_content=max_chars_per_content)
 
     # print("--------------------------------")
     # print("### debug: merged text_a ###")
