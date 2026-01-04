@@ -48,6 +48,9 @@ Thumbs.db
 *.pdf
 *.txt
 *.json
-*.md
 
 data/
+log/
+backup/
+.venv/
+templates/

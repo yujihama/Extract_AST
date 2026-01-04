@@ -1,25 +1,17 @@
-# Document Compare Agent
+# compare_agent（PoC）
 
-文書（PDF/テキスト）を構造化（AST: Abstract Syntax Tree）し、AIエージェントを用いて2文書間の差分を分析するPoCプロジェクトです。
+このリポジトリは、**ドキュメント比較アプリ**を将来的に実装するための **PoC（検証用コード）**です。  
+現時点ではアプリ全体のフローをすべて実装しているわけではなく、**blueprint→AST→比較**のコア部分を中心に試作しています。
 
-## 概要
+---
 
-このツールは、有価証券報告書や社内規定書などの複雑な構造を持つ文書を：
+## 将来の想定フロー（補足）
 
-1. **Blueprint**（階層構造の抽出ルール）に基づいてAST化
-2. **Embedding + キーワード検索**で類似チャンクをマッチング
-3. **LLM/diff**で差分を抽出・レポート化
+将来的に目指すアプリフロー（※PoCでは未実装/一部のみ含みます）:
 
-することで、人手による文書比較の効率化を目指します。
-
-## 将来的な実装フロー（目標）
-
-このPoCは以下のフローを実現するアプリケーションの前段階検証コードです：
-
-```
 1. アップロードドキュメント
 2. 既存のBlueprintテンプレートとプレビュー表示
-3. 最適なテンプレート選択（今は手動、今後AI）なければ新規生成
+3. 最適なテンプレート選択（今は手動、今後AI）／なければ新規生成
 4. Blueprintをもとに自動AST化と枝ごとのサマリ生成
 5. チャンク戦略の選択（今は手動、今後AI）
 6. 比較観点の挿入（人が入力、AIが提案？、プリセット？）
@@ -27,356 +19,210 @@
 8. 比較実施、テンプレート更新
 9. ユーザーに表示
 10. ユーザーから追加指示や質問あれば対応
-```
-
-> **Note**: 現時点のPoCでは上記フローの一部（特に4〜8）を検証しています。
 
 ---
 
-## 環境構築
+## このPoCで主にできること
 
-### 必要なパッケージ
+- **Blueprint生成（LLM）**: テキストから見出しパターンを検出し、`*_blueprint.json` を生成
+- **Blueprint検証/プレビュー**: 見出し階層のツリー表示、ギャップ/レベル飛び等の検証
+- **Blueprint → AST化（非LLM）**: 正規表現で見出しを抽出し、`*.ast.json`（階層+content）を構築
+- **ASTの枝ごとの要約（LLM）**: 非leafノードに `content_summary` を付与
+- **チャンク化＆マッチング**: Embedding + キーワードのハイブリッドで対応候補を作る
+- **差分抽出**:
+  - 高類似度: unified diff（LLM不要）
+  - 低類似度: LLMで差分を構造化JSONとして抽出
+- **テンプレートに沿った比較レポート生成**: 指定テンプレートを“段階的に編集”して埋める
+- **デバッグログ（JSONL）とレポート化**: 実行ログ解析→`data/runs/`に成果物を保存
 
-```bash
-pip install langchain langchain-core langchain-openai langgraph pydantic python-dotenv pypdf pymupdf deepagents
+---
+
+## 主要ファイル/ディレクトリ
+
+- `main.py`: PoCの一連フロー（セル形式 `# %%`）の実行スクリプト
+- `src/`
+  - `prompt.py`: blueprint生成/比較用のプロンプト
+  - `schema.py`: blueprint/比較結果のスキーマ（Pydantic）
+  - `blueprint_ast_builder.py`: blueprint + txt から AST JSON を構築
+  - `ast_llm_summarizer.py`: ASTの `content_summary` をLLMで埋める
+  - `ast_compare.py`: チャンク化、Embedding、類似度マッチング、差分抽出（diff/LLM）
+  - `tools.py`: LangChainツール群（`compare_setup` など）
+  - `blueprint_tools.py`: blueprintのプレビュー/検証ツール（仮想FS対応）
+  - `utils.py`: LLM初期化、PDF→txt変換、デバッグログ用ミドルウェア等
+  - `agent_log_analyzer.py`: JSONLログ解析→`data/runs/`へ保存
+- `templates/`: 比較結果テンプレート（例: `diff_analysis_template_fujifilm_yuho.md`）
+- `data/`: 実行成果物（例: `data/runs/`） ※入力/中間生成物用フォルダも想定
+- `log/`: JSONLログ（`agent_debug_*.jsonl`）
+
+> 注: `.gitignore` により `data/`, `log/`, `backup/` などは基本的にコミット対象外です。
+
+---
+
+## セットアップ（PowerShell想定）
+
+### 1) 仮想環境
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -U pip
 ```
 
-### 環境変数 (`.env`)
+### 2) 依存関係（例）
 
-```env
-# OpenAI
-OPENAI_API_KEY=sk-xxx
-OPENAI_MODEL=gpt-5.2
+`test.ipynb` 内の想定に合わせた例です（環境により追加で必要になる場合があります）。
+
+```powershell
+pip install "langchain>=1.0,<2" "langchain-core>=1.0,<2" "langchain-openai" "langgraph" "pydantic>=2,<3" "python-dotenv" "openai" "pymupdf>=1.23.0"
+pip install deepagents
+```
+
+### 3) 環境変数（`.env`）
+
+OpenAI利用例:
+
+```dotenv
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your_key
+OPENAI_MODEL=gpt-5-mini
 OPENAI_EMBEDDING_MODEL=text-embedding-3-large
+TEMPERATURE=0
+```
 
-# Azure OpenAI（Azure使用時）
+Azure OpenAI利用例:
+
+```dotenv
 LLM_PROVIDER=azure
-AZURE_OPENAI_ENDPOINT=https://xxx.openai.azure.com/
-AZURE_OPENAI_API_KEY=xxx
-AZURE_OPENAI_API_VERSION=2024-02-15-preview
-AZURE_OPENAI_DEPLOYMENT_NAME=gpt-5.2
+AZURE_OPENAI_ENDPOINT=https://xxxxx.openai.azure.com/
+AZURE_OPENAI_API_KEY=your_key
+AZURE_OPENAI_API_VERSION=2024-xx-xx
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-5-mini
 AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME=text-embedding-3-large
+TEMPERATURE=0
 ```
 
 ---
 
-## プロジェクト構成
+## 実行方法（概要）
 
-```
-compare_agent/
-├── test.ipynb                      # メインのPoCノートブック（後述）
-├── ast_compare.py                  # チャンク抽出・類似度検索・差分抽出のコア
-├── ast_llm_summarizer.py           # ASTノードへのLLMサマリ付与
-├── blueprint_ast_builder.py        # Blueprint→ASTへの変換ロジック
-├── blueprint_tools.py              # Blueprint検証用LangChainツール
-├── agent_log_analyzer.py           # エージェントログの分析・可視化
-├── docs/
-│   └── ast_store_tool.md           # ast_storeツールの仕様書
-├── data/runs/                      # 過去の実行結果アーカイブ
-│   └── 【completed】YYYYMMDD_HHMMSS/
-│       ├── agent_debug.jsonl       # エージェント実行ログ
-│       ├── agent_debug_report.txt  # レポート
-│       └── out/                    # 生成ファイル
-└── *.txt / *.pdf / *.ast.json      # サンプルドキュメント
-```
+### `main.py`（推奨: セル順に実行）
+
+`main.py` は `# %%` で区切ったセルを上から順に実行する想定です（Cursor/VS Codeのセル実行）。
+
+- **主な入力**:
+  - `data/input/` に比較対象ドキュメント（`.txt` または `.pdf`）を配置
+  - `main.py` 内の `target_file`, `docA`, `docB`, `template_compare_analysis` を適宜変更
+- **主な出力**:
+  - blueprint: `data/blueprint/*_blueprint.json`
+  - AST: `data/ast/*.ast.json`
+  - embedding cache: `data/embedding/embedding_cache.json`
+  - logs: `log/*.jsonl`
+  - 実行成果物: `data/runs/【completed】YYYYMMDD_HHMMSS/`
 
 ---
 
-## 主要コンポーネント
+## `test.ipynb` の処理順（セルを上から実行したときに何をしているか）
 
-### 1. `blueprint_ast_builder.py`
+`test.ipynb` は PoC の実験ノートで、**「blueprint生成→AST化→比較→テンプレート更新→ログ解析」**をノートブック上で再現しています。
 
-Blueprintファイル（JSON）とテキストファイルから、AST（抽象構文木）を構築します。
+※現状の配置は `backup/test.ipynb` です。
 
-- **Blueprint**: 正規表現ベースで見出しパターンを階層ごとに定義
-- **AST出力**: セクションごとの `section_title`, `content`, `content_summary`（後からLLMで付与）を格納
+### 0. Notebook概要
 
-```python
-from blueprint_ast_builder import build_ast_from_blueprint
+- LangChain（tool-calling / LangGraph系）+ Deep Agent を使い、テキストから構造（AST）を作り、2文書を比較する流れを検証します。
 
-ast = build_ast_from_blueprint(
-    blueprint_path="xxx_blueprint.json",
-    text_path="xxx.txt",
-    out_ast_path="xxx.txt.ast.json"
-)
-```
+### 1. `[共通] Agent Log Analyzer`（実行後に使う）
 
-### 2. `ast_llm_summarizer.py`
+- **目的**: `agent_debug.jsonl` のデバッグログを解析し、`data/runs/【ステータス】日時/` に
+  - JSONLログのバックアップ
+  - テキストレポート
+  - 仮想ファイルシステム上で生成されたファイル（例: 埋めたテンプレート等）  
+  を保存します。
+- **注意**: このセルは `result2`（比較エージェントの実行結果）が作られた後に実行します。
 
-ASTの非リーフノードに対して、LLMで `content_summary` を生成・付与します。
+### 2. `準備`
 
-```python
-from ast_llm_summarizer import summarize_ast_inplace
+- 必要パッケージのインストール（コメントで提示）
+- `.env` 読み込み（`dotenv.load_dotenv()`）
+- `build_llm()` を定義し、OpenAI / Azure OpenAI を環境変数で切り替え
+- LangSmith設定（トレーシング無効化など）
+- `DebugLoggingMiddleware` を定義し、**ツール呼び出し/サブエージェント実行**をJSONLに記録できるようにします
 
-summarize_ast_inplace(ast_path="xxx.txt.ast.json")
-```
+### 3. `1. カスタムツールの設定`
 
-### 3. `ast_compare.py`
+LLMが“自分で読む/探す”ためのツールを定義します（例）:
 
-2つのASTを比較するためのコア機能：
+- **`read_text_segment`**: 大きいテキストを部分読み
+- **`extract_regex_matches`**: 正規表現で候補を抽出（行番号・行テキスト付き）
+- **`read_text_file` / `get_file_length`**: 検証用の補助
 
-- **チャンク抽出**: `extract_chunks()` でASTをチャンク（比較単位）に分割
-  - `strategy="all_leaf"`: 全リーフノードをチャンク化
-  - `strategy="level"`: 指定レベルでチャンク化（文字数による分割あり）
-- **Hybrid検索**: `HybridChunkIndex` でEmbedding + キーワードの複合スコア
-- **差分抽出**: `compare_chunks()` でLLMによる差分JSON生成
+→ blueprint生成の「見出しパターン探索/誤検知排除」を支えます。
 
-### 4. `agent_log_analyzer.py`
+### 4. `2. 構造化出力（スキーマ）の定義`
 
-エージェント実行ログ（JSONL）を分析し、`data/runs/` にアーカイブ保存します。
+- blueprint用: `DocumentStructureBlueprint` / `HierarchyRule` / `ValidationRules` など
+- AST用: `DocumentAST` / `DocumentNode`
 
-```python
-from agent_log_analyzer import analyze_agent_log
+→ エージェント出力を機械処理しやすい形に固定します。
 
-report = analyze_agent_log(
-    log_file="agent_debug.jsonl",
-    agent_result=result2  # エージェント実行結果
-)
-```
+### 5. `3. エージェントの設定（構造解析=blueprint生成）`
 
----
+- `create_deep_agent(...)` で **blueprint生成エージェント**を作成
+- システムプロンプトで以下を要求:
+  - 見出しパターンを探索し、階層レベルと सहजな親子関係を設計
+  - `validation_rules` で誤検知を落とす設計
+  - 必要ならサブエージェント（validate_blueprint_agent）で検証・修正
 
-## `test.ipynb` の処理フロー
+### 6. `4. Execution`（blueprint生成の実行）
 
-メインのPoCノートブックは以下のセクションで構成されています：
+- `target_file` を読み込み、仮想ファイルシステム（`files`）に投入
+- 「見出しパターンを検出してblueprint生成」という依頼でエージェントを実行
+- 実行後、メッセージ/ツール呼び出しログを整形して表示
 
-### セル構成と処理内容
+### 7. `5. AST変換`
 
-| セクション | セル | 処理内容 |
-|------------|------|----------|
-| **準備** | 3-7 | 環境設定、LLM初期化、ミドルウェア定義 |
-| **1. カスタムツール** | 9-12 | テキスト読み取り、正規表現抽出、Pydanticスキーマ定義 |
-| **2. スキーマ定義** | 11-12 | `DocumentAST`, `HierarchyRule`, `ValidationRules` 等 |
-| **3. エージェント設定** | 13-15 | 構造解析エージェントの構築 |
-| **4. 実行（Blueprint生成）** | 16-21 | テキストからBlueprint自動生成 |
-| **5. AST変換** | 22-25 | Blueprint + テキスト → AST + サマリ付与 |
-| **6. 比較** | 26-40 | 2文書間の差分分析 |
+- `blueprint_ast_builder.build_ast_from_blueprint(...)` で
+  - blueprint（正規表現）に沿って見出しを抽出
+  - **階層 + 本文（content）**を持つ `*.ast.json` を出力
+- `ast_llm_summarizer.summarize_ast_inplace(...)` で
+  - **非leafノード**に `content_summary` を付与（leafは空のまま）
 
-### 詳細フロー
+### 8. `6. 比較`
 
-#### Phase 1: 準備（セル3-8）
+#### 8.1 `比較用ツール`
 
-```python
-# 環境変数の読み込み
-dotenv.load_dotenv()
+比較用に、以下のようなツール/ロジックを準備します（概念）:
 
-# LLMクライアント構築（OpenAI / Azure対応）
-def build_llm(**kwargs):
-    provider = os.getenv("LLM_PROVIDER", "openai").lower()
-    ...
+- **`compare_setup`**: AST読み込み→チャンク化→Embedding Index作成→状態保持
+- **`compare_all_chunk_similarity_matching`**: 全チャンクの対応候補（top_k）を作る
+- **`compare_specified_chunks_diff`**: 高類似度向けのdiff
+- **`compare_specified_chunks_llm`**: 低類似度向けのLLM差分抽出
 
-# デバッグログ用ミドルウェア（エージェント動作の記録）
-class DebugLoggingMiddleware(AgentMiddleware):
-    ...
-```
+#### 8.2 `実行`（比較の実行）
 
-#### Phase 2: カスタムツール定義（セル10-12）
+1) **事前分析エージェント（Pre-Analysis）**
 
-LangChainのToolとして以下を定義：
+- 2つのASTの関係タイプ（Fix/Revision/…）を推定し、
+- 重点観点（例:「変更箇所と影響」）に沿った **具体的手順（plan）** と **テンプレート** を提案します。
 
-| ツール | 機能 |
-|--------|------|
-| `read_text_file` | テキストファイルの部分読み込み |
-| `read_text_segment` | 指定位置から指定長のテキスト読み込み |
-| `extract_regex_matches` | 正規表現でマッチ抽出（行番号付き） |
-| `get_file_length` | ファイル総文字数取得 |
-| `preview_blueprint_headings` | Blueprint適用プレビュー |
-| `validate_blueprint` | Blueprint検証（gaps/titles/irregular） |
+2) **比較エージェント（テンプレートを埋める）**
 
-#### Phase 3: 構造解析エージェント（セル15）
+- AST2本、Embeddingキャッシュ、テンプレート（`diff_analysis_template_fujifilm_yuho.md` / リポジトリでは `templates/` 配下）を仮想FSへ投入
+- 親エージェント＋複数サブエージェントで、テンプレートを**段階的に編集**しながら比較結果を生成します
 
-```python
-agent = create_deep_agent(
-    model=llm_complex,
-    tools=tools,
-    system_prompt=system_prompt,  # 構造発見→検証→マッピングの指示
-    response_format=DocumentStructureBlueprint,  # 構造化出力
-    subagents=[
-        {
-            "name": "validate_blueprint_agent",
-            "description": "blueprintを検証・修正",
-            ...
-        },
-    ],
-)
-```
+3) **追加指示（出力ファイル名の指定）**
 
-**エージェントの処理フロー**:
-1. **調査フェーズ**: テキストからパターン発見（記号、インデント、特徴）
-2. **検証フェーズ**: 正規表現の誤検知確認、`validation_rules` 定義
-3. **構造化フェーズ**: 階層レベル割り当て、親子関係定義
-4. **監査フェーズ**: Blueprint検証サブエージェントで最終確認
-5. **出力**: `*_blueprint.json` ファイル生成
+- 実行後に「`filled_template.md` として出力して」と追い指示し、最終成果物ファイルを確定させます。
 
-#### Phase 4: Blueprint実行（セル17-21）
+### 9. ログ解析（`analyze_agent_log`）
 
-```python
-# PDFの場合はテキスト抽出
-target_file = "富士フィルム_有価証券報告書.txt"
-
-# エージェント実行
-inputs = {
-    "messages": [{"role": "user", "content": query}],
-    "files": initial_files,  # 仮想ファイルシステム
-}
-result = agent.invoke(inputs)
-
-# 結果をJSONファイルに保存
-with open(output_file, "w", encoding="utf-8") as f:
-    json.dump(status_dict, f, ensure_ascii=False, indent=2)
-```
-
-#### Phase 5: AST変換（セル23-25）
-
-```python
-# Blueprint + テキスト → AST
-ast = bab.build_ast_from_blueprint(
-    blueprint_path=output_file,
-    text_path=target_file,
-    out_ast_path=ast_path,
-    max_content_chars_per_node=2000,
-)
-
-# LLMでサマリ付与（非リーフノードのみ）
-als.summarize_ast_inplace(ast_path=ast_path)
-```
-
-#### Phase 6: 比較エージェント（セル28-40）
-
-##### 6.1 比較ツール定義（セル28-29）
-
-| ツール | 機能 |
-|--------|------|
-| `read_ast` | ASTの効率的な読み込み（summary/outline/chunk/search） |
-| `compare_setup` | 比較初期化（チャンク化 + Embedding Index作成） |
-| `compare_all_chunk_similarity_matching` | 全チャンク類似度マッチング |
-| `compare_get_grouping` | マッチング結果の取得（summary/detail） |
-| `compare_search_by_keyphrase` | キーフレーズ検索 |
-| `compare_get_chunk` | チャンク本文取得 |
-| `compare_specified_chunks_diff` | unified diff比較（類似度0.7以上向け） |
-| `compare_specified_chunks_llm` | LLM差分抽出（類似度0.7未満向け） |
-
-##### 6.2 比較エージェントの戦略（セル31）
-
-文書関係性に応じた調査戦略：
-
-| 関係性 | 戦略 | 説明 |
-|--------|------|------|
-| Fix（微修正） | Strict DirectDiff | 類似度上位1位同士を直接比較 |
-| Revision（改訂） | Smart Mapping | 変更履歴＋類似度で追跡比較 |
-| Derivative（同型） | Loose Mapping | トピック類似度でマッピング |
-| Heterogeneous（異種） | Criteria Extraction | 基準リスト生成→検証 |
-| Subset（包含） | Scope Filtering | スコープ限定してMapping |
-
-##### 6.3 マルチエージェント構成（セル37）
-
-```python
-agent2 = create_deep_agent(
-    model=llm_complex,
-    system_prompt=system_prompt_deep,  # 監督エージェント
-    subagents=[
-        {"name": "compare_general_purpose_agent", ...},  # 汎用準備
-        {"name": "compare_agent", ...},                  # 差分抽出
-        {"name": "deep_research_agent", ...},            # 深掘り分析
-        {"name": "validate_agent", ...},                 # 検証
-        {"name": "report_agent", ...},                   # レポート生成
-    ],
-)
-```
-
-##### 6.4 実行例（セル38-39）
-
-```python
-# 比較実行
-result2 = agent2.invoke(inputs)
-
-# 追加指示
-new_message = "更新したテンプレートはfilled_template.mdで出力してください"
-for chunk in agent2.stream(...):
-    # ストリーミング出力
-    ...
-```
+- `agent_debug.jsonl` を解析し、`data/runs/` にログ・レポート・仮想FS成果物を保存します。
 
 ---
 
-## 出力ファイル
+## 注意事項（PoC）
 
-### Blueprint JSON
-
-```json
-{
-  "hierarchy_structure": [
-    {
-      "level": 1,
-      "name": "Major_Section",
-      "regex": "^第[一二三四五六七八九十]+.*$",
-      "parent_level": null,
-      "validation_rules": {
-        "requires_prev_empty_line": true,
-        "max_length": 50
-      }
-    },
-    ...
-  ],
-  "global_exclusion_rules": {
-    "page_number": {
-      "regex": "^\\d+/\\d+$",
-      "description": "ページ番号を除外"
-    }
-  }
-}
-```
-
-### AST JSON
-
-```json
-{
-  "file_name": "xxx.txt",
-  "__meta__": {"rev": 0, "updated_at": "...", "generated_from": "xxx_blueprint.json"},
-  "root": {
-    "section_title": "xxx",
-    "content": "...",
-    "content_summary": "...",
-    "children": [
-      {
-        "section_title": "第一部 ...",
-        "content": "...",
-        "content_summary": "...",
-        "children": [...]
-      }
-    ]
-  }
-}
-```
-
----
-
-## 実行ログの確認
-
-```python
-from agent_log_analyzer import analyze_agent_log
-
-# ログ分析 + アーカイブ保存
-report = analyze_agent_log(
-    log_file="agent_debug.jsonl",
-    agent_result=result2
-)
-print(report)
-```
-
-出力先: `data/runs/【completed】YYYYMMDD_HHMMSS/`
-
----
-
-## 注意事項
-
-- **コンテキスト長**: 大きな文書は分割読み込みを推奨（`read_ast(mode="summary")` で事前確認）
-- **Embeddingコスト**: `.embedding_cache.json` でキャッシュ（再実行時のコスト削減）
-- **LLM呼び出し**: `compare_specified_chunks_llm` は1回あたりコストが高いため、類似度が高いペアは `compare_specified_chunks_diff` を優先
-
----
-
-## ライセンス
-
-このプロジェクトはPoCであり、商用利用を想定していません。
+- **UI/アップロード/プレビュー画面は未実装**です（現状はローカルファイル＋テンプレート更新の検証が中心）
+- LLM/Embeddingを使用するため **実行コスト・実行時間**がかかります
+- 長文はコンテキスト制約があるため、ツールで段階的に読む設計になっています
 
