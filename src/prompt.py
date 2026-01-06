@@ -8,10 +8,12 @@ blueprint_ast_builder_prompt = """
 
 ## 1. 調査フェーズ (Sampling & Hypothesizing)
 - **パターン発見**: 以下の視点でテキストの規則性を探してください。
+    - **目次分析**: <!-- AGENDA --> が付与されたページは目次と思われる記載があるので検索してページ数を特定してください。目次にはパターンのヒントが含まれることが多いです。**必ず**analyze_visual_contentsツールで分析を行ってください。
     - **記号パターン**: `第1章`, `1.`, `(1)`, `[A]`, `■` などの定型パターン。
     - **インデント/空白**: 行頭の空白数や、空行の有無。
     - **テキストの特徴**: 特定の接尾辞（「〜について」等）や、文字種の統一（全て全角等）。
-
+    - **画像分析**: <!-- VISUAL_CONTENT --> が付与されたページは画像やグラフ等の視覚的な要素があります。これらのページの構造を正確に把握するためにはanalyze_visual_contentsツールで分析することが推奨されます。
+    
 ## 2. 検証フェーズ (Validation & Noise Filtering)
 - **仮説検証**: 作成した正規表現が、本文中の「単なる箇条書き」や「文中参照」を誤検知しないか、実際にテキスト検索を行って確認してください。
 - **文脈条件の定義**: 正規表現だけでは区別できない場合、以下のような「周辺条件（Context）」を定義してください。
@@ -30,6 +32,7 @@ blueprint_ast_builder_prompt = """
 ## 3. 構造化フェーズ (Hierarchy Mapping)
 - 抽出したパターンに「階層レベル（Level 1, 2, 3...）」を割り当ててください。
 - 親子関係のルール（例：「(1) の親は必ず 1. である」）を明確にしてください。
+- 既に目次等から全階層名が判明している場合は、ピンポイントでその階層名を取得するパターンを設定してください。
 - <ファイル名>_blueprint.json という名前で成果物を出力してください。
 
 ## 4. 監査と修正フェーズ (Audit & Refine)
@@ -61,8 +64,9 @@ blueprintファイルが存在することを確認したら、以下のツー�
 
 | 検証観点 | 使用ツール/モード | 説明 |
 |----------|-------------------|------|
+| **見出し誤検出(false_detection)** | `validate_blueprint` mode="titles" | 正規表現で検出されているが見出しでないもの（文章の一部分など）がないか確認 |
 | **シーケンス不整合(sequence)** | `validate_blueprint` mode="irregular" | 見出しレベルの飛び（例: L2→L4）を検出。該当区間のテキストを読み込み、意図しない飛びか判定 |
-| **見出し誤検出/漏れ(false)** | `validate_blueprint` mode="titles" + `preview_blueprint_headings` | 正規表現で検出されているが見出しでないもの、または見出しなのに検出されていないものがないか確認 |
+| **見出し漏れ(false_missing)** | `validate_blueprint` mode="titles" + `preview_blueprint_headings` | 正規表現で検出されていない見出しがないか確認 |
 | **空白検証(blank)** | `validate_blueprint` mode="gaps" | どの見出しにもヒットしない区間を検出。該当区間のテキストを読み込み、見出しの取りこぼしがないか確認 |
 
 ## Step 3: 再検証
@@ -80,10 +84,10 @@ NGがある場合は、原因を調査して、blueprintをedit_fileツールで
     "summary": "blueprintの検証が完了しました。<検証や修正箇所の概要を記載してください。>",
     "blueprint_path": "XXX_blueprint.json",
     "result": {
-        "false": <初期評価時の"OK","NG","判断不可">,
-        "blank": <初期評価時の"OK","NG","判断不可">,
-        "collision": <初期評価時の"OK","NG","判断不可">,
+        "false_detection": <初期評価時の"OK","NG","判断不可">,
         "sequence": <初期評価時の"OK","NG","判断不可">
+        "false_missing": <初期評価時の"OK","NG","判断不可">,
+        "blank": <初期評価時の"OK","NG","判断不可">,
     },
     "reason": "<検証結果と修正内容について記載してください。>"
 }
@@ -191,8 +195,9 @@ compare_sub_agent_tool = f"""
 - 構造確認: read_ast(file_path, mode="outline", max_depth=3) → セクション構造をツリー形式で取得
 - タイトル検索: read_ast(file_path, mode="search", title_query="キーワード") → セクション検索※本文の検索をする場合はcompare_search_by_keyphraseを使用すること
 - 特定セクション取得: read_ast(file_path, mode="chunk", node_path=[0,1,2]) → セクション本文取得※特定のチャンクの本文を取得する場合はcompare_get_chunkを使用すること
+- 画像分析: analyze_image(document_name, page_numbers, prompt) → ドキュメントの特定ページを画像として取得して分析して、プロンプトに従って結果を返す。※以下のタグが付与されたページはこのツールで分析することが推奨されます。<!-- VISUAL_ELEMENT page=X type=XXX index=Y size=WxH -->
 
-【比較ワークフロー】（compare_setup後に使用可能）
+【比較ワークフロー】
 - 統計情報確認: compare_get_grouping(which="initial") → mode="summary"（デフォルト）で統計のみ取得
 - 詳細取得: compare_get_grouping(mode="detail", chunk_ids=["A_0", ...]) または compare_get_grouping(mode="detail", min_similarity=0.7)
 - 特定トピック探索: compare_search_by_keyphrase(phrase, in_doc="A"/"B")

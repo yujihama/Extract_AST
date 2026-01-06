@@ -1,13 +1,64 @@
 from langchain_core.tools import tool
 import os
 import re
-from typing import List, Optional
+from typing import Annotated, List, Optional
 from pydantic import BaseModel, Field
+import fitz  # PyMuPDF
+import base64
+import json
+from langchain_core.messages import HumanMessage
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt.tool_node import InjectedState
+from src.utils import build_llm
+from .blueprint_ast_builder import (
+    extract_headings_from_blueprint,
+    format_heading_tree,
+    validate_blueprint_headings,
+)
+
+
+def _get_file_content_from_state(state: dict | None, file_path: str) -> str | None:
+    """
+    仮想ファイルシステムからファイル内容を取得する。
+    
+    Args:
+        state: エージェントの状態（filesキーを含む場合がある）
+        file_path: ファイルパス（先頭の/はあってもなくても可）
+    
+    Returns:
+        ファイル内容（文字列）、見つからない場合はNone
+    """
+    if not state or "files" not in state:
+        return None
+    
+    files = state["files"]
+    path_clean = file_path.lstrip("/")
+    
+    # 両方のキー形式を試す（/付きと/なし）
+    for key in [f"/{path_clean}", path_clean]:
+        if key in files:
+            file_data = files[key]
+            if isinstance(file_data, dict) and "content" in file_data:
+                content = file_data["content"]
+                if isinstance(content, list):
+                    return "\n".join(content)
+                return str(content)
+    
+    return None
 
 @tool
-def read_text_segment(file_path: str, start: int, length: int, intent: str) -> str:
+def read_text_segment(
+    file_path: str,
+    start: int,
+    length: int,
+    intent: str,
+    state: Annotated[dict, InjectedState] = None,
+) -> str:
     """
     テキストファイルの特定のセグメントを読み取る。
+    
+    仮想ファイルシステムを優先して参照します。仮想FSにファイルがない場合は
+    実際のファイルシステムから読み込みます。
 
     引数:
         file_path: テキストファイルのパス。
@@ -19,8 +70,16 @@ def read_text_segment(file_path: str, start: int, length: int, intent: str) -> s
         'start' から指定された 'length' の部分文字列。
     """
     try:
-        # file_pathが / で始まる場合も許容する（相対・絶対どちらもOK）
         clean_path = file_path.lstrip("/")
+        
+        # 仮想FSから読み込みを試みる
+        content = _get_file_content_from_state(state, clean_path)
+        if content is not None:
+            if start > 0:
+                return content[start:start + length]
+            return content[:length]
+        
+        # 実ファイルから読み込み
         normalized_path = os.path.normpath(clean_path)
         with open(normalized_path, 'r', encoding='utf-8') as f:
             if start > 0:
@@ -42,6 +101,7 @@ def extract_regex_matches(
     dedupe: bool = False,
     save_to: Optional[str] = None,
     include_line_text: bool = True,
+    state: Annotated[dict, InjectedState] = None,
 ) -> str:
     """
     ファイルから指定された正規表現パターンに一致するテキストを抽出する。
@@ -159,47 +219,61 @@ def extract_regex_matches(
         seen = set()
 
         clean_path = file_path.lstrip("/")
-        normalized_path = os.path.normpath(clean_path)
+        
+        # 仮想FSから読み込みを試みる
+        virtual_content = _get_file_content_from_state(state, clean_path)
+        
         try:
-            with open(normalized_path, "r", encoding="utf-8") as f:
-                for line_number, line in enumerate(f, start=1):
-                    line_no_nl = line.rstrip("\n")
-                    for pattern_index, pattern_text, pattern_obj in compiled:
-                        group_count = pattern_obj.groups
-                        for m in pattern_obj.finditer(line_no_nl):
-                            total += 1
-                            if total <= offset_matches:
+            # 行イテレータを取得（仮想FS or 実ファイル）
+            if virtual_content is not None:
+                lines_iter = enumerate(virtual_content.splitlines(), start=1)
+            else:
+                normalized_path = os.path.normpath(clean_path)
+                file_handle = open(normalized_path, "r", encoding="utf-8")
+                lines_iter = enumerate(file_handle, start=1)
+            
+            for line_number, line in lines_iter:
+                line_no_nl = line.rstrip("\n")
+                for pattern_index, pattern_text, pattern_obj in compiled:
+                    group_count = pattern_obj.groups
+                    for m in pattern_obj.finditer(line_no_nl):
+                        total += 1
+                        if total <= offset_matches:
+                            continue
+                        total_after_offset += 1
+
+                        item = _match_to_item(m, group_count)
+
+                        record = {
+                            "pattern_index": pattern_index,
+                            "pattern": pattern_text,
+                            "line_number": line_number,
+                            "match": (list(item) if isinstance(item, tuple) else item),
+                            "full_match": m.group(0),
+                        }
+                        if include_line_text:
+                            record["line"] = line_no_nl
+
+                        if save_f is not None:
+                            save_f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+                        if count_only:
+                            continue
+
+                        if len(sample) >= max_matches:
+                            continue
+
+                        if dedupe:
+                            key = repr(record)
+                            if key in seen:
                                 continue
-                            total_after_offset += 1
+                            seen.add(key)
 
-                            item = _match_to_item(m, group_count)
-
-                            record = {
-                                "pattern_index": pattern_index,
-                                "pattern": pattern_text,
-                                "line_number": line_number,
-                                "match": (list(item) if isinstance(item, tuple) else item),
-                                "full_match": m.group(0),
-                            }
-                            if include_line_text:
-                                record["line"] = line_no_nl
-
-                            if save_f is not None:
-                                save_f.write(json.dumps(record, ensure_ascii=False) + "\n")
-
-                            if count_only:
-                                continue
-
-                            if len(sample) >= max_matches:
-                                continue
-
-                            if dedupe:
-                                key = repr(record)
-                                if key in seen:
-                                    continue
-                                seen.add(key)
-
-                            sample.append(record)
+                        sample.append(record)
+            
+            # 実ファイルを開いた場合はクローズ
+            if virtual_content is None:
+                file_handle.close()
         finally:
             if save_f is not None:
                 save_f.close()
@@ -248,9 +322,16 @@ def extract_regex_matches(
         return f"Error extracting matches: {str(e)}"
 
 @tool
-def get_file_length(file_path: str, intent: str) -> str:
+def get_file_length(
+    file_path: str,
+    intent: str,
+    state: Annotated[dict, InjectedState] = None,
+) -> str:
     """
     ファイルの総文字数を返す。
+    
+    仮想ファイルシステムを優先して参照します。仮想FSにファイルがない場合は
+    実際のファイルシステムから読み込みます。
     
     引数:
         file_path: テキストファイルのパス。
@@ -261,24 +342,32 @@ def get_file_length(file_path: str, intent: str) -> str:
     """
     try:
         clean_path = file_path.lstrip("/")
+        
+        # 仮想FSから読み込みを試みる
+        content = _get_file_content_from_state(state, clean_path)
+        if content is not None:
+            return str(len(content))
+        
+        # 実ファイルから読み込み
         normalized_path = os.path.normpath(clean_path)
-
         with open(normalized_path, 'r', encoding='utf-8') as f:
             return str(len(f.read()))
     except Exception as e:
         return f"Error getting file length: {str(e)}"
 
-class ReadTextFileArgs(BaseModel):
-    """read_text_file ツールの引数。"""
-    file_path: str = Field(..., description="テキストファイルのパス。")
-    start: Optional[int] = Field(None, description="開始文字インデックス（0ベース）。このパラメータを省略すると、先頭から読み取る。")
-    length: Optional[int] = Field(None, description="読み取る文字数。このパラメータを省略すると、start 位置から 100 文字読み取る（start も省略されている場合は先頭から 100 文字）。")
-    intent: str = Field(..., description="ツール呼び出しの意図。")
-
-@tool(args_schema=ReadTextFileArgs)
-def read_text_file(file_path: str, start: Optional[int] = None, length: Optional[int] = None, intent: str = "") -> str:
+@tool
+def read_text_file(
+    file_path: str,
+    start: Optional[int] = None,
+    length: Optional[int] = None,
+    intent: str = "",
+    state: Annotated[dict, InjectedState] = None,
+) -> str:
     """
     UTF-8 としてテキストファイルを読み取る。ファイルの特定のセグメントを読み取ることができる。
+    
+    仮想ファイルシステムを優先して参照します。仮想FSにファイルがない場合は
+    実際のファイルシステムから読み込みます。
     
     デフォルト動作: start と length の両方を省略した場合、最初の 100 文字を読み取る。
     これにより、大きなファイルを読み取る際にコンテキストウィンドウの制限を超えることを防ぐ。
@@ -298,10 +387,18 @@ def read_text_file(file_path: str, start: Optional[int] = None, length: Optional
         ファイルコンテンツのセグメント（デフォルト: start と length の両方を省略した場合は最初の 100 文字）。
     """
     try:
+        clean_path = file_path.lstrip("/")
+        
+        # 仮想FSから読み込みを試みる
+        content = _get_file_content_from_state(state, clean_path)
+        if content is not None:
+            start_pos = start if start is not None and start > 0 else 0
+            read_length = length if length is not None else 100
+            return content[start_pos:start_pos + read_length]
+        
+        # 実ファイルから読み込み
         # 注意: "start" は文字インデックスであり、バイトオフセットではない。
         # テキストモードでは、seek(start) を使用すると UTF-8 のマルチバイトシーケンスの途中に着地する可能性がある。
-
-        clean_path = file_path.lstrip("/")
         normalized_path = os.path.normpath(clean_path)
 
         with open(normalized_path, 'r', encoding='utf-8') as f:
@@ -1289,3 +1386,254 @@ def compare_specified_chunks_diff(
         ensure_ascii=False,
         indent=2,
     )
+
+def _get_pdf_page_as_image_impl(pdf_name: str, page_numbers: list[int], dpi: int = 150) -> List[dict]:
+    """PDFの指定ページを画像として取得する"""
+        
+    if not os.path.exists(os.path.join("data", "input", pdf_name)):
+        return f"エラー: ファイルが見つかりません: {pdf_name}"
+    
+    doc = fitz.open(os.path.join("data", "input", pdf_name))
+    result = []
+    for page_number in page_numbers:
+        if page_number < 1 or page_number > len(doc):
+            doc.close()
+            return f"エラー: ページ {page_number} は存在しません（総ページ数: {len(doc)}）"
+        
+        page = doc[page_number - 1]
+        
+        # ページを画像に変換
+        mat = fitz.Matrix(dpi / 72, dpi / 72)
+        pix = page.get_pixmap(matrix=mat)
+        
+        # PNG形式でbase64エンコード
+        img_bytes = pix.tobytes("png")
+        b64_data = base64.b64encode(img_bytes).decode("utf-8")
+
+        result.append({
+            "page_number": page_number,
+            "base64_data": b64_data,    
+        })
+    
+    doc.close()
+    return result
+
+@tool
+def analyze_visual_contents(document_name: str, page_numbers: list[int], prompt: str):
+    """
+    ドキュメントの特定ページを画像として取得して分析して、プロンプトに従って結果を返す。
+    以下のタグが付与されたページはこのツールで分析することが推奨されます。
+    <!-- VISUAL_ELEMENT page=X type=XXX index=Y size=WxH -->
+
+    引数:
+        prompt: 分析するためのプロンプト
+        document_name: ドキュメントファイル名（.txt/.ast.json/.pdf）
+        page_numbers: ページ番号（1ベース）のリスト
+    
+    戻り値:
+        str: 分析結果
+    """
+    llm = build_llm()
+    
+    b64_data_list = []
+    if document_name and page_numbers:
+        if document_name.endswith(".ast.json"):
+            document_name = document_name.replace(".ast.json", ".pdf")
+        elif document_name.endswith(".txt"):
+            document_name = document_name.replace(".txt", ".pdf")
+        # PDFの特定ページを画像として取得（内部実装を直接呼び出す）
+        result = _get_pdf_page_as_image_impl(document_name, page_numbers)
+        b64_data_list = [{"type": "image_url", "image_url": {"url": f"data:image/png;base64,{item['base64_data']}"}} for item in result]
+    else:
+        return [{"type": "text", "text": "エラー: 画像ファイルまたはPDFファイルのパスが指定されていません。"}]
+    
+    message = HumanMessage(
+        content=[
+            {"type": "text", "text": prompt},
+            *b64_data_list,
+        ]
+    )
+    response = llm.invoke([message])
+    return response.content
+
+
+# --- Blueprint検証ツール（仮想ファイルシステム対応） ---
+
+@tool
+def preview_blueprint_headings(
+    blueprint_path: str,
+    text_path: str,
+    intent: str = "",
+    state: Annotated[dict, InjectedState] = None,
+) -> str:
+    """
+    blueprint と text ファイルから見出しを抽出し、階層構造をツリー形式でプレビューする。
+    AST 構築前に「どの見出しがどのレベルで抽出されるか」を確認できる。
+    全ての見出しを抽出して返却する。
+    
+    仮想ファイルシステムを優先して参照します。仮想FSにファイルがない場合は
+    実際のファイルシステムから読み込みます。
+
+    引数:
+        blueprint_path: blueprint JSON ファイルのパス（例: "文書_blueprint.json"）。
+        text_path: テキストファイルのパス（例: "文書.txt"）。
+        intent: ツール呼び出しの意図。
+
+    戻り値:
+        JSON 形式の結果:
+        - ok: 成功/失敗
+        - tree: 階層構造を示すインデント付きテキスト（全件）
+    """
+    try:
+        bp_clean = blueprint_path.lstrip("/")
+        txt_clean = text_path.lstrip("/")
+        
+        # 仮想FSから読み込みを試みる
+        bp_content = _get_file_content_from_state(state, bp_clean)
+        txt_content = _get_file_content_from_state(state, txt_clean)
+        
+        # content がある場合は優先、なければ実ファイルから
+        if bp_content is not None and txt_content is not None:
+            headings, total_lines = extract_headings_from_blueprint(
+                blueprint_content=bp_content,
+                text_content=txt_content,
+            )
+            bp_display = f"{bp_clean} (virtual)"
+            txt_display = f"{txt_clean} (virtual)"
+        else:
+            bp_normalized = os.path.normpath(bp_clean)
+            txt_normalized = os.path.normpath(txt_clean)
+            headings, total_lines = extract_headings_from_blueprint(
+                blueprint_path=bp_normalized,
+                text_path=txt_normalized,
+            )
+            bp_display = bp_normalized
+            txt_display = txt_normalized
+        
+        # 全件を表示（max_items=Noneで制限なし）
+        tree = format_heading_tree(headings, max_items=None)
+        
+        return json.dumps({
+            "ok": True,
+            "tree": tree,
+        }, ensure_ascii=False, indent=2)
+    except Exception as e:
+        return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False)
+
+
+@tool
+def validate_blueprint(
+    blueprint_path: str,
+    text_path: str,
+    mode: str = "gaps",
+    gap_threshold: int = 100,
+    max_level: int = 3,
+    intent: str = "",
+    state: Annotated[dict, InjectedState] = None,
+) -> str:
+    """
+    blueprint と text ファイルから見出しを抽出し、指定モードに応じた検証結果を返す。
+
+    モード:
+        - "gaps": 見出しがない大きな区間（gap_threshold 行以上）を検出
+        - "titles": L1/L2/L3...ごとのセクションタイトル一覧を返却（max_levelで制限可能）
+        - "irregular": 見出しレベルの連続性チェック（例: L2→L4のような飛びを検出）
+    
+    仮想ファイルシステムを優先して参照します。仮想FSにファイルがない場合は
+    実際のファイルシステムから読み込みます。
+
+    引数:
+        blueprint_path: blueprint JSON ファイルのパス。
+        text_path: テキストファイルのパス。
+        mode: 検証モード（"gaps", "titles", "irregular"）。デフォルトは "gaps"。
+        gap_threshold: 見出しがない区間を報告する閾値（行数、デフォルト: 100）。modeが"gaps"の時のみ使用。
+        max_level: (mode="titles"時) 取得する最大レベル。デフォルトは 3（L1〜L3を取得）。0で全レベル取得。
+        intent: ツール呼び出しの意図。
+
+    戻り値:
+        JSON 形式の検証結果（モードにより内容が異なる）:
+        - ok: 成功/失敗
+        - mode: 実行したモード
+        - stats: 統計情報（total_headings, total_lines, levels_count）
+        - gaps: (mode="gaps"時) 見出しがない大きな区間のリスト
+        - titles_by_level: (mode="titles"時) レベルごとのセクションタイトル一覧
+        - level_skips: (mode="irregular"時) 見出しレベルの飛び（例: L2→L4）のリスト
+    """
+    valid_modes = {"gaps", "titles", "irregular"}
+    if mode not in valid_modes:
+        return json.dumps({
+            "ok": False,
+            "error": f"無効なモードです: '{mode}'。有効なモード: {', '.join(sorted(valid_modes))}"
+        }, ensure_ascii=False)
+    
+    try:
+        bp_clean = blueprint_path.lstrip("/")
+        txt_clean = text_path.lstrip("/")
+        
+        # 仮想FSから読み込みを試みる
+        bp_content = _get_file_content_from_state(state, bp_clean)
+        txt_content = _get_file_content_from_state(state, txt_clean)
+        
+        # content がある場合は優先、なければ実ファイルから
+        if bp_content is not None and txt_content is not None:
+            headings, total_lines = extract_headings_from_blueprint(
+                blueprint_content=bp_content,
+                text_content=txt_content,
+            )
+            lines = txt_content.splitlines()
+        else:
+            bp_normalized = os.path.normpath(bp_clean)
+            txt_normalized = os.path.normpath(txt_clean)
+            headings, total_lines = extract_headings_from_blueprint(
+                blueprint_path=bp_normalized,
+                text_path=txt_normalized,
+            )
+            # 実ファイルからテキストを読み込み
+            with open(txt_normalized, "r", encoding="utf-8") as f:
+                lines = f.read().splitlines()
+        
+        # 検証を実行
+        validation = validate_blueprint_headings(
+            headings=headings,
+            total_lines=total_lines,
+            gap_threshold=gap_threshold,
+            lines=lines,
+        )
+        
+        # レベル別カウント
+        levels_count = {}
+        for h in headings:
+            lvl = h["level"]
+            levels_count[lvl] = levels_count.get(lvl, 0) + 1
+        
+        # 基本結果を構築
+        result = {
+            "ok": True,
+            "mode": mode,
+            "stats": {
+                "total_headings": len(headings),
+                "total_lines": total_lines,
+                "levels_count": levels_count,
+            },
+        }
+        
+        # モードに応じた結果を追加
+        if mode == "gaps":
+            result["gaps"] = validation.get("gaps", [])
+        elif mode == "titles":
+            titles_by_level = validation.get("titles_by_level", {})
+            # max_level でフィルタリング（0の場合は全レベル取得）
+            if max_level > 0:
+                titles_by_level = {
+                    k: v for k, v in titles_by_level.items()
+                    if int(k[1:]) <= max_level
+                }
+            result["titles_by_level"] = titles_by_level
+            result["max_level"] = max_level if max_level > 0 else "all"
+        elif mode == "irregular":
+            result["level_skips"] = validation.get("level_skips", [])
+        
+        return json.dumps(result, ensure_ascii=False, indent=2)
+    except Exception as e:
+        return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False)
+

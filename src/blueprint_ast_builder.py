@@ -17,7 +17,16 @@ def _utc_now_iso() -> str:
 
 
 def _read_text_lines(path: str) -> List[str]:
-    with open(path, "r", encoding="utf-8") as f:
+    """複数のエンコーディングを試してテキストファイルを読み込む"""
+    encodings = ["utf-8", "utf-8-sig", "cp932", "shift_jis", "euc-jp", "iso-2022-jp"]
+    for enc in encodings:
+        try:
+            with open(path, "r", encoding=enc) as f:
+                return f.read().splitlines()
+        except (UnicodeDecodeError, UnicodeError):
+            continue
+    # 最後の手段: errors='replace' で強制読み込み
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
         return f.read().splitlines()
 
 

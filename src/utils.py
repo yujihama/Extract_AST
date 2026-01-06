@@ -361,22 +361,457 @@ class DebugLoggingMiddleware(AgentMiddleware):
             cls._pending_task_calls.clear()
             cls._file_initialized = False
 
-def convert_pdf_to_txt(target_file):
-    if target_file.endswith(".pdf"):
-        # pymupdf (fitz)を使用して日本語PDFを正しく読み込む
-        import fitz  # PyMuPDF
-        doc = fitz.open(os.path.join("data", "input", target_file))
-        text_content = []
-        for page_num in range(len(doc)):
-            page = doc[page_num]
-            text_content.append(page.get_text())
+def convert_pdf_to_txt(target_file: str, input_dir: str = "data/input") -> dict:
+    """
+    PDFをテキストに変換し、表・視覚的要素マーカーを統合して出力する。
+    
+    機能:
+      - テキストストリーム順（PDF描画順序）でテキストを抽出
+      - 表はMarkdown形式で挿入
+      - 視覚要素（画像・グラフ・図）のマーカーをX+Y座標で適切な位置に挿入
+    
+    マーカー形式:
+      <!-- VISUAL_ELEMENT page=N type=TYPE details=... -->
+      - TYPE: image, chart, figure
+    
+    引数:
+        target_file: PDFファイル名（例: "文書.pdf"）
+        input_dir: 入力/出力ディレクトリ
+    
+    戻り値:
+        dict: {
+            output_path: str,  # 出力ファイルパス
+            total_pages: int,
+        }
+    """
+    if not target_file.endswith(".pdf"):
+        return {"output_path": None, "visual_elements": [], "total_pages": 0}
+    
+    import fitz  # PyMuPDF
+    import pdfplumber
+    
+    pdf_path = os.path.join(input_dir, target_file)
+    doc = fitz.open(pdf_path)
+    
+    text_content = []
+    
+    try:
+        with pdfplumber.open(pdf_path) as plumber_pdf:
+            for page_num in range(len(doc)):
+                fitz_page = doc[page_num]
+                plumber_page = plumber_pdf.pages[page_num]
+                page_width = fitz_page.rect.width
+                
+                # === 表を検出・抽出 ===
+                tables = plumber_page.find_tables()
+                table_bboxes = [table.bbox for table in tables]
+                
+                # 表のデータを抽出（挿入用）
+                insertable_elements = []
+                for table in tables:
+                    data = table.extract()
+                    if data:
+                        insertable_elements.append({
+                            "x0": table.bbox[0],
+                            "x1": table.bbox[2],
+                            "x_center": (table.bbox[0] + table.bbox[2]) / 2,
+                            "y_top": table.bbox[1],
+                            "text": _table_to_markdown(data),
+                            "type": "table",
+                        })
+                
+                # === 視覚要素を検出 ===
+                # 1. 画像の検出（実際に表示されている画像のみ）
+                image_info_list = fitz_page.get_image_info(xrefs=True)
+                displayed_images = [
+                    img for img in image_info_list
+                    if img.get("bbox") and img["bbox"] != (0, 0, 0, 0)
+                ]
+                for idx, img in enumerate(displayed_images):
+                    bbox = img["bbox"]
+                    width = int(img.get("width", 0))
+                    height = int(img.get("height", 0))
+                    insertable_elements.append({
+                        "x0": bbox[0],
+                        "x1": bbox[2],
+                        "x_center": (bbox[0] + bbox[2]) / 2,
+                        "y_top": bbox[1],
+                        "text": f"<!-- VISUAL_ELEMENT page={page_num + 1} type=image index={idx+1} size={width}x{height} -->",
+                        "type": "visual",
+                    })
+                
+                # 2. グラフ/チャートの検出 (色付き矩形が多い場合)
+                colored_rects = [
+                    r for r in (plumber_page.rects or [])
+                    if r.get("fill") or r.get("non_stroking_color")
+                ]
+                if len(colored_rects) > 5:
+                    chart_x0 = min(r.get("x0", 0) for r in colored_rects)
+                    chart_x1 = max(r.get("x1", page_width) for r in colored_rects)
+                    chart_y = min(r.get("top", 0) for r in colored_rects)
+                    insertable_elements.append({
+                        "x0": chart_x0,
+                        "x1": chart_x1,
+                        "x_center": (chart_x0 + chart_x1) / 2,
+                        "y_top": chart_y,
+                        "text": f"<!-- VISUAL_ELEMENT page={page_num + 1} type=chart rect_count={len(colored_rects)} -->",
+                        "type": "visual",
+                    })
+                
+                # 3. 曲線（グラフの線など）
+                curves = plumber_page.curves or []
+                if len(curves) > 10:
+                    valid_curves = [c for c in curves if c.get("top") is not None]
+                    if valid_curves:
+                        figure_x0 = min(c.get("x0", 0) for c in valid_curves)
+                        figure_x1 = max(c.get("x1", page_width) for c in valid_curves)
+                        figure_y = min(c.get("top", 0) for c in valid_curves)
+                        insertable_elements.append({
+                            "x0": figure_x0,
+                            "x1": figure_x1,
+                            "x_center": (figure_x0 + figure_x1) / 2,
+                            "y_top": figure_y,
+                            "text": f"<!-- VISUAL_ELEMENT page={page_num + 1} type=figure curve_count={len(curves)} -->",
+                            "type": "visual",
+                        })
+                
+                # === テキストブロックを抽出 ===
+                text_blocks = _extract_text_blocks_stream_order(fitz_page, table_bboxes)
+                
+                # === 2Dクラスタリングでソート（Y軸セクション→X軸カラム→Y座標順） ===
+                text_blocks = _sort_blocks_2d_columns(text_blocks, x_gap=100, y_gap=30)
+                
+                # === 視覚要素・表をテキストブロックに挿入 ===
+                # 各挿入要素について、適切な挿入位置を決定
+                for elem in insertable_elements:
+                    insert_idx = _find_insertion_index(elem, text_blocks, page_width)
+                    text_blocks.insert(insert_idx, elem)
+                
+                # === テキストブロックを結合 ===
+                output_parts = []
+                current_paragraph = []
+                
+                for block in text_blocks:
+                    if block["type"] in ("table", "visual"):
+                        if current_paragraph:
+                            output_parts.append("\n".join(current_paragraph))
+                            current_paragraph = []
+                        output_parts.append("\n" + block["text"] + "\n")
+                    else:
+                        current_paragraph.append(block["text"])
+                
+                if current_paragraph:
+                    output_parts.append("\n".join(current_paragraph))
+                
+                page_text = "\n\n".join(output_parts)
+                text_content.append(page_text)
+    
+    finally:
         doc.close()
+    
+    # テキストファイルに出力
+    output_file = target_file.replace(".pdf", ".txt")
+    output_path = os.path.join(input_dir, output_file)
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(text_content))
+    
+    return {
+        "output_path": output_path,
+        "total_pages": len(text_content),
+    }
 
-        target_file = target_file.replace(".pdf", ".txt")
-        with open(os.path.join("data", "input", target_file), "w", encoding="utf-8") as f:
-            f.write("\n".join(text_content))
-        return
-    return
+
+def _extract_text_blocks_stream_order(fitz_page, table_bboxes: list) -> list:
+    """
+    PyMuPDFを使ってテキストブロックをテキストストリーム順（描画順序）で抽出する。
+    表の領域内にあるブロックは除外する。
+    
+    Args:
+        fitz_page: PyMuPDFのページオブジェクト
+        table_bboxes: 表の領域リスト [(x0, y0, x1, y1), ...]
+    
+    Returns:
+        list: テキストブロックのリスト（描画順序）
+    """
+    text_dict = fitz_page.get_text("dict")
+    text_blocks = []
+    
+    for block in text_dict["blocks"]:
+        if block["type"] != 0:  # テキストブロックのみ
+            continue
+        
+        bbox = block["bbox"]
+        block_center_x = (bbox[0] + bbox[2]) / 2
+        block_center_y = (bbox[1] + bbox[3]) / 2
+        
+        # 表の領域内にあるブロックは除外
+        in_table = False
+        for table_bbox in table_bboxes:
+            if _is_point_in_bbox(block_center_x, block_center_y, table_bbox):
+                in_table = True
+                break
+        
+        if in_table:
+            continue
+        
+        # ブロック内のテキストを結合
+        block_text_lines = []
+        for line in block.get("lines", []):
+            line_text = ""
+            for span in line.get("spans", []):
+                line_text += span.get("text", "")
+            if line_text.strip():
+                block_text_lines.append(line_text.strip())
+        
+        if block_text_lines:
+            text_blocks.append({
+                "x0": bbox[0],
+                "x1": bbox[2],
+                "x_center": block_center_x,
+                "y_top": bbox[1],
+                "y_bottom": bbox[3],
+                "text": "\n".join(block_text_lines),
+                "type": "text",
+            })
+    
+    return text_blocks
+
+
+def _find_insertion_index(element: dict, text_blocks: list, page_width: float) -> int:
+    """
+    視覚要素や表を挿入すべきインデックスを決定する。
+    X座標（同じカラム内）とY座標の両方を考慮する。
+    
+    Args:
+        element: 挿入する要素 {"x_center", "y_top", ...}
+        text_blocks: テキストブロックのリスト
+        page_width: ページ幅
+    
+    Returns:
+        int: 挿入すべきインデックス
+    """
+    if not text_blocks:
+        return 0
+    
+    elem_x = element["x_center"]
+    elem_y = element["y_top"]
+    
+    # X座標の許容範囲（ページ幅の30%以内を「同じカラム」とみなす）
+    x_tolerance = page_width * 0.3
+    
+    # 同じカラム内でY座標が要素より上にあるブロックを探す
+    candidates = []
+    for i, block in enumerate(text_blocks):
+        if block["type"] != "text":
+            continue
+        
+        block_x = block["x_center"]
+        block_y_bottom = block.get("y_bottom", block["y_top"])
+        
+        # X座標が近い（同じカラム内）かつ Y座標が要素より上
+        if abs(block_x - elem_x) < x_tolerance and block_y_bottom <= elem_y:
+            candidates.append((i, block))
+    
+    if candidates:
+        # 最も下にあるブロック（Y座標が最大）の後に挿入
+        best_idx = max(candidates, key=lambda x: x[1].get("y_bottom", x[1]["y_top"]))[0]
+        return best_idx + 1
+    
+    # 同じカラム内に候補がない場合、Y座標のみで判定
+    for i, block in enumerate(text_blocks):
+        if block["y_top"] > elem_y:
+            return i
+    
+    # すべてのブロックより下にある場合は末尾に挿入
+    return len(text_blocks)
+
+
+def _detect_column_centers(blocks: list, min_gap: float = 100) -> list:
+    """
+    ブロックのX座標からカラム中心を検出する。
+    隣接するX座標の大きなギャップでカラム境界を判定。
+    
+    Args:
+        blocks: テキストブロックのリスト
+        min_gap: カラム間の最小ギャップ（これより離れていたら別カラム）
+    
+    Returns:
+        list: カラム中心のX座標リスト（左から右へソート済み）
+    """
+    if not blocks:
+        return []
+    
+    # 全ブロックのX座標（中心）を収集してソート
+    x_coords = sorted([b["x_center"] for b in blocks])
+    
+    if len(x_coords) == 1:
+        return [x_coords[0]]
+    
+    # 隣接するX座標のギャップを計算し、大きなギャップでカラム境界を検出
+    clusters = [[x_coords[0]]]
+    
+    for i in range(1, len(x_coords)):
+        gap = x_coords[i] - x_coords[i - 1]
+        if gap >= min_gap:
+            # 大きなギャップがあれば新しいカラム
+            clusters.append([x_coords[i]])
+        else:
+            # 隣接しているので同じカラム
+            clusters[-1].append(x_coords[i])
+    
+    # 各クラスタの中心（平均）を計算
+    column_centers = [sum(cluster) / len(cluster) for cluster in clusters]
+    
+    return column_centers
+
+
+def _assign_blocks_to_columns(blocks: list, column_centers: list) -> dict:
+    """
+    各ブロックを最も近いカラムに割り当てる。
+    
+    Args:
+        blocks: テキストブロックのリスト
+        column_centers: カラム中心のX座標リスト
+    
+    Returns:
+        dict: {カラムインデックス: [ブロックリスト]}
+    """
+    columns = {i: [] for i in range(len(column_centers))}
+    
+    for block in blocks:
+        # 最も近いカラム中心を見つける
+        min_dist = float('inf')
+        closest_col = 0
+        for i, center in enumerate(column_centers):
+            dist = abs(block["x_center"] - center)
+            if dist < min_dist:
+                min_dist = dist
+                closest_col = i
+        
+        columns[closest_col].append(block)
+    
+    return columns
+
+
+def _sort_blocks_2d_columns(blocks: list, x_gap: float = 50, y_gap: float = 30) -> list:
+    """
+    X軸とY軸の両方でクラスタリングしてブロックをソートする。
+    
+    読み順:
+    - Y軸セクション順（上→下）
+    - 各セクション内でX軸カラム順（左→右）
+    - 各カラム内でY座標順（上→下）
+    
+    Args:
+        blocks: テキストブロックのリスト
+        x_gap: X軸のカラム間最小ギャップ
+        y_gap: Y軸のセクション間最小ギャップ
+    
+    Returns:
+        list: ソート済みブロックリスト
+    """
+    if not blocks:
+        return []
+    
+    # ステップ1: Y軸でセクション分割
+    sorted_by_y = sorted(blocks, key=lambda b: b["y_top"])
+    
+    y_sections = [[sorted_by_y[0]]]
+    for block in sorted_by_y[1:]:
+        prev_bottom = y_sections[-1][-1].get("y_bottom", y_sections[-1][-1]["y_top"])
+        if block["y_top"] - prev_bottom > y_gap:
+            y_sections.append([block])
+        else:
+            y_sections[-1].append(block)
+    
+    # ステップ2: 各セクション内でX軸カラム検出・ソート
+    result = []
+    for section in y_sections:
+        # X座標でカラム中心を検出
+        column_centers = _detect_column_centers(section, x_gap)
+        
+        if not column_centers:
+            # カラムが検出できない場合はY座標順
+            result.extend(sorted(section, key=lambda b: b["y_top"]))
+            continue
+        
+        # ブロックをカラムに割り当て
+        columns = _assign_blocks_to_columns(section, column_centers)
+        
+        # カラム順（左→右）、各カラム内でY座標順（上→下）
+        for col_idx in range(len(column_centers)):
+            col_blocks = columns[col_idx]
+            col_sorted = sorted(col_blocks, key=lambda b: b["y_top"])
+            result.extend(col_sorted)
+    
+    return result
+
+
+def _is_point_in_bbox(x: float, y: float, bbox: tuple) -> bool:
+    """点が矩形内にあるかチェック"""
+    x0, y0, x1, y1 = bbox
+    return x0 < x < x1 and y0 < y < y1
+
+
+def _table_to_markdown(table_data: list) -> str:
+    """表データをMarkdown形式に変換する"""
+    if not table_data or not table_data[0]:
+        return ""
+    
+    def clean_cell(cell):
+        if cell is None:
+            return ""
+        text = str(cell).strip().replace("\n", " ").replace("|", "\\|")
+        return text
+    
+    lines = []
+    header = table_data[0]
+    
+    # ヘッダー行
+    header_cells = [clean_cell(cell) for cell in header]
+    lines.append("| " + " | ".join(header_cells) + " |")
+    
+    # 区切り行
+    lines.append("| " + " | ".join(["---"] * len(header)) + " |")
+    
+    # データ行
+    for row in table_data[1:]:
+        row_cells = []
+        for i, cell in enumerate(row):
+            if i < len(header):
+                row_cells.append(clean_cell(cell))
+        # 不足している列を補完
+        while len(row_cells) < len(header):
+            row_cells.append("")
+        lines.append("| " + " | ".join(row_cells) + " |")
+    
+    return "\n".join(lines)
+
+
+def _chars_to_text_blocks(chars: list) -> list:
+    """文字リストをテキストブロックに変換する"""
+    if not chars:
+        return []
+    
+    lines_dict = {}
+    for char in chars:
+        y_key = round(char["top"] / 5) * 5
+        if y_key not in lines_dict:
+            lines_dict[y_key] = []
+        lines_dict[y_key].append(char)
+    
+    text_blocks = []
+    for y_key in sorted(lines_dict.keys()):
+        line_chars = sorted(lines_dict[y_key], key=lambda c: c["x0"])
+        line_text = "".join(c["text"] for c in line_chars).strip()
+        if line_text:
+            text_blocks.append({
+                "y_top": y_key,
+                "text": line_text,
+                "type": "text",
+            })
+    
+    return text_blocks
 
 
 def extract_message_logs(result: dict) -> list:

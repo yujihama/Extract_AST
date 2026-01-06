@@ -46,7 +46,8 @@
   - `blueprint_ast_builder.py`: blueprint + txt から AST JSON を構築
   - `ast_llm_summarizer.py`: ASTの `content_summary` をLLMで埋める
   - `ast_compare.py`: チャンク化、Embedding、類似度マッチング、差分抽出（diff/LLM）
-  - `tools.py`: LangChainツール群（`compare_setup` など）
+  - `tools.py`: LangChainツール群（`compare_setup`, `analyze_visual_contents` など）
+  - `pdf_to_text_llm.py`: PDFをテキストに変換（LLMによる画像解析付きの高度な変換）
   - `blueprint_tools.py`: blueprintのプレビュー/検証ツール（仮想FS対応）
   - `utils.py`: LLM初期化、PDF→txt変換、デバッグログ用ミドルウェア等
   - `agent_log_analyzer.py`: JSONLログ解析→`data/runs/`へ保存
@@ -103,6 +104,37 @@ TEMPERATURE=0
 
 ---
 
+## Web UI / CLI（MVP: ダミーPipeline）
+
+`compare_app/` は **FastAPI+HTMX UI** と **CLI** の土台です。まずは「Run作成→実行→イベント追跡→テンプレ生成（ダミー）」まで動作します。
+
+依存関係:
+
+```powershell
+pip install -r requirements.txt
+```
+
+### CLI（同期実行・テスト向け）
+
+```powershell
+# Run作成（入力は任意のPDF/TXTでOK）
+python -m compare_app.cli create --doc-a .\data\input\仕訳定義書.txt --doc-b .\data\input\仕訳定義書_文体変更版.txt
+
+# Run実行（run_idを指定）
+python -m compare_app.cli execute <run_id>
+
+# イベント追跡
+python -m compare_app.cli tail <run_id>
+```
+
+### Web UI（FastAPI）
+
+```powershell
+uvicorn compare_app.web.app:app --reload
+```
+
+ブラウザで `http://127.0.0.1:8000` を開いてください。
+
 ## 実行方法（概要）
 
 ### `main.py`（推奨: セル順に実行）
@@ -112,6 +144,10 @@ TEMPERATURE=0
 - **主な入力**:
   - `data/input/` に比較対象ドキュメント（`.txt` または `.pdf`）を配置
   - `main.py` 内の `target_file`, `docA`, `docB`, `template_compare_analysis` を適宜変更
+- **PDFからテキストへの変換**（PDFを入力する場合）:
+  - **テキスト中心のPDF**: `convert_pdf_to_txt()` を使用（高速、シンプル）
+  - **視覚的な要素が多いPDF**: `convert_pdf_with_llm()` を使用（LLMによる画像解析付き）
+  - `main.py` 内でどちらを使用するかコメントで切り替え可能
 - **主な出力**:
   - blueprint: `data/blueprint/*_blueprint.json`
   - AST: `data/ast/*.ast.json`
@@ -155,8 +191,11 @@ LLMが“自分で読む/探す”ためのツールを定義します（例）:
 - **`read_text_segment`**: 大きいテキストを部分読み
 - **`extract_regex_matches`**: 正規表現で候補を抽出（行番号・行テキスト付き）
 - **`read_text_file` / `get_file_length`**: 検証用の補助
+- **`analyze_visual_contents`**: ドキュメントの特定ページを画像として取得し、LLMで分析（視覚的要素の構造解析に使用）
 
 → blueprint生成の「見出しパターン探索/誤検知排除」を支えます。
+
+`analyze_visual_contents`は、PDFの特定ページを画像として取得し、プロンプトに従って分析結果を返すツールです。`<!-- VISUAL_CONTENT -->`や`<!-- AGENDA -->`タグが付与されたページの構造を正確に把握するために使用されます。
 
 ### 4. `2. 構造化出力（スキーマ）の定義`
 
