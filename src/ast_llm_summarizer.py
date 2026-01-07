@@ -130,7 +130,7 @@ class SummarizeOptions:
     skip_if_summary_exists: bool = True
 
 
-def _build_llm():
+def _build_llm(model: Optional[str] = None):
     """
     Notebookの build_llm と同等の環境変数で OpenAI / Azure OpenAI を選択。
     依存: langchain-openai
@@ -140,19 +140,21 @@ def _build_llm():
 
     from langchain_openai import AzureChatOpenAI, ChatOpenAI
 
+    model_name = model or os.getenv("OPENAI_MODEL") or os.getenv("MODEL") or "gpt-5.2"
+
     if provider in {"azure", "azureopenai", "azure_openai"}:
         return AzureChatOpenAI(
             azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
             azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
             or os.getenv("AZURE_OPENAI_DEPLOYMENT")
-            or "gpt-5.2",
+            or model_name,
             api_version=os.getenv("AZURE_OPENAI_API_VERSION") or os.getenv("OPENAI_API_VERSION"),
             api_key=os.getenv("AZURE_OPENAI_API_KEY"),
             # temperature=temperature,
         )
 
     return ChatOpenAI(
-        model=os.getenv("OPENAI_MODEL") or os.getenv("MODEL") or "gpt-5.2",
+        model=model_name,
         api_key=os.getenv("OPENAI_API_KEY"),
         # temperature=temperature,
     )
@@ -183,7 +185,7 @@ def summarize_ast_inplace(
             "先に blueprint_ast_builder でASTを再生成してから要約を実行してください。"
         )
 
-    llm = _build_llm()
+    llm = _build_llm(model=options.model)
 
     from langchain_core.messages import HumanMessage, SystemMessage
 

@@ -1,7 +1,7 @@
 # compare_agent（PoC）
 
 このリポジトリは、**ドキュメント比較アプリ**を将来的に実装するための **PoC（検証用コード）**です。  
-現時点ではアプリ全体のフローをすべて実装しているわけではなく、**blueprint→AST→比較**のコア部分を中心に試作しています。
+現在は `compare_app/` にて、UI/CLI共通の入口（RunExecutor/Pipeline）を用意し、**realモードで end-to-end（txt→blueprint→AST→pre_analysis→compare_analysis→filled）** まで接続しています（TXT入力で実測）。
 
 ---
 
@@ -102,17 +102,32 @@ AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME=text-embedding-3-large
 TEMPERATURE=0
 ```
 
+#### 429 / insufficient_quota について（重要）
+
+OpenAI利用時に `RateLimitError: 429 (insufficient_quota)` が出る場合、**APIキーのクォータ/請求設定**が原因です。
+
+- 対処:
+  - OpenAIの請求/利用上限を確認する
+  - もしくは `.env` を Azure OpenAI（`LLM_PROVIDER=azure`）に切り替える
+
+環境変数の一覧は `design/environment_variables.md` を参照してください（`.env` は任意、OS環境変数が優先）。
+
 ---
 
 ## Web UI / CLI（MVP: ダミーPipeline）
 
-`compare_app/` は **FastAPI+HTMX UI** と **CLI** の土台です。まずは「Run作成→実行→イベント追跡→テンプレ生成（ダミー）」まで動作します。
+`compare_app/` は **FastAPI+HTMX UI** と **CLI** の土台です。
+
+- dummyモード: 「Run作成→実行→イベント追跡→テンプレ生成（ダミー）」まで動作
+- realモード: 「txt→blueprint→AST→pre_analysis→compare_analysis→filled（最終成果物）」まで接続（TXT入力で実測）
 
 依存関係:
 
 ```powershell
 pip install -r requirements.txt
 ```
+
+※ `compare_app/` は起動時に `.env` を自動で読み込みます（UI/CLI共通）。
 
 ### CLI（同期実行・テスト向け）
 
@@ -126,6 +141,21 @@ python -m compare_app.cli execute <run_id>
 # イベント追跡
 python -m compare_app.cli tail <run_id>
 ```
+
+realモード（本番処理）:
+
+```powershell
+python -m compare_app.cli create --doc-a .\data\input\仕訳定義書.txt --doc-b .\data\input\仕訳定義書_文体変更版.txt --mode real
+python -m compare_app.cli execute <run_id>
+```
+
+### 成果物（Artifacts）の確認方法
+
+- **Web UI**: Run詳細（`/runs/{run_id}`）の「成果物」から `view` / `download`
+- **CLI**:
+  - 一覧: `python -m compare_app.cli artifacts <run_id>`
+  - 取得: `python -m compare_app.cli export <run_id> --kind blueprint_a --out .\\blueprint_a.json`
+- **ファイル直接**: `data/runs/{run_id}/work/` / `out/` / `log/` 配下を開く
 
 ### Web UI（FastAPI）
 
