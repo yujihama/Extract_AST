@@ -29,6 +29,10 @@
   - パーセンテージやメッセージの集計は未実装（UIはイベントタイムラインで追跡）
 - **成果物**:
   - 入力ファイル、生成txt、blueprint、ast、embedding cache、生成テンプレ、filled template、ログ（JSONL/レポート）を Run に紐付けて一覧/閲覧/ダウンロードできる
+- **ステップ選択パラメータ（step filtering）**:
+  - `steps_include`: 実行するステップ名のリスト（例: `["build_blueprint_a", "compare_analysis"]`）
+  - `step_from` / `step_to`: 範囲指定（開始〜終了ステップ名）
+  - 詳細は `design/run_executor_pipeline_api.md` を参照
 
 ### 1.2 入力取り込み
 

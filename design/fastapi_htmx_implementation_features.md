@@ -278,6 +278,15 @@ Runの処理は「止めやすく、可視化しやすい」粒度で分割す�
 10. **finalize**
    - ログ解析（agent_log_analyzer）＋成果物の確定
 
+### 4.3 ステップ選択パラメータ（step filtering）
+
+`params` で以下を指定すると、実行するステップを絞り込める（部分再実行やデバッグに有用）:
+
+- `steps_include`: 実行するステップ名のリスト（例: `["build_blueprint_a", "compare_analysis"]`）
+- `step_from` / `step_to`: 範囲指定（開始〜終了ステップ名）
+
+未指定なら全ステップを対象とする。詳細は `design/run_executor_pipeline_api.md` を参照。
+
 ---
 
 ## 5. イベント可視化（deep_agent / tool / subagent）
@@ -285,7 +294,7 @@ Runの処理は「止めやすく、可視化しやすい」粒度で分割す�
 ### 5.1 UIに表示したい最小イベント
 
 - `run_status_changed`: queued/running/succeeded/failed/cancelled
-- `step_started` / `step_finished` / `step_failed`
+- `step_started` / `step_finished` / `step_failed` / `step_skipped`
 - `agent_start` / `agent_end`
 - `tool_call_start` / `tool_call_result` / `tool_call_error`
 - `artifact_created` / `artifact_updated`

@@ -108,6 +108,22 @@ UI/CLIは **Coreの `RunExecutor`** のみを呼ぶ（InfraはDIで注入）。
   - `step_failed` をemit
   - 例外を上位へ伝播（RunExecutorが `failed` に遷移させる）
 
+### ステップ選択パラメータ（step filtering）
+
+`ctx.params` に以下のパラメータを指定すると、パイプラインのステップ実行範囲を絞り込むことができる:
+
+- `steps_include`: 実行するステップ名のリスト（例: `["build_blueprint_a", "compare_analysis"]`）
+  - 指定したステップ名のみ実行される。未指定なら全ステップ対象。
+- `step_from`: 開始ステップ名（例: `"build_ast_a"`）
+- `step_to`: 終了ステップ名（例: `"compare_analysis"`）
+  - 両方指定すると `step_from` から `step_to` までの範囲だけ実行される。
+  - 片方だけ指定すると、その位置から末尾/先頭までが範囲になる。
+  - 存在しないステップ名を指定した場合、全ステップがスキップされる。
+
+`steps_include` と `step_from`/`step_to` は併用可能で、**両条件を満たすステップのみ実行**される。
+
+範囲外のステップには `step_skipped` がemitされる。
+
 ---
 
 ## 4) RunExecutor I/F（UI/CLI共通入口）
