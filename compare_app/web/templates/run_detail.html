@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>Run詳細</h1>
+  <p><span class="tag">run_id</span> {{ run.run_id }}</p>
+  <div class="grid grid-2">
+    <div>
+      <div id="status-panel" hx-get="/runs/{{ run.run_id }}/partials/status" hx-trigger="load, refresh"></div>
+      <div style="margin-top: 8px;">
+        <button class="btn" hx-post="/runs/{{ run.run_id }}/start" hx-target="#status-panel" hx-swap="innerHTML">開始</button>
+        <button class="btn danger" hx-post="/runs/{{ run.run_id }}/cancel" hx-target="#status-panel" hx-swap="innerHTML">キャンセル</button>
+      </div>
+    </div>
+    <div>
+      <h3>パラメータ</h3>
+      <pre class="pre">{{ run.params | tojson(indent=2, ensure_ascii=false) }}</pre>
+    </div>
+  </div>
+</div>
+
+<div class="grid grid-2">
+  <div class="card" id="artifacts-panel" hx-get="/runs/{{ run.run_id }}/partials/artifacts" hx-trigger="load, refresh" hx-target="this"></div>
+  <div class="card">
+    <h3>テンプレ（Draft）</h3>
+    <div id="template-draft" hx-get="/runs/{{ run.run_id }}/partials/template?kind=draft" hx-trigger="load, refresh"></div>
+  </div>
+  <div class="card">
+    <h3>テンプレ（Filled）</h3>
+    <div id="template-filled" hx-get="/runs/{{ run.run_id }}/partials/template?kind=filled" hx-trigger="load, refresh"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>イベントタイムライン</h2>
+  <div id="events" class="pre">{% for ev in initial_events %}[{{ ev.event_id }}] {{ ev.ts.isoformat() }} {{ ev.event_type }} {{ ev.payload }}
+{% endfor %}</div>
+</div>
+
+<script>
+  const runId = "{{ run.run_id }}";
+  const eventsEl = document.getElementById("events");
+  const statusPanel = document.getElementById("status-panel");
+  const artifactsPanel = document.getElementById("artifacts-panel");
+  const templateDraft = document.getElementById("template-draft");
+  const templateFilled = document.getElementById("template-filled");
+
+  function appendEvent(payload) {
+    const line = `[${payload.event_id}] ${payload.ts} ${payload.event_type} ${JSON.stringify(payload.payload)}`;
+    eventsEl.textContent += `\n${line}`;
+    eventsEl.scrollTop = eventsEl.scrollHeight;
+  }
+
+  const source = new EventSource(`/runs/${runId}/events`);
+  source.onmessage = (event) => {
+    try {
+      const payload = JSON.parse(event.data);
+      appendEvent(payload);
+    } catch (err) {
+      console.warn("Failed to parse event", err);
+    }
+  };
+
+  const refreshTargets = [statusPanel, artifactsPanel, templateDraft, templateFilled];
+  ["artifact_updated", "step_finished", "run_status_changed"].forEach((eventName) => {
+    source.addEventListener(eventName, () => {
+      refreshTargets.forEach((el) => {
+        if (el) {
+          htmx.trigger(el, "refresh");
+        }
+      });
+    });
+  });
+</script>
+{% endblock %}

@@ -54,3 +54,5 @@ log/
 backup/
 .venv/
 templates/
+!compare_app/web/templates/
+!compare_app/web/templates/**

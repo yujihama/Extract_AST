@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from compare_app.core.pipeline import RunContext
+from compare_app.core.pipeline import CancelledError, RunContext
 
 
 def _utcnow_iso() -> str:
@@ -17,6 +18,32 @@ def _utcnow_iso() -> str:
 
 def _have_llm_key() -> bool:
     return bool(os.getenv("OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_API_KEY"))
+
+
+def _run_with_cancellation(ctx: RunContext, *, label: str, func) -> Any:
+    done = threading.Event()
+    result: dict[str, Any] = {}
+    error: dict[str, Exception] = {}
+
+    def _target() -> None:
+        try:
+            result["value"] = func()
+        except Exception as exc:
+            error["error"] = exc
+        finally:
+            done.set()
+
+    thread = threading.Thread(target=_target, name=f"{label}_worker", daemon=True)
+    thread.start()
+
+    while not done.is_set():
+        if ctx.cancellation.is_cancelled():
+            raise CancelledError(f"cancelled during {label}")
+        done.wait(0.2)
+
+    if "error" in error:
+        raise error["error"]
+    return result.get("value")
 
 
 @dataclass
@@ -305,7 +332,11 @@ class PreAnalysisStep:
             ]
         )
 
-        result = agent.invoke({"messages": [{"role": "user", "content": query}], "files": files})
+        result = _run_with_cancellation(
+            ctx,
+            label="pre_analysis_agent",
+            func=lambda: agent.invoke({"messages": [{"role": "user", "content": query}], "files": files}),
+        )
         structured = result.get("structured_response")
         if structured is None:
             raise RuntimeError("pre_analysis_agent returned no structured_response")
@@ -633,7 +664,11 @@ class CompareAnalysisStep:
             ]
         )
 
-        result = agent.invoke({"messages": [{"role": "user", "content": query}], "files": files})
+        result = _run_with_cancellation(
+            ctx,
+            label="compare_analysis_agent",
+            func=lambda: agent.invoke({"messages": [{"role": "user", "content": query}], "files": files}),
+        )
 
         # 仮想FSから filled を抽出（無ければ draft を採用）
         vfiles = result.get("files") or {}
@@ -660,4 +695,3 @@ class CompareAnalysisStep:
             "artifact_updated",
             {"ts": _utcnow_iso(), "kind": "template_filled", "path": filled_path.relative_to(run_dir).as_posix()},
         )
-

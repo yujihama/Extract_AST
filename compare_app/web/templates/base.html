@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title or "compare_agent" }}</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <style>
+    body { font-family: "Segoe UI", system-ui, sans-serif; margin: 0; background: #f6f6f6; color: #222; }
+    header { background: #1f2937; color: #fff; padding: 12px 20px; }
+    header a { color: #fff; text-decoration: none; margin-right: 12px; }
+    main { padding: 20px; max-width: 1200px; margin: 0 auto; }
+    h1, h2, h3 { margin-top: 0; }
+    .card { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); margin-bottom: 16px; }
+    .grid { display: grid; gap: 16px; }
+    .grid-2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px; border-bottom: 1px solid #eee; text-align: left; }
+    .muted { color: #666; font-size: 0.9em; }
+    .btn { display: inline-block; padding: 6px 12px; border-radius: 6px; border: 1px solid #1f2937; background: #1f2937; color: #fff; cursor: pointer; text-decoration: none; }
+    .btn.secondary { background: #fff; color: #1f2937; }
+    .btn.danger { background: #b91c1c; border-color: #b91c1c; }
+    .pre { white-space: pre-wrap; background: #0f172a; color: #e2e8f0; padding: 12px; border-radius: 6px; max-height: 360px; overflow: auto; }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #e5e7eb; font-size: 0.8em; }
+    .status { font-weight: bold; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/">compare_agent</a>
+    <a href="/runs/new">新規Run</a>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

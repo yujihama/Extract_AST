@@ -4,20 +4,22 @@
 
 現時点の実装は以下まで到達しています（詳細は `compare_app/` 配下）。
 
-- **フェーズ0（アプリ土台）**: 概ね完了（SQLite: `runs/run_events/artifacts`）
+- **フェーズ0（アプリ土台）**: 完了（SQLite: `runs/run_events/artifacts`）
 - **フェーズ1（入口API/ジョブ）**: 完了（`RunExecutor` / `Pipeline` / `InProcessJobQueue` / 協調的キャンセル）
-- **フェーズ2（最小UI + SSE）**: 概ね完了（Run一覧/作成/詳細、SSE、テンプレプレビュー、成果物一覧/閲覧/DL（DB優先＋FS補完））
-- **フェーズ3（CLI）**: 最小完了（`python -m compare_app.cli create/start/execute/cancel/tail/list/artifacts/export`）
-- **フェーズ4（PDF/TXT→blueprint→AST）**: 実装＋検証済み（TXT入力で実測。PDFはfast変換で実測、llm変換は未検証）
-- **フェーズ5/6（Pre-Analysis→Compare-Analysis）**: ステップ接続まで実装（`compare_app/core/compare_steps.py`）
+- **フェーズ2（最小UI + SSE）**: 完了（Run一覧/作成/詳細、SSE、テンプレプレビュー、成果物一覧/閲覧/DL）
+- **フェーズ3（CLI）**: 完了（`python -m compare_app.cli create/start/execute/cancel/tail/list/artifacts/export`）
+- **フェーズ4（PDF/TXT→blueprint→AST）**: 完了（TXT入力実測、PDFはfast/llm変換の両方を実装）
+- **フェーズ5/6（Pre-Analysis→Compare-Analysis）**: 完了（`compare_app/core/compare_steps.py`）
   - compare_setup は embedding/LLMキー必須
-  - pre_analysis/compare_analysis はキー未設定時フォールバックあり（本番接続はTXT入力で検証済み）
+  - pre_analysis/compare_analysis はキー未設定時フォールバックあり
+  - compare_analysis は協調的キャンセルの途中介入に対応
 
 ### 次に埋める（優先度高）
 
-- **PDF→TXT（LLM）実測検証**（ページ範囲/コスト/品質）
-- **長時間stepの途中キャンセル**（`compare_analysis` / `summarize_ast`）
-- **artifacts登録の網羅性**（DBの成果物一覧を“真”にする）
+- 現時点で優先度高の未完了項目なし
+  - PDF→TXT（LLM）: UI/CLIパラメータ対応 + 変換イベント出力まで実装済み
+  - 長時間stepの途中キャンセル: `compare_analysis` / `summarize_ast` 対応済み
+  - artifacts登録の網羅性: DB優先 + FS補完 + 自動同期でDBを最新化
 
 ### 目的
 
@@ -221,4 +223,3 @@
 - 各フェーズの達成基準は **必ず手順付きで検証可能**にする（UI操作 or CLIコマンドの結果で判定）
 - 「できた」の定義は “画面がある” ではなく、**run_id/イベント/成果物が一貫して残る**こと
 - UIとCLIの差異を許容しない（同じRunExecutor/同じDB/同じartifact規約で動くこと）
-

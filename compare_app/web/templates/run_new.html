@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>Run作成</h1>
+  <form action="/runs" method="post" enctype="multipart/form-data" class="grid grid-2">
+    <div>
+      <h3>入力</h3>
+      <label>doc A (PDF/TXT)
+        <input type="file" name="doc_a" required>
+      </label>
+      <br>
+      <label>doc B (PDF/TXT)
+        <input type="file" name="doc_b" required>
+      </label>
+      <br><br>
+      <label>mode
+        <select name="mode">
+          <option value="dummy">dummy</option>
+          <option value="real" selected>real</option>
+        </select>
+      </label>
+      <br><br>
+      <label>
+        <input type="checkbox" name="start_now" checked>
+        すぐ開始
+      </label>
+    </div>
+
+    <div>
+      <h3>PDF→TXT設定</h3>
+      <label>doc A mode
+        <select name="pdf_mode_a">
+          <option value="fast" selected>fast</option>
+          <option value="llm">llm</option>
+        </select>
+      </label>
+      <br>
+      <label>doc B mode
+        <select name="pdf_mode_b">
+          <option value="fast" selected>fast</option>
+          <option value="llm">llm</option>
+        </select>
+      </label>
+      <br><br>
+      <label>start page
+        <input type="number" name="pdf_start_page" value="1" min="1">
+      </label>
+      <br>
+      <label>end page
+        <input type="number" name="pdf_end_page" placeholder="空欄で最後まで">
+      </label>
+      <br>
+      <label>batch size
+        <input type="number" name="pdf_batch_size" value="5" min="1">
+      </label>
+      <br>
+      <label>
+        <input type="checkbox" name="pdf_use_image">
+        画像付きLLM変換
+      </label>
+    </div>
+
+    <div>
+      <h3>AST枝サマリ</h3>
+      <label>
+        <input type="checkbox" name="summarize_ast">
+        summarize_ast を有効化
+      </label>
+      <br>
+      <label>summary model
+        <input type="text" name="ast_summary_model" value="gpt-5-mini">
+      </label>
+    </div>
+
+    <div>
+      <h3>LLM設定（任意）</h3>
+      <label>llm_complex_model
+        <input type="text" name="llm_complex_model" placeholder="例: gpt-5-mini">
+      </label>
+      <p class="muted">空欄の場合はデフォルトを使用します。</p>
+    </div>
+
+    <div>
+      <button class="btn" type="submit">Run作成</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

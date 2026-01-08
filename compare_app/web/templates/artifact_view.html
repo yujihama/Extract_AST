@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>成果物プレビュー</h1>
+  <p class="muted">{{ rel }}</p>
+  <a class="btn secondary" href="/runs/{{ run_id }}/artifacts/download/{{ rel }}">ダウンロード</a>
+</div>
+<div class="card">
+  <pre class="pre">{{ content }}</pre>
+</div>
+{% endblock %}

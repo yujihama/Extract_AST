@@ -1,0 +1,9 @@
+<div>
+  <div><span class="tag">status</span> <span class="status">{{ run.status }}</span></div>
+  <div class="muted">created: {{ run.created_at }}</div>
+  <div class="muted">started: {{ run.started_at or "-" }}</div>
+  <div class="muted">finished: {{ run.finished_at or "-" }}</div>
+  {% if run.error_message %}
+    <div class="muted">error: {{ run.error_message }}</div>
+  {% endif %}
+</div>
