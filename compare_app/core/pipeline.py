@@ -101,6 +101,13 @@ class Pipeline:
 
             try:
                 step.run(ctx)
+            except CancelledError:
+                ctx.events.emit(
+                    ctx.run_id,
+                    "run_cancelled",
+                    {"ts": _utcnow().isoformat(), "where": "in_step", "step": step.name},
+                )
+                raise
             except Exception as e:
                 ctx.events.emit(
                     ctx.run_id,

@@ -90,6 +90,12 @@ class EnsureTextStep:
         batch_size = int(ctx.params.get(f"pdf_{which}_batch_size") or ctx.params.get("pdf_batch_size") or 5)
         use_image = bool(ctx.params.get(f"pdf_{which}_use_image") or ctx.params.get("pdf_use_image") or False)
 
+        model = str(
+            ctx.params.get(f"pdf_llm_model_{which}")
+            or ctx.params.get("pdf_llm_model")
+            or ctx.params.get("llm_complex_model")
+            or "gpt-5-mini"
+        )
         asyncio.run(
             convert_pdf_with_llm(
                 pdf_path=str(src_pdf),
@@ -98,6 +104,7 @@ class EnsureTextStep:
                 end_page=end_page_i,
                 batch_size=batch_size,
                 use_image=use_image,
+                model=model,
                 verbose=False,
             )
         )
@@ -158,7 +165,7 @@ class BuildBlueprintStep:
         from compare_app.agents.middleware import EventSinkMiddleware
 
         llm = build_llm()
-        llm_complex = build_llm(model=str(ctx.params.get("llm_complex_model", "gpt-5.2")))
+        llm_complex = build_llm(model=str(ctx.params.get("llm_complex_model", "gpt-5-mini")))
 
         # data/input固定依存を避けるため、run入力（data/runs/{run_id}/input）を読む analyze_visual_contents を提供する
         from langchain_core.messages import HumanMessage
@@ -235,7 +242,14 @@ class BuildBlueprintStep:
             tools=tools_blueprint_builder,
             system_prompt=blueprint_ast_builder_prompt,
             response_format=DocumentStructureBlueprint,
-            middleware=[EventSinkMiddleware(run_id=ctx.run_id, events=ctx.events, agent_name=f"blueprint_builder_{which}")],
+            middleware=[
+                EventSinkMiddleware(
+                    run_id=ctx.run_id,
+                    events=ctx.events,
+                    cancellation=ctx.cancellation,
+                    agent_name=f"blueprint_builder_{which}",
+                )
+            ],
             subagents=[
                 {
                     "name": "validate_blueprint_agent",
@@ -246,6 +260,7 @@ class BuildBlueprintStep:
                         EventSinkMiddleware(
                             run_id=ctx.run_id,
                             events=ctx.events,
+                            cancellation=ctx.cancellation,
                             agent_name=f"validate_blueprint_agent_{which}",
                             is_subagent=True,
                         )
@@ -335,12 +350,17 @@ class SummarizeAstStep:
         if not ast_path.exists():
             raise FileNotFoundError(str(ast_path))
 
-        from src.ast_llm_summarizer import SummarizeOptions, summarize_ast_inplace
+        from src.ast_llm_summarizer import SummarizeOptions, SummarizationCancelled, summarize_ast_inplace
 
-        model = str(ctx.params.get("ast_summary_model") or ctx.params.get("llm_complex_model") or "gpt-5.2")
+        model = str(ctx.params.get("ast_summary_model") or ctx.params.get("llm_complex_model") or "gpt-5-mini")
         overwrite = bool(ctx.params.get("ast_summary_overwrite", False) or ctx.params.get("force", False))
         opts = SummarizeOptions(model=model, skip_if_summary_exists=not overwrite)
-        summarize_ast_inplace(ast_path=str(ast_path), options=opts)
+        try:
+            summarize_ast_inplace(ast_path=str(ast_path), options=opts, is_cancelled=ctx.cancellation.is_cancelled)
+        except SummarizationCancelled:
+            from compare_app.core.pipeline import CancelledError
+
+            raise CancelledError("cancelled during ast summarization")
 
         rel = ast_path.relative_to(run_dir).as_posix()
         ctx.events.emit(ctx.run_id, "artifact_updated", {"ts": _utcnow_iso(), "kind": f"ast_{which}", "path": rel})

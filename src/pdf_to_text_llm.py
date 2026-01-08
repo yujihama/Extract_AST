@@ -22,7 +22,6 @@ from pathlib import Path
 from typing import Optional
 
 import fitz
-from dotenv import load_dotenv
 from langchain_core.messages import SystemMessage, HumanMessage
 from pydantic import BaseModel, Field
 
@@ -51,18 +50,21 @@ class PageBlocksOrder(BaseModel):
         description="目次と思われる箇所があればTrue"
     )
 
-# 環境変数を読み込み
-load_dotenv()
-
-
 # =============================================================================
 # LLM設定
 # =============================================================================
 
-def get_llm():
+def get_llm(model: Optional[str] = None):
     """LLMインスタンスを取得"""
-    model = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME_COMPLEX", "gpt-5.2")
-    return build_llm(model=model)
+    model_name = (
+        model
+        or os.getenv("PDF_LLM_MODEL")
+        or os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME_COMPLEX")
+        or os.getenv("OPENAI_MODEL")
+        or os.getenv("MODEL")
+        or "gpt-5-mini"
+    )
+    return build_llm(model=model_name)
 
 
 # =============================================================================
@@ -373,6 +375,7 @@ async def convert_pdf_with_llm(
     end_page: Optional[int] = None,
     batch_size: int = 5,
     use_image: bool = False,
+    model: Optional[str] = None,
     verbose: bool = True,
 ) -> dict:
     """
@@ -423,7 +426,7 @@ async def convert_pdf_with_llm(
         print()
     
     # LLM取得
-    llm = get_llm()
+    llm = get_llm(model=model)
     
     # バッチ処理
     all_results = []

@@ -54,6 +54,12 @@
 - TXT入力で end-to-end（txt→blueprint→AST→compare_setup→pre/compare analysis→filled）が `succeeded` まで完走することを確認済み
 - PDF入力は fast変換で end-to-end が `succeeded` まで完走することを確認済み（llm変換は未検証）
 
+### 残課題（MVP後の優先度高）
+
+- PDF→TXT（LLM）の実測検証（ページ範囲/コスト/品質、UIパラメータ調整）
+- 長時間stepの途中キャンセル（`compare_analysis` / `summarize_ast` など）
+- artifacts登録の網羅性（log/cacheなどの登録漏れ解消、kind体系の整理）
+
 ---
 
 ## 0. スコープ定義（MVP）
@@ -164,7 +170,7 @@ Run詳細は「常時更新される領域」と「手動で開く領域」を�
 
 - `GET /runs/{run_id}/partials/status`
 - `GET /runs/{run_id}/partials/artifacts`（実装済み: DB優先＋FS補完）
-- `GET /runs/{run_id}/partials/template?kind=draft|filled`（未実装：現状は `GET /runs/{run_id}/template/{draft|filled}`）
+- `GET /runs/{run_id}/partials/template?kind=draft|filled`（実装済み）
 - `GET /runs/{run_id}/partials/events`  
   - SSEが難しい場合の代替（ポーリングで差分表示）
 
@@ -192,6 +198,19 @@ Run詳細は「常時更新される領域」と「手動で開く領域」を�
 - `GET /runs/{run_id}/partials/artifacts`（一覧HTML, DB優先＋FS補完）
 - `GET /runs/{run_id}/artifacts/view/{rel_path}`（テキストプレビュー）
 - `GET /runs/{run_id}/artifacts/download/{rel_path}`（ダウンロード）
+
+### 2.6 JSON API（UI未実装でも利用可能）
+
+UIで未実装の機能（例: AST検索/blueprint検証/テキスト貼り付け入力）も、先にAPIだけ提供しておく。
+
+- `GET /api/runs` / `GET /api/runs/{run_id}`
+- `POST /api/runs/text`（docA/docBをテキストで投入してRun作成）
+- `GET /api/runs/{run_id}/events`（SSEの代替: JSON取得）
+- `GET /api/runs/{run_id}/blueprint/{a|b}` / `PUT /api/runs/{run_id}/blueprint/{a|b}`
+- `GET /api/runs/{run_id}/blueprint/{a|b}/preview`
+- `GET /api/runs/{run_id}/blueprint/{a|b}/validate`
+- `GET /api/runs/{run_id}/ast/{a|b}`（mode=summary|outline|chunk|search）
+- `GET /api/runs/{run_id}/compare/initial_matching`
 
 ---
 

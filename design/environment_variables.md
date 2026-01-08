@@ -12,7 +12,10 @@
 
 - **COMPARE_APP_DB_PATH**
   - SQLite DBパス
-  - default: `data/compare_app.db`
+  - default: `repo_root/data/compare_app.db`（起動ディレクトリに依存しない）
+- **COMPARE_APP_RUNS_ROOT**
+  - Run成果物の保存先ルート（`{RUNS_ROOT}/{run_id}/...`）
+  - default: `repo_root/data/runs`（起動ディレクトリに依存しない）
 - **COMPARE_APP_LOAD_DOTENV**
   - `.env` 自動読み込みの有効/無効（`0/false/no/off` で無効）
   - default: `1`
@@ -28,6 +31,9 @@
   - default: `openai`
 - **TEMPERATURE**
   - 0推奨（現状、いくつかの箇所では temperature を明示的に渡していない）
+- **PDF_LLM_MODEL**
+  - `src/pdf_to_text_llm.convert_pdf_with_llm` が使用するモデル（未指定時）
+  - 未設定の場合は `AZURE_OPENAI_DEPLOYMENT_NAME_COMPLEX` / `OPENAI_MODEL` 等へフォールバック
 
 ---
 

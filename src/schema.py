@@ -2,6 +2,23 @@ from typing import Optional, Dict, List
 from pydantic import BaseModel, Field, field_validator
 import re
 
+
+def _sanitize_regex_pattern(pattern: str) -> str:
+    """
+    LLMが生成しがちな Unicode property escape（例: \\p{Han}）を、Python `re` 互換の範囲表現へ置換する。
+    - Python標準 `re` は `\\p{...}` をサポートしないため、最低限の救済を行う。
+    - 置換できないものはそのまま返す。
+    """
+    if not isinstance(pattern, str) or not pattern:
+        return pattern
+
+    out = pattern
+    # よく出る3種だけを安全に置換（必要があれば拡張）
+    out = re.sub(r"\\p\{Han\}", "\u4E00-\u9FFF", out, flags=re.IGNORECASE)
+    out = re.sub(r"\\p\{Hiragana\}", "\u3040-\u309F", out, flags=re.IGNORECASE)
+    out = re.sub(r"\\p\{Katakana\}", "\u30A0-\u30FF", out, flags=re.IGNORECASE)
+    return out
+
 class DocumentNode(BaseModel):
     section_title: Optional[str] = Field(None, description="セクションのタイトル")
     content_summary: str = Field(..., description="このセクションのコンテンツの簡潔な要約")
@@ -139,6 +156,13 @@ class ValidationRules(BaseModel):
         try:
             re.compile(v)
         except re.error as e:
+            fixed = _sanitize_regex_pattern(v)
+            if fixed != v:
+                try:
+                    re.compile(fixed)
+                    return fixed
+                except re.error:
+                    pass
             raise ValueError(f"Invalid neighbor regex: {v}. Error: {e}")
         return v
 
@@ -167,6 +191,13 @@ class HierarchyRule(BaseModel):
         try:
             re.compile(v)
         except re.error as e:
+            fixed = _sanitize_regex_pattern(v)
+            if fixed != v:
+                try:
+                    re.compile(fixed)
+                    return fixed
+                except re.error:
+                    pass
             raise ValueError(f"Invalid regex pattern: {v}. Error: {e}")
         return v
 
@@ -183,6 +214,13 @@ class ExclusionRule(BaseModel):
         try:
             re.compile(v)
         except re.error as e:
+            fixed = _sanitize_regex_pattern(v)
+            if fixed != v:
+                try:
+                    re.compile(fixed)
+                    return fixed
+                except re.error:
+                    pass
             raise ValueError(f"Invalid regex pattern: {v}. Error: {e}")
         return v
 

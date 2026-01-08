@@ -242,7 +242,11 @@ SQLiteは「どのcacheを使ったか/統計」だけ持つのが現実的。
   - 成果物一覧（DB優先＋FS補完）/プレビュー（テキスト）/ダウンロード
   - agent/tool/subagent系イベントもタイムラインに表示（dummyで疑似発火して動作確認可能）
 - **CLI**:
-  - `python -m compare_app.cli create/start/execute/tail/list` を実装（FastAPIを経由せず `RunExecutor` を直接使用）
+  - `python -m compare_app.cli create/start/execute/cancel/tail/list/artifacts/export` を実装（FastAPIを経由せず `RunExecutor` を直接使用）
+
+- **UI未実装の要件はAPIで提供（完了扱い）**:
+  - テキスト貼り付け入力 / blueprint検証 / AST閲覧（search等）/ イベント一覧（SSE代替）/ 比較統計の参照
+  - 提供APIの一覧は `design/fastapi_htmx_implementation_features.md` の「2.6 JSON API」を参照
 
 ### 一部実装（realモードの骨格）
 
@@ -261,9 +265,15 @@ SQLiteは「どのcacheを使ったか/統計」だけ持つのが現実的。
 
 ### 未実装（この要件の“本丸”）
 
+- **PDF→TXT（LLMモード）の実測検証**（コスト/時間/品質）
+  - 実装: UIで選択・パイプライン接続済み（`pdf_mode_{a|b}=llm`）
+  - 未: 実PDFでの安定運用（ページ範囲・batch_size・use_image）を含む検証
 - **artifactsテーブルを“完全”に活用**（SQLite＋UIの成果物一覧を拡張）
-  - 現状: `artifact_updated` イベント発火時に `artifacts` へ upsert しており、UIはDB優先で表示
-  - 未: すべての生成物（例: log類、補助ファイル）を網羅的に `artifacts` に登録する（登録漏れの解消）
+  - 現状: stepごとの `artifact_updated/created` に加え、Run終了時にFSをスキャンして `artifacts` を補完する（kindは基本 `file`、既存kindは上書きしない）
+  - 未: kind体系の整理（汎用 `file` から用途別kindへの昇格ルール、meta拡張）
+- **長時間ステップの協調的キャンセル（step内）**
+  - 現状: Pipelineは step境界で `CancellationToken` をチェック
+  - 現状: deep_agentの tool 呼び出し境界・ASTサマリのループ境界でキャンセル可能（LLM呼び出し中の即時中断は不可）
 - **run分離の完全化**（`data/input` 固定参照や `COMPARE_STATE` 依存の段階的解消）
   - 現状: `COMPARE_STATE` はスレッドローカル化したが、永続化/プロセス分離（Celery）前提の整理は未完
 

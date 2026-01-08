@@ -74,6 +74,18 @@ class CompareSetupStep:
             }
         )
 
+        # 永続化（後からUI/APIで参照できるようにする）
+        initial_matching_path = work_dir / "initial_matching.json"
+        try:
+            initial_matching_path.write_text(str(initial_matching_json), encoding="utf-8")
+            ctx.events.emit(
+                ctx.run_id,
+                "artifact_updated",
+                {"ts": _utcnow_iso(), "kind": "initial_matching", "path": initial_matching_path.relative_to(run_dir).as_posix()},
+            )
+        except Exception:
+            pass
+
         try:
             COMPARE_STATE["initial_matching"] = json.loads(initial_matching_json)
         except Exception:
@@ -172,10 +184,12 @@ class PreAnalysisStep:
 
         from compare_app.agents.middleware import EventSinkMiddleware
 
-        llm_complex = build_llm(model=str(ctx.params.get("llm_complex_model", "gpt-5.2")))
+        llm_complex = build_llm(model=str(ctx.params.get("llm_complex_model", "gpt-5-mini")))
 
         # run入力（data/runs/{run_id}/input）を読む analyze_visual_contents を提供（data/input固定依存を回避）
-        llm_visual = build_llm(model=str(ctx.params.get("llm_visual_model", ctx.params.get("llm_complex_model", "gpt-5.2"))))
+        llm_visual = build_llm(
+            model=str(ctx.params.get("llm_visual_model", ctx.params.get("llm_complex_model", "gpt-5-mini")))
+        )
         from langchain_core.messages import HumanMessage
         from langchain_core.tools import tool
         import base64
@@ -252,7 +266,14 @@ class PreAnalysisStep:
             tools=tools,
             response_format=PreAnalysisResult,
             system_prompt=compare_type_analysis_prompt,
-            middleware=[EventSinkMiddleware(run_id=ctx.run_id, events=ctx.events, agent_name="pre_analysis_agent")],
+            middleware=[
+                EventSinkMiddleware(
+                    run_id=ctx.run_id,
+                    events=ctx.events,
+                    cancellation=ctx.cancellation,
+                    agent_name="pre_analysis_agent",
+                )
+            ],
             debug=False,
         )
 
@@ -411,10 +432,12 @@ class CompareAnalysisStep:
         from compare_app.agents.middleware import EventSinkMiddleware
 
         llm = build_llm()
-        llm_complex = build_llm(model=str(ctx.params.get("llm_complex_model", "gpt-5.2")))
+        llm_complex = build_llm(model=str(ctx.params.get("llm_complex_model", "gpt-5-mini")))
 
         # run入力（data/runs/{run_id}/input）を読む analyze_visual_contents を提供（data/input固定依存を回避）
-        llm_visual = build_llm(model=str(ctx.params.get("llm_visual_model", ctx.params.get("llm_complex_model", "gpt-5.2"))))
+        llm_visual = build_llm(
+            model=str(ctx.params.get("llm_visual_model", ctx.params.get("llm_complex_model", "gpt-5-mini")))
+        )
         from langchain_core.messages import HumanMessage
         from langchain_core.tools import tool
         import base64
@@ -488,7 +511,14 @@ class CompareAnalysisStep:
         agent = create_deep_agent(
             model=llm_complex,
             system_prompt=compare_parent_agent_prompt,
-            middleware=[EventSinkMiddleware(run_id=ctx.run_id, events=ctx.events, agent_name="compare_parent")],
+            middleware=[
+                EventSinkMiddleware(
+                    run_id=ctx.run_id,
+                    events=ctx.events,
+                    cancellation=ctx.cancellation,
+                    agent_name="compare_parent",
+                )
+            ],
             subagents=[
                 {
                     "name": "compare_general_purpose_agent",
@@ -496,7 +526,13 @@ class CompareAnalysisStep:
                     "system_prompt": compare_sub_agent_general,
                     "tools": tools_compare,
                     "middleware": [
-                        EventSinkMiddleware(run_id=ctx.run_id, events=ctx.events, agent_name="compare_general", is_subagent=True)
+                        EventSinkMiddleware(
+                            run_id=ctx.run_id,
+                            events=ctx.events,
+                            cancellation=ctx.cancellation,
+                            agent_name="compare_general",
+                            is_subagent=True,
+                        )
                     ],
                     "model": llm,
                 },
@@ -505,7 +541,15 @@ class CompareAnalysisStep:
                     "description": "与えられた特定の観点でドキュメント間の比較を行います。",
                     "system_prompt": compare_sub_agent1,
                     "tools": tools_compare,
-                    "middleware": [EventSinkMiddleware(run_id=ctx.run_id, events=ctx.events, agent_name="compare_agent", is_subagent=True)],
+                    "middleware": [
+                        EventSinkMiddleware(
+                            run_id=ctx.run_id,
+                            events=ctx.events,
+                            cancellation=ctx.cancellation,
+                            agent_name="compare_agent",
+                            is_subagent=True,
+                        )
+                    ],
                     "model": llm,
                 },
                 {
@@ -514,7 +558,13 @@ class CompareAnalysisStep:
                     "system_prompt": compare_sub_agent2,
                     "tools": tools_compare,
                     "middleware": [
-                        EventSinkMiddleware(run_id=ctx.run_id, events=ctx.events, agent_name="deep_research_agent", is_subagent=True)
+                        EventSinkMiddleware(
+                            run_id=ctx.run_id,
+                            events=ctx.events,
+                            cancellation=ctx.cancellation,
+                            agent_name="deep_research_agent",
+                            is_subagent=True,
+                        )
                     ],
                     "model": llm,
                 },
@@ -523,7 +573,15 @@ class CompareAnalysisStep:
                     "description": "分析結果の妥当性を検証するサブエージェントです。",
                     "system_prompt": compare_sub_agent3,
                     "tools": tools_compare,
-                    "middleware": [EventSinkMiddleware(run_id=ctx.run_id, events=ctx.events, agent_name="validate_agent", is_subagent=True)],
+                    "middleware": [
+                        EventSinkMiddleware(
+                            run_id=ctx.run_id,
+                            events=ctx.events,
+                            cancellation=ctx.cancellation,
+                            agent_name="validate_agent",
+                            is_subagent=True,
+                        )
+                    ],
                     "model": llm,
                 },
                 {
@@ -531,7 +589,15 @@ class CompareAnalysisStep:
                     "description": "分析結果をまとめて報告するサブエージェントです。",
                     "system_prompt": compare_sub_agent_report,
                     "model": llm,
-                    "middleware": [EventSinkMiddleware(run_id=ctx.run_id, events=ctx.events, agent_name="report_agent", is_subagent=True)],
+                    "middleware": [
+                        EventSinkMiddleware(
+                            run_id=ctx.run_id,
+                            events=ctx.events,
+                            cancellation=ctx.cancellation,
+                            agent_name="report_agent",
+                            is_subagent=True,
+                        )
+                    ],
                 },
             ],
             debug=False,

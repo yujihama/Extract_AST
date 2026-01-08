@@ -13,6 +13,12 @@
   - compare_setup は embedding/LLMキー必須
   - pre_analysis/compare_analysis はキー未設定時フォールバックあり（本番接続はTXT入力で検証済み）
 
+### 次に埋める（優先度高）
+
+- **PDF→TXT（LLM）実測検証**（ページ範囲/コスト/品質）
+- **長時間stepの途中キャンセル**（`compare_analysis` / `summarize_ast`）
+- **artifacts登録の網羅性**（DBの成果物一覧を“真”にする）
+
 ### 目的
 
 - PoC（`main.py`）の実行フローを **再利用可能なモジュール**に分解し、FastAPI+HTMXのUIで実行・監視・成果物閲覧できるようにする。
@@ -50,7 +56,7 @@
 ### 達成基準（受け入れ条件）
 
 - `run_id` を作成すると `data/runs/{run_id}/` が作られ、SQLiteに `runs` 行が追加される
-- `EventSink.emit(run_id, ...)` が `run_events` に保存でき、Run詳細画面（未実装でも）で取得可能な形になる
+- `EventSink.emit(run_id, ...)` が `run_events` に保存でき、Run詳細画面で取得可能な形になる
 - “アプリ層”が **既存PoCコードに依存せず** import可能（循環参照なし）
   - 現状: `compare_app/` は `src/` に依存しない土台として稼働（realモードの一部で `src/` を利用）
 
@@ -82,7 +88,7 @@
 
 ### 目的
 
-- 実処理が未接続でも「Run作成→開始→監視→成果物閲覧」のUIの骨格を完成させる。
+- 当初は実処理が未接続でも「Run作成→開始→監視→成果物閲覧」のUI骨格を完成させるのが目的（現在は real も接続済み）。
 
 ### 実装項目
 

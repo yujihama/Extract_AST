@@ -20,6 +20,17 @@ def _env(name: str, default: str) -> str:
     return v if v is not None and str(v).strip() else default
 
 
+def _resolve_path(repo_root: Path, value: str) -> str:
+    """env/引数のパスを repo_root 基準で解決する（相対パスのみ）。"""
+    try:
+        p = Path(value)
+        if p.is_absolute():
+            return str(p)
+        return str((repo_root / p).resolve())
+    except Exception:
+        return str(value)
+
+
 def build_default_executor() -> Tuple[RunExecutor, SqliteRunRepository, SqliteEventSink, SqliteArtifactRepository]:
     """UI/CLI共通のデフォルト構成（MVP）を組み立てる。
 
@@ -30,12 +41,13 @@ def build_default_executor() -> Tuple[RunExecutor, SqliteRunRepository, SqliteEv
     # .env を自動読み込み（UI/CLI共通）
     # - 環境変数が直接設定されるケースにも対応するため、override=False で「未設定のみ補完」する。
     # - `.env` を使わない運用では COMPARE_APP_LOAD_DOTENV=0 で無効化できる。
+    repo_root = Path(__file__).resolve().parent.parent
+
     try:
         load_flag = (os.getenv("COMPARE_APP_LOAD_DOTENV") or "1").strip().lower()
         if load_flag not in {"0", "false", "no", "off"}:
             from dotenv import load_dotenv
 
-            repo_root = Path(__file__).resolve().parent.parent
             dotenv_path = os.getenv("COMPARE_APP_DOTENV_PATH")
             if dotenv_path and str(dotenv_path).strip():
                 load_dotenv(Path(dotenv_path), override=False)
@@ -45,7 +57,10 @@ def build_default_executor() -> Tuple[RunExecutor, SqliteRunRepository, SqliteEv
         # dotenvが無い/読めない場合でも、環境変数が既に設定されていれば動く
         pass
 
-    db_path = _env("COMPARE_APP_DB_PATH", os.path.join("data", "compare_app.db"))
+    # DB/Run保存先は「起動ディレクトリ」に依存しないよう repo_root 基準で固定する。
+    default_db_path = str((repo_root / "data" / "compare_app.db").resolve())
+    raw_db_path = _env("COMPARE_APP_DB_PATH", default_db_path)
+    db_path = _resolve_path(repo_root, raw_db_path)
     init_db(db_path)
 
     # PoC由来のグローバル状態（COMPARE_STATE）をスレッドローカルへ（将来の並列実行に備える）
@@ -54,7 +69,10 @@ def build_default_executor() -> Tuple[RunExecutor, SqliteRunRepository, SqliteEv
     repo = SqliteRunRepository(db_path=db_path)
     events = SqliteEventSink(db_path=db_path)
     artifacts_repo = SqliteArtifactRepository(db_path=db_path)
-    artifacts = FileArtifactStore()
+    default_runs_root = str((repo_root / "data" / "runs").resolve())
+    raw_runs_root = _env("COMPARE_APP_RUNS_ROOT", default_runs_root)
+    runs_root = Path(_resolve_path(repo_root, raw_runs_root))
+    artifacts = FileArtifactStore(runs_root=runs_root)
     cancellations = InMemoryCancellationRegistry()
 
     def _is_dummy(ctx) -> bool:

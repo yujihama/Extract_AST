@@ -9,7 +9,8 @@ from langchain.agents.middleware import AgentMiddleware, AgentState
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from compare_app.contracts import EventSink
+from compare_app.contracts import CancellationToken, EventSink
+from compare_app.core.pipeline import CancelledError
 
 
 def _utcnow_iso() -> str:
@@ -32,10 +33,16 @@ class EventSinkMiddleware(AgentMiddleware):
 
     run_id: str
     events: EventSink
+    cancellation: Optional[CancellationToken] = None
     agent_name: str = "agent"
     is_subagent: bool = False
 
+    def _raise_if_cancelled(self) -> None:
+        if self.cancellation is not None and self.cancellation.is_cancelled():
+            raise CancelledError(f"cancelled during agent execution: {self.agent_name}")
+
     def before_agent(self, state: AgentState, runtime) -> Optional[dict]:
+        self._raise_if_cancelled()
         messages = state.get("messages", [])
         last = messages[-1:] if messages else []
         self.events.emit(
@@ -72,6 +79,7 @@ class EventSinkMiddleware(AgentMiddleware):
         return None
 
     def wrap_tool_call(self, request: ToolCallRequest, handler: Callable[[ToolCallRequest], Any]) -> Any:
+        self._raise_if_cancelled()
         tool_call = request.tool_call
         tool_name = tool_call.get("name", "unknown")
         tool_args = tool_call.get("args", {}) or {}

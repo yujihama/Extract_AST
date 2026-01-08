@@ -125,9 +125,15 @@ class SqliteEventSink(EventSink):
                         INSERT INTO artifacts(run_id, kind, path, created_at, updated_at, meta_json)
                         VALUES (?,?,?,?,?,?)
                         ON CONFLICT(run_id, path) DO UPDATE SET
-                          kind=excluded.kind,
+                          kind=CASE
+                            WHEN excluded.kind='file' THEN artifacts.kind
+                            ELSE excluded.kind
+                          END,
                           updated_at=excluded.updated_at,
-                          meta_json=excluded.meta_json
+                          meta_json=CASE
+                            WHEN excluded.kind='file' THEN artifacts.meta_json
+                            ELSE excluded.meta_json
+                          END
                         """,
                         (
                             str(run_id),

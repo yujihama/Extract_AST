@@ -4,7 +4,7 @@ import argparse
 import json
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 
 def _load_json(path: str) -> Dict[str, Any]:
@@ -123,7 +123,7 @@ def _gather_children_summaries_or_content(node: Dict[str, Any], *, max_chars: in
 
 @dataclass(frozen=True)
 class SummarizeOptions:
-    model: str = "gpt-5.2"
+    model: str = "gpt-5-mini"
     max_source_chars: int = 6000
     max_descendant_chars: int = 8000
     summary_style: str = "日本語で1〜3文の簡潔な要約。箇条書きは不要。"
@@ -140,7 +140,13 @@ def _build_llm(model: Optional[str] = None):
 
     from langchain_openai import AzureChatOpenAI, ChatOpenAI
 
-    model_name = model or os.getenv("OPENAI_MODEL") or os.getenv("MODEL") or "gpt-5.2"
+    model_name = model or os.getenv("OPENAI_MODEL") or os.getenv("MODEL") or "gpt-5-mini"
+
+
+class SummarizationCancelled(RuntimeError):
+    """要約処理中の協調的キャンセル用（compare_app側で CancelledError に変換する）。"""
+
+    pass
 
     if provider in {"azure", "azureopenai", "azure_openai"}:
         return AzureChatOpenAI(
@@ -164,6 +170,7 @@ def summarize_ast_inplace(
     *,
     ast_path: str,
     options: SummarizeOptions = SummarizeOptions(),
+    is_cancelled: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, Any]:
     """
     AST JSON を読み込み、子を持つノードのみ content_summary を LLM で生成して書き戻す。
@@ -190,6 +197,8 @@ def summarize_ast_inplace(
     from langchain_core.messages import HumanMessage, SystemMessage
 
     for node, path in nodes_with_paths:
+        if is_cancelled is not None and bool(is_cancelled()):
+            raise SummarizationCancelled("cancelled")
         if _is_leaf(node):
             node["content_summary"] = ""
             continue
@@ -240,6 +249,8 @@ def summarize_ast_inplace(
             "注意: 要約以外は出力しないこと。"
         )
 
+        if is_cancelled is not None and bool(is_cancelled()):
+            raise SummarizationCancelled("cancelled")
         resp = llm.invoke([SystemMessage(content=sys), HumanMessage(content=user)])
         summary = getattr(resp, "content", "")
         if not isinstance(summary, str):

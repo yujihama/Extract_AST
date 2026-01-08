@@ -18,6 +18,10 @@ blueprint_ast_builder_prompt = """
 - **仮説検証**: 作成した正規表現が、本文中の「単なる箇条書き」や「文中参照」を誤検知しないか、実際にテキスト検索を行って確認してください。
 - **文脈条件の定義**: 正規表現だけでは区別できない場合、以下のような「周辺条件（Context）」を定義してください。
 
+### 正規表現の重要ルール（必須）
+- **Python `re` でコンパイル可能な正規表現**のみを使用してください。
+  - `\\p{Han}` のような **Unicode property escape は使用禁止**（Python標準 `re` 非対応）。
+
     これらは `validation_rules` に落とし込めるものを優先してください（WHERE句的に機械判定できるため）。
 
     - 「前の行が空行であること」→ `requires_prev_empty_line` または `prev_line_regex: '^$'`
@@ -46,6 +50,10 @@ blueprint_ast_builder_prompt = """
 
 blueprint_validate_prompt = """
 あなたは以下のStepで指示されたblueprintを検証するタスクを行います。
+
+### 正規表現の重要ルール（必須）
+- blueprint内の regex は **Python `re` でコンパイル可能**である必要があります。
+  - `\\p{...}` のような Unicode property escape は使用しないでください（Python標準 `re` 非対応）。
 
 ## Step 1: ツールを実行して情報収集
 

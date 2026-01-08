@@ -149,6 +149,13 @@ python -m compare_app.cli create --doc-a .\data\input\仕訳定義書.txt --doc-
 python -m compare_app.cli execute <run_id>
 ```
 
+コスト節約のスモーク（小規模テスト文書 + gpt-5-mini）:
+
+```powershell
+python -m compare_app.cli create --doc-a .\data\input\test_small_rules_v1.txt --doc-b .\data\input\test_small_rules_v2.txt --mode real --params '{\"llm_complex_model\":\"gpt-5-mini\",\"summarize_ast\":false}'
+python -m compare_app.cli execute <run_id>
+```
+
 ### 成果物（Artifacts）の確認方法
 
 - **Web UI**: Run詳細（`/runs/{run_id}`）の「成果物」から `view` / `download`
@@ -291,7 +298,8 @@ LLMが“自分で読む/探す”ためのツールを定義します（例）:
 
 ## 注意事項（PoC）
 
-- **UI/アップロード/プレビュー画面は未実装**です（現状はローカルファイル＋テンプレート更新の検証が中心）
+- **UI/アップロード/プレビュー画面（MVP）は `compare_app/` で実装済み**です（Run作成/実行/イベント追跡/成果物閲覧）。
+- ただし blueprint/AST の専用閲覧UIや、比較結果の高度な要約/集計などは今後拡張予定です。
 - LLM/Embeddingを使用するため **実行コスト・実行時間**がかかります
 - 長文はコンテキスト制約があるため、ツールで段階的に読む設計になっています
 

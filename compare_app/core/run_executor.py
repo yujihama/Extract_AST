@@ -86,6 +86,36 @@ class RunExecutor:
         except Exception:
             return None
 
+    def _sync_artifacts_from_fs(self, run_id: str, paths: Mapping[str, str]) -> None:
+        """FS上の成果物を artifacts に反映する（登録漏れ対策 / kindは基本 'file'）。"""
+        try:
+            from pathlib import Path
+
+            run_dir = Path(paths.get("run_dir") or (Path("data") / "runs" / run_id))
+            if not run_dir.exists():
+                return
+
+            for sub in ["input", "work", "out", "log", "cache"]:
+                d = run_dir / sub
+                if not d.exists():
+                    continue
+                for p in d.rglob("*"):
+                    if not p.is_file():
+                        continue
+                    rel = p.relative_to(run_dir).as_posix()
+                    try:
+                        st = p.stat()
+                        size = int(st.st_size)
+                    except Exception:
+                        size = None
+                    self.events.emit(
+                        run_id,
+                        "artifact_updated",
+                        {"ts": _utcnow().isoformat(), "kind": "file", "path": rel, "size": size},
+                    )
+        except Exception:
+            return
+
     def create_run(self, *, doc_a_path: str, doc_b_path: str, params: Mapping[str, Any]) -> RunRecord:
         run_id = uuid.uuid4().hex
         run_dir_paths = self.artifacts.ensure_run_dirs(run_id)
@@ -157,6 +187,7 @@ class RunExecutor:
             self.events.emit(run_id, "run_status_changed", {"ts": _utcnow().isoformat(), "status": "cancelled"})
             # ログ出力（キャンセルでも残す）
             self._export_events_jsonl(run_id, paths)
+            self._sync_artifacts_from_fs(run_id, paths)
             return
         except Exception as e:
             self.repo.update_status(run_id, "failed")
@@ -168,10 +199,12 @@ class RunExecutor:
             )
             # ログ出力（失敗でも残す）
             self._export_events_jsonl(run_id, paths)
+            self._sync_artifacts_from_fs(run_id, paths)
             raise
 
         self.repo.update_status(run_id, "succeeded")
         self.events.emit(run_id, "run_status_changed", {"ts": _utcnow().isoformat(), "status": "succeeded"})
         # ログ出力（成功でも残す）
         self._export_events_jsonl(run_id, paths)
+        self._sync_artifacts_from_fs(run_id, paths)
 
