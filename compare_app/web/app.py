@@ -4,6 +4,7 @@ import json
 import asyncio
 import os
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
 
@@ -280,7 +281,12 @@ def create_app() -> FastAPI:
                 if rel in seen:
                     continue
                 st = p.stat()
-                items.append({"rel": rel, "kind": None, "size": st.st_size, "updated_at": None})
+                ts = datetime.now(timezone.utc).isoformat()
+                try:
+                    events.emit(run_id, "artifact_updated", {"ts": ts, "kind": "file", "path": rel, "size": st.st_size})
+                except Exception:
+                    pass
+                items.append({"rel": rel, "kind": "file", "size": st.st_size, "updated_at": None})
                 seen.add(rel)
 
         # sort: kindありを上、updated_at新しい順（ざっくり）
@@ -551,4 +557,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-

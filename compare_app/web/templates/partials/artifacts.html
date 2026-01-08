@@ -1,0 +1,23 @@
+<h3>成果物一覧</h3>
+<table>
+  <thead>
+    <tr>
+      <th>path</th>
+      <th>kind</th>
+      <th>size</th>
+      <th>updated</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for it in items %}
+    <tr>
+      <td><a href="/runs/{{ run_id }}/artifacts/view/{{ it.rel }}">{{ it.rel }}</a></td>
+      <td>{{ it.kind or "-" }}</td>
+      <td>{{ it.size or "-" }}</td>
+      <td>{{ it.updated_at or "-" }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="4" class="muted">成果物はまだありません。</td></tr>
+  {% endfor %}
+  </tbody>
+</table>

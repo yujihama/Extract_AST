@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>Run一覧</h1>
+  <p class="muted">DB: {{ db_path or "(unknown)" }}</p>
+  <a class="btn" href="/runs/new">新規Runを作成</a>
+</div>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>run_id</th>
+        <th>status</th>
+        <th>created</th>
+        <th>started</th>
+        <th>finished</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for run in runs %}
+      <tr>
+        <td><a href="/runs/{{ run.run_id }}">{{ run.run_id }}</a></td>
+        <td class="status">{{ run.status }}</td>
+        <td>{{ run.created_at }}</td>
+        <td>{{ run.started_at or "-" }}</td>
+        <td>{{ run.finished_at or "-" }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="muted">Runはまだありません。</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
