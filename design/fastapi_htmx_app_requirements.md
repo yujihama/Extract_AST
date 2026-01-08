@@ -25,8 +25,8 @@
 - **Run 作成**: 2文書（docA/docB）と実行パラメータをまとめた実行単位 `run_id` を発行
 - **状態**: `queued / running / succeeded / failed / cancelled` を保持
 - **進捗**:
-  - ステップ単位（例: `convert_pdf`, `build_blueprint`, `build_ast`, `pre_analysis`, `compare_analysis`, `finalize`）
-  - パーセンテージ（ベストエフォート）と直近メッセージ
+  - ステップイベント（`step_started/step_finished/step_failed/step_skipped`）を EventSink に保存
+  - パーセンテージやメッセージの集計は未実装（UIはイベントタイムラインで追跡）
 - **成果物**:
   - 入力ファイル、生成txt、blueprint、ast、embedding cache、生成テンプレ、filled template、ログ（JSONL/レポート）を Run に紐付けて一覧/閲覧/ダウンロードできる
 
@@ -34,6 +34,7 @@
 
 - **アップロード**: PDF/TXT をアップロードして Run に紐付けて保存
 - **テキスト入力**: 直接貼り付け（小さいデータ用、任意）
+  - 現状は UI 未対応。JSON API（`POST /api/runs/text`）でのみ作成可能
 - **前処理**:
   - PDF→txt 変換（高速モード / LLMモード）
   - txt はそのまま利用（エンコーディングは `errors=replace` 等で扱う）
@@ -276,4 +277,3 @@ SQLiteは「どのcacheを使ったか/統計」だけ持つのが現実的。
   - 現状: deep_agentの tool 呼び出し境界・ASTサマリのループ境界でキャンセル可能（LLM呼び出し中の即時中断は不可）
 - **run分離の完全化**（`data/input` 固定参照や `COMPARE_STATE` 依存の段階的解消）
   - 現状: `COMPARE_STATE` はスレッドローカル化したが、永続化/プロセス分離（Celery）前提の整理は未完
-

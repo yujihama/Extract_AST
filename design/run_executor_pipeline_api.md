@@ -10,13 +10,15 @@
 ## 実装状況（最新）
 
 - 実装本体は `compare_app/` 配下（UI/CLI共通）
-  - `Pipeline`: `compare_app/core/pipeline.py`
-  - `RunExecutor`: `compare_app/core/run_executor.py`
-  - `InProcessJobQueue`: `compare_app/infra/inmemory.py`
-  - `SqliteRunRepository` / `SqliteEventSink`: `compare_app/infra/sqlite_store.py`
+- `Pipeline`: `compare_app/core/pipeline.py`
+- `RunExecutor`: `compare_app/core/run_executor.py`
+- `InProcessJobQueue`: `compare_app/infra/inmemory.py`
+- `SqliteRunRepository` / `SqliteEventSink`: `compare_app/infra/sqlite_store.py`
+- `SqliteArtifactRepository`: `compare_app/infra/sqlite_store.py`（artifactsはイベント経由で更新、読み取り専用）
 - `src.tools.COMPARE_STATE` は `compare_app/compat/patch_src_tools.py` によりスレッドローカルへ差し替え
 - `Pipeline` は条件付きstep（`ConditionalStep`）により `step_skipped` をemit可能
 - キャンセルは `CancellationRegistry` による協調的キャンセル（`request_cancel(run_id)`）
+- `RunExecutor` は完了時に `log/events.jsonl` をエクスポートし、FSスキャンで不足artifactを補完する
 
 ---
 
@@ -62,9 +64,15 @@ UI/CLIは **Coreの `RunExecutor`** のみを呼ぶ（InfraはDIで注入）。
 
 ### ArtifactStore / ArtifactRepository（最小）
 
-- `ensure_run_dirs(run_id) -> RunPaths`
-- `add_artifact(run_id, kind, src_path | content) -> ArtifactRecord`
-- `get_artifact_path(run_id, kind | artifact_id) -> str`
+- `ArtifactStore`（FS）
+  - `ensure_run_dirs(run_id) -> RunPaths`
+  - `add_input(run_id, which, src_path) -> dest_path`
+- `ArtifactRepository`（SQLite）
+  - `list_artifacts(run_id) -> list[dict]`
+
+補足:
+- artifacts は `EventSink.emit(..., event_type="artifact_created|artifact_updated")` を契機に upsert される
+- `RunExecutor` が完了時に FS をスキャンし、`kind="file"` で補完登録する
 
 ### JobQueue（in-process→Celery）
 
@@ -131,4 +139,3 @@ UI/CLIは **Coreの `RunExecutor`** のみを呼ぶ（InfraはDIで注入）。
 - **idempotent step**: stepは「入力artifact→出力artifact」に寄せ、`force=false` でスキップ可能にする
 - **payload肥大化回避**: EventSinkは「要約＋参照」に寄せ、本文はartifactで保持
 - **JobQueue差し替え**: UI/CLIは enqueue 実装を意識しない
-
