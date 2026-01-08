@@ -69,26 +69,35 @@ class Pipeline:
         if raw is None:
             return None
         if isinstance(raw, str):
-            return [raw]
+            name = raw.strip()
+            return [name] if name else None
         if isinstance(raw, Iterable):
             items: list[str] = []
             for item in raw:
                 if item is None:
                     continue
-                items.append(str(item))
+                name = str(item).strip()
+                if not name:
+                    continue
+                items.append(name)
             return items or None
-        return [str(raw)]
+        name = str(raw).strip()
+        return [name] if name else None
 
     def _resolve_step_range(self, name_to_index: dict[str, int], step_from: Any, step_to: Any) -> tuple[int, int] | None:
         start = 0
         end = len(name_to_index) - 1
         if step_from is not None:
-            step_from = str(step_from)
+            step_from = str(step_from).strip()
+            if not step_from:
+                return None
             if step_from not in name_to_index:
                 return None
             start = name_to_index[step_from]
         if step_to is not None:
-            step_to = str(step_to)
+            step_to = str(step_to).strip()
+            if not step_to:
+                return None
             if step_to not in name_to_index:
                 return None
             end = name_to_index[step_to]
