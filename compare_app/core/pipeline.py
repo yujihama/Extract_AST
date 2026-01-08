@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Protocol, Sequence
+from typing import Any, Callable, Iterable, Protocol, Sequence
 
 from compare_app.contracts import CancellationToken, EventSink
 
@@ -65,8 +65,72 @@ class Pipeline:
     def __init__(self, steps: Sequence[Step]) -> None:
         self._steps = list(steps)
 
+    def _normalize_steps_include(self, raw: Any) -> list[str] | None:
+        if raw is None:
+            return None
+        if isinstance(raw, str):
+            return [raw]
+        if isinstance(raw, Iterable):
+            items: list[str] = []
+            for item in raw:
+                if item is None:
+                    continue
+                items.append(str(item))
+            return items or None
+        return [str(raw)]
+
+    def _resolve_step_range(self, name_to_index: dict[str, int], step_from: Any, step_to: Any) -> tuple[int, int] | None:
+        start = 0
+        end = len(name_to_index) - 1
+        if step_from is not None:
+            step_from = str(step_from)
+            if step_from not in name_to_index:
+                return None
+            start = name_to_index[step_from]
+        if step_to is not None:
+            step_to = str(step_to)
+            if step_to not in name_to_index:
+                return None
+            end = name_to_index[step_to]
+        if start > end:
+            return None
+        return start, end
+
     def run(self, ctx: RunContext) -> None:
+        step_names = [step.name for step in self._steps]
+        name_to_index = {name: idx for idx, name in enumerate(step_names)}
+        steps_include = self._normalize_steps_include(ctx.params.get("steps_include"))
+        step_range = self._resolve_step_range(
+            name_to_index,
+            ctx.params.get("step_from"),
+            ctx.params.get("step_to"),
+        )
+
         for step in self._steps:
+            if steps_include is not None and step.name not in steps_include:
+                ctx.events.emit(
+                    ctx.run_id,
+                    "step_skipped",
+                    {"ts": _utcnow().isoformat(), "step": step.name},
+                )
+                continue
+            if step_range is not None:
+                idx = name_to_index[step.name]
+                if idx < step_range[0] or idx > step_range[1]:
+                    ctx.events.emit(
+                        ctx.run_id,
+                        "step_skipped",
+                        {"ts": _utcnow().isoformat(), "step": step.name},
+                    )
+                    continue
+            elif ctx.params.get("step_from") is not None or ctx.params.get("step_to") is not None:
+                ctx.events.emit(
+                    ctx.run_id,
+                    "step_skipped",
+                    {"ts": _utcnow().isoformat(), "step": step.name},
+                )
+                continue
+
             if ctx.cancellation.is_cancelled():
                 ctx.events.emit(
                     ctx.run_id,
@@ -121,4 +185,3 @@ class Pipeline:
                 "step_finished",
                 {"ts": _utcnow().isoformat(), "step": step.name},
             )
-
