@@ -32,6 +32,15 @@
   - `POST /runs/{run_id}/start`, `POST /runs/{run_id}/cancel`
   - `GET /runs/{run_id}/events`（SSE）
   - `GET /runs/{run_id}/template/{draft|filled}`（テンプレプレビュー）
+- **JSON API（UI未実装でも使えるI/F）**: `compare_app/web/app.py`
+  - `GET /api/runs`, `GET /api/runs/{run_id}`
+  - `POST /api/runs/text`（テキスト入力でRun作成）
+  - `GET /api/runs/{run_id}/events`（JSONイベント一覧）
+  - `GET /api/runs/{run_id}/blueprint/{a|b}` / `PUT /api/runs/{run_id}/blueprint/{a|b}`
+  - `GET /api/runs/{run_id}/blueprint/{a|b}/preview`
+  - `GET /api/runs/{run_id}/blueprint/{a|b}/validate`
+  - `GET /api/runs/{run_id}/ast/{a|b}`
+  - `GET /api/runs/{run_id}/compare/initial_matching`
 - **CLI（テスト自動化の入口）**: `compare_app/cli.py`
   - `create/start/execute/cancel/tail/list/artifacts/export`
 - **エージェント可視化（案A）**:
@@ -155,6 +164,7 @@ Run詳細は「常時更新される領域」と「手動で開く領域」を�
   - `GET /runs/{run_id}/partials/template?kind=draft|filled`
 - **イベントタイムライン**（SSEで追記）  
   - `GET /runs/{run_id}/events`（SSE）
+  - HTMLポーリング用の `partials/events` は現状未実装
 
 ---
 
@@ -171,8 +181,6 @@ Run詳細は「常時更新される領域」と「手動で開く領域」を�
 - `GET /runs/{run_id}/partials/status`
 - `GET /runs/{run_id}/partials/artifacts`（実装済み: DB優先＋FS補完）
 - `GET /runs/{run_id}/partials/template?kind=draft|filled`（実装済み）
-- `GET /runs/{run_id}/partials/events`  
-  - SSEが難しい場合の代替（ポーリングで差分表示）
 
 ### 2.3 コマンド（POST）
 
@@ -336,4 +344,3 @@ compare_app側で「run入力（data/runs/{run_id}/input）を読む同名ツー
 4. 実ジョブを順に接続（PDF変換→blueprint→AST→pre_analysis→compare_analysis）
 5. Debugログ/ツールイベントをUIへ（案A or B）
 6. 成果物（テンプレ/filled）プレビューとダウンロード
-
