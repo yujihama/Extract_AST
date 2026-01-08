@@ -156,6 +156,22 @@ python -m compare_app.cli create --doc-a .\data\input\test_small_rules_v1.txt --
 python -m compare_app.cli execute <run_id>
 ```
 
+#### ステップの実行範囲を絞る（UI/CLI共通）
+
+`create` 時の `params` で以下を指定すると、パイプラインのステップ実行を絞り込めます（未指定なら全ステップ実行）。
+
+- `steps_include`: 実行したいステップ名の配列（例: `["build_blueprint_a", "compare_analysis"]`）
+- `step_from`: 開始ステップ名（例: `build_blueprint_a`）
+- `step_to`: 終了ステップ名（例: `compare_analysis`）
+
+範囲指定は `compare_app/bootstrap.py` に並んだステップ順が基準です。`steps_include` と `step_from`/`step_to` は併用でき、両方の条件に合致したステップのみ実行されます。
+
+```powershell
+# 例: AST生成以降だけ実行
+python -m compare_app.cli create --doc-a .\data\input\仕訳定義書.txt --doc-b .\data\input\仕訳定義書_文体変更版.txt --mode real --params '{\"step_from\":\"build_ast_a\",\"step_to\":\"compare_analysis\"}'
+python -m compare_app.cli execute <run_id>
+```
+
 ### 成果物（Artifacts）の確認方法
 
 - **Web UI**: Run詳細（`/runs/{run_id}`）の「成果物」から `view` / `download`
@@ -302,4 +318,3 @@ LLMが“自分で読む/探す”ためのツールを定義します（例）:
 - ただし blueprint/AST の専用閲覧UIや、比較結果の高度な要約/集計などは今後拡張予定です。
 - LLM/Embeddingを使用するため **実行コスト・実行時間**がかかります
 - 長文はコンテキスト制約があるため、ツールで段階的に読む設計になっています
-

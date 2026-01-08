@@ -91,6 +91,15 @@ UI/CLIは **Coreの `RunExecutor`** のみを呼ぶ（InfraはDIで注入）。
 - `events`（EventSink）
 - `cancellation`（CancellationToken）
 
+#### paramsのステップ選択（UI/CLI共通）
+
+- `steps_include`: 実行対象ステップ名の配列
+- `step_from`: 開始ステップ名
+- `step_to`: 終了ステップ名
+
+`steps_include` と `step_from`/`step_to` は併用でき、両条件を満たすステップのみ実行される。  
+基準となるステップ順序は `compare_app/bootstrap.py` の `Pipeline` 定義に並ぶ順序。
+
 ### Step I/F
 
 - `name: str`
