@@ -104,37 +104,113 @@ class DummyAgentTraceStep:
     def run(self, ctx: RunContext) -> None:
         import time
 
+        # ダミー用の固定invocation_id
+        parent_inv_id = "dummy_parent1"
+        child_inv_id = "dummy_child01"
+
         ts = _utcnow_iso()
-        ctx.events.emit(ctx.run_id, "agent_start", {"ts": ts, "agent_name": "dummy_agent", "is_subagent": False})
+        # 親エージェント開始
+        ctx.events.emit(ctx.run_id, "agent_start", {
+            "ts": ts,
+            "agent_name": "dummy_agent",
+            "is_subagent": False,
+            "invocation_id": parent_inv_id,
+            "parent_invocation_id": None,
+            "parent_agent_name": None,
+            "depth": 1,
+        })
         time.sleep(0.05)
         ctx.events.emit(
             ctx.run_id,
             "tool_call_start",
-            {"ts": _utcnow_iso(), "agent_name": "dummy_agent", "tool_name": "read_text_segment", "input": {"path": "input/doc_a.txt", "start": 0, "length": 200}},
+            {
+                "ts": _utcnow_iso(),
+                "agent_name": "dummy_agent",
+                "tool_name": "read_text_segment",
+                "input": {"path": "input/doc_a.txt", "start": 0, "length": 200},
+                "invocation_id": parent_inv_id,
+                "parent_invocation_id": None,
+                "parent_agent_name": None,
+                "depth": 1,
+            },
         )
         time.sleep(0.05)
         ctx.events.emit(
             ctx.run_id,
             "tool_call_result",
-            {"ts": _utcnow_iso(), "agent_name": "dummy_agent", "tool_name": "read_text_segment", "output_preview": "（dummy output）"},
+            {
+                "ts": _utcnow_iso(),
+                "agent_name": "dummy_agent",
+                "tool_name": "read_text_segment",
+                "output_preview": "（dummy output）",
+                "invocation_id": parent_inv_id,
+                "parent_invocation_id": None,
+                "parent_agent_name": None,
+                "depth": 1,
+            },
         )
         time.sleep(0.05)
 
-        ctx.events.emit(ctx.run_id, "agent_start", {"ts": _utcnow_iso(), "agent_name": "dummy_subagent", "is_subagent": True})
+        # 子エージェント開始（親エージェントの中から呼ばれる）
+        ctx.events.emit(ctx.run_id, "agent_start", {
+            "ts": _utcnow_iso(),
+            "agent_name": "dummy_subagent",
+            "is_subagent": True,
+            "invocation_id": child_inv_id,
+            "parent_invocation_id": parent_inv_id,
+            "parent_agent_name": "dummy_agent",
+            "depth": 2,
+        })
         time.sleep(0.05)
         ctx.events.emit(
             ctx.run_id,
             "tool_call_start",
-            {"ts": _utcnow_iso(), "agent_name": "dummy_subagent", "tool_name": "extract_regex_matches", "input": {"pattern": ".*", "path": "work/template_draft.md"}},
+            {
+                "ts": _utcnow_iso(),
+                "agent_name": "dummy_subagent",
+                "tool_name": "extract_regex_matches",
+                "input": {"pattern": ".*", "path": "work/template_draft.md"},
+                "invocation_id": child_inv_id,
+                "parent_invocation_id": parent_inv_id,
+                "parent_agent_name": "dummy_agent",
+                "depth": 2,
+            },
         )
         time.sleep(0.05)
         ctx.events.emit(
             ctx.run_id,
             "tool_call_error",
-            {"ts": _utcnow_iso(), "agent_name": "dummy_subagent", "tool_name": "extract_regex_matches", "error": "dummy error"},
+            {
+                "ts": _utcnow_iso(),
+                "agent_name": "dummy_subagent",
+                "tool_name": "extract_regex_matches",
+                "error": "dummy error",
+                "invocation_id": child_inv_id,
+                "parent_invocation_id": parent_inv_id,
+                "parent_agent_name": "dummy_agent",
+                "depth": 2,
+            },
         )
         time.sleep(0.05)
-        ctx.events.emit(ctx.run_id, "agent_end", {"ts": _utcnow_iso(), "agent_name": "dummy_subagent", "is_subagent": True})
+        # 子エージェント終了
+        ctx.events.emit(ctx.run_id, "agent_end", {
+            "ts": _utcnow_iso(),
+            "agent_name": "dummy_subagent",
+            "is_subagent": True,
+            "invocation_id": child_inv_id,
+            "parent_invocation_id": parent_inv_id,
+            "parent_agent_name": "dummy_agent",
+            "depth": 2,
+        })
         time.sleep(0.05)
-        ctx.events.emit(ctx.run_id, "agent_end", {"ts": _utcnow_iso(), "agent_name": "dummy_agent", "is_subagent": False})
+        # 親エージェント終了
+        ctx.events.emit(ctx.run_id, "agent_end", {
+            "ts": _utcnow_iso(),
+            "agent_name": "dummy_agent",
+            "is_subagent": False,
+            "invocation_id": parent_inv_id,
+            "parent_invocation_id": None,
+            "parent_agent_name": None,
+            "depth": 1,
+        })
 

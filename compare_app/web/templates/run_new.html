@@ -1,87 +1,387 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card">
-  <h1>Run作成</h1>
-  <form action="/runs" method="post" enctype="multipart/form-data" class="grid grid-2">
-    <div>
-      <h3>入力</h3>
-      <label>doc A (PDF/TXT)
-        <input type="file" name="doc_a" required>
-      </label>
-      <br>
-      <label>doc B (PDF/TXT)
-        <input type="file" name="doc_b" required>
-      </label>
-      <br><br>
-      <label>mode
-        <select name="mode">
-          <option value="dummy">dummy</option>
-          <option value="real" selected>real</option>
-        </select>
-      </label>
-      <br><br>
-      <label>
-        <input type="checkbox" name="start_now" checked>
-        すぐ開始
-      </label>
+<div class="flex flex-col gap-6">
+  <!-- ヘッダー -->
+  <div class="card bg-base-100 shadow-xl">
+    <div class="card-body">
+      <div class="flex items-center gap-2">
+        <a href="/" class="btn btn-ghost btn-sm">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+        </a>
+        <h1 class="card-title text-2xl">Run作成</h1>
+      </div>
+      <p class="text-base-content/60 text-sm">2つのドキュメントを選択またはアップロードして比較を開始します。</p>
+    </div>
+  </div>
+
+  <!-- フォーム -->
+  <form action="/runs" method="post" enctype="multipart/form-data" class="flex flex-col gap-6">
+    <!-- ドキュメント選択 -->
+    <div class="card bg-base-100 shadow-xl">
+      <div class="card-body">
+        <h2 class="card-title text-lg">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          入力ドキュメント
+        </h2>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+          <!-- Document A -->
+          <div class="space-y-4">
+            <h3 class="font-medium text-sm text-base-content/70 flex items-center gap-2">
+              <span class="badge badge-primary badge-sm">A</span>
+              Document A（比較元）
+            </h3>
+            
+            <!-- 既存ドキュメントから選択 -->
+            <div class="form-control w-full">
+              <label class="label">
+                <span class="label-text">既存ドキュメントから選択</span>
+              </label>
+              <select name="doc_a_hash" id="doc_a_hash" class="select select-bordered w-full"
+                      onchange="toggleDocAUpload()">
+                <option value="">新規アップロード</option>
+                {% for doc in documents %}
+                <option value="{{ doc.doc_hash }}">
+                  {{ doc.original_filename }} ({{ "{:,}".format(doc.char_count) }}文字)
+                  {% if doc.has_ast %} ✓AST{% endif %}
+                  {% if doc.has_blueprint %} ✓BP{% endif %}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            
+            <!-- または新規アップロード -->
+            <div id="doc_a_upload" class="form-control w-full">
+              <label class="label">
+                <span class="label-text">または新規アップロード</span>
+                <span class="label-text-alt text-error" id="doc_a_required"></span>
+              </label>
+              <input type="file" name="doc_a" id="doc_a_input"
+                     class="file-input file-input-bordered file-input-primary w-full" 
+                     accept=".pdf,.txt" />
+            </div>
+          </div>
+          
+          <!-- Document B -->
+          <div class="space-y-4">
+            <h3 class="font-medium text-sm text-base-content/70 flex items-center gap-2">
+              <span class="badge badge-secondary badge-sm">B</span>
+              Document B（比較先）
+            </h3>
+            
+            <!-- 既存ドキュメントから選択 -->
+            <div class="form-control w-full">
+              <label class="label">
+                <span class="label-text">既存ドキュメントから選択</span>
+              </label>
+              <select name="doc_b_hash" id="doc_b_hash" class="select select-bordered w-full"
+                      onchange="toggleDocBUpload()">
+                <option value="">新規アップロード</option>
+                {% for doc in documents %}
+                <option value="{{ doc.doc_hash }}">
+                  {{ doc.original_filename }} ({{ "{:,}".format(doc.char_count) }}文字)
+                  {% if doc.has_ast %} ✓AST{% endif %}
+                  {% if doc.has_blueprint %} ✓BP{% endif %}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            
+            <!-- または新規アップロード -->
+            <div id="doc_b_upload" class="form-control w-full">
+              <label class="label">
+                <span class="label-text">または新規アップロード</span>
+                <span class="label-text-alt text-error" id="doc_b_required"></span>
+              </label>
+              <input type="file" name="doc_b" id="doc_b_input"
+                     class="file-input file-input-bordered file-input-primary w-full"
+                     accept=".pdf,.txt" />
+            </div>
+          </div>
+        </div>
+        
+        {% if documents %}
+        <div class="alert alert-info mt-4">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          <span class="text-sm">
+            既存ドキュメントを選択すると、AST/Blueprintが再利用され処理時間が短縮されます。
+            <a href="/documents" class="link link-primary">ドキュメント一覧を見る</a>
+          </span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    
+    <script>
+    function toggleDocAUpload() {
+      const select = document.getElementById('doc_a_hash');
+      const upload = document.getElementById('doc_a_upload');
+      const input = document.getElementById('doc_a_input');
+      const req = document.getElementById('doc_a_required');
+      
+      if (select.value) {
+        upload.style.opacity = '0.5';
+        input.value = '';
+        req.textContent = '';
+      } else {
+        upload.style.opacity = '1';
+        req.textContent = '必須';
+      }
+    }
+    
+    function toggleDocBUpload() {
+      const select = document.getElementById('doc_b_hash');
+      const upload = document.getElementById('doc_b_upload');
+      const input = document.getElementById('doc_b_input');
+      const req = document.getElementById('doc_b_required');
+      
+      if (select.value) {
+        upload.style.opacity = '0.5';
+        input.value = '';
+        req.textContent = '';
+      } else {
+        upload.style.opacity = '1';
+        req.textContent = '必須';
+      }
+    }
+    
+    // 初期状態設定
+    document.addEventListener('DOMContentLoaded', function() {
+      toggleDocAUpload();
+      toggleDocBUpload();
+    });
+    </script>
+
+    <!-- 基本設定 -->
+    <div class="card bg-base-100 shadow-xl">
+      <div class="card-body">
+        <h2 class="card-title text-lg">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          基本設定
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+          <div class="form-control w-full">
+            <label class="label">
+              <span class="label-text font-medium">実行モード</span>
+            </label>
+            <select name="mode" class="select select-bordered w-full">
+              <option value="real" selected>real（本番実行）</option>
+              <option value="dummy">dummy（テスト用）</option>
+            </select>
+          </div>
+          <div class="form-control">
+            <label class="label cursor-pointer justify-start gap-4">
+              <input type="checkbox" name="start_now" checked class="checkbox checkbox-primary" />
+              <div>
+                <span class="label-text font-medium">すぐに開始</span>
+                <p class="text-xs text-base-content/50">チェックを外すと作成のみ行います</p>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div>
-      <h3>PDF→TXT設定</h3>
-      <label>doc A mode
-        <select name="pdf_mode_a">
-          <option value="fast" selected>fast</option>
-          <option value="llm">llm</option>
-        </select>
-      </label>
-      <br>
-      <label>doc B mode
-        <select name="pdf_mode_b">
-          <option value="fast" selected>fast</option>
-          <option value="llm">llm</option>
-        </select>
-      </label>
-      <br><br>
-      <label>start page
-        <input type="number" name="pdf_start_page" value="1" min="1">
-      </label>
-      <br>
-      <label>end page
-        <input type="number" name="pdf_end_page" placeholder="空欄で最後まで">
-      </label>
-      <br>
-      <label>batch size
-        <input type="number" name="pdf_batch_size" value="5" min="1">
-      </label>
-      <br>
-      <label>
-        <input type="checkbox" name="pdf_use_image">
-        画像付きLLM変換
-      </label>
+    <!-- PDF変換設定（折りたたみ） -->
+    <div class="collapse collapse-arrow bg-base-100 shadow-xl">
+      <input type="checkbox" />
+      <div class="collapse-title font-medium flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        PDF→TXT変換設定
+      </div>
+      <div class="collapse-content">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+          <div class="space-y-4">
+            <h3 class="font-medium text-sm text-base-content/70">Document A</h3>
+            <div class="form-control w-full">
+              <label class="label">
+                <span class="label-text">変換モード</span>
+              </label>
+              <select name="pdf_mode_a" class="select select-bordered select-sm w-full">
+                <option value="fast" selected>fast（高速）</option>
+                <option value="llm">llm（高精度）</option>
+              </select>
+            </div>
+          </div>
+          <div class="space-y-4">
+            <h3 class="font-medium text-sm text-base-content/70">Document B</h3>
+            <div class="form-control w-full">
+              <label class="label">
+                <span class="label-text">変換モード</span>
+              </label>
+              <select name="pdf_mode_b" class="select select-bordered select-sm w-full">
+                <option value="fast" selected>fast（高速）</option>
+                <option value="llm">llm（高精度）</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="form-control w-full">
+            <label class="label">
+              <span class="label-text text-sm">開始ページ</span>
+            </label>
+            <input type="number" name="pdf_start_page" value="1" min="1" class="input input-bordered input-sm w-full" />
+          </div>
+          <div class="form-control w-full">
+            <label class="label">
+              <span class="label-text text-sm">終了ページ</span>
+            </label>
+            <input type="number" name="pdf_end_page" placeholder="最後まで" class="input input-bordered input-sm w-full" />
+          </div>
+          <div class="form-control w-full">
+            <label class="label">
+              <span class="label-text text-sm">バッチサイズ</span>
+            </label>
+            <input type="number" name="pdf_batch_size" value="5" min="1" class="input input-bordered input-sm w-full" />
+          </div>
+          <div class="form-control">
+            <label class="label cursor-pointer justify-start gap-2">
+              <input type="checkbox" name="pdf_use_image" class="checkbox checkbox-sm" />
+              <span class="label-text text-sm">画像付きLLM変換</span>
+            </label>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div>
-      <h3>AST枝サマリ</h3>
-      <label>
-        <input type="checkbox" name="summarize_ast">
-        summarize_ast を有効化
-      </label>
-      <br>
-      <label>summary model
-        <input type="text" name="ast_summary_model" value="gpt-5-mini">
-      </label>
+    <!-- AST設定（折りたたみ） -->
+    <div class="collapse collapse-arrow bg-base-100 shadow-xl">
+      <input type="checkbox" />
+      <div class="collapse-title font-medium flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+        </svg>
+        AST・LLM設定
+      </div>
+      <div class="collapse-content">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+          <div class="form-control">
+            <label class="label cursor-pointer justify-start gap-4">
+              <input type="checkbox" name="summarize_ast" class="checkbox checkbox-sm" />
+              <div>
+                <span class="label-text font-medium">AST枝サマリを有効化</span>
+                <p class="text-xs text-base-content/50">各ノードに要約を付与（LLMコスト増）</p>
+              </div>
+            </label>
+          </div>
+          <div class="form-control w-full">
+            <label class="label">
+              <span class="label-text">サマリ用モデル</span>
+            </label>
+            <input type="text" name="ast_summary_model" value="gpt-4o-mini" class="input input-bordered input-sm w-full" />
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="form-control w-full max-w-md">
+          <label class="label">
+            <span class="label-text">複雑処理用LLMモデル（任意）</span>
+          </label>
+          <input type="text" name="llm_complex_model" placeholder="例: gpt-4o-mini" class="input input-bordered input-sm w-full" />
+          <label class="label">
+            <span class="label-text-alt text-base-content/50">空欄の場合はデフォルトを使用</span>
+          </label>
+        </div>
+      </div>
     </div>
 
-    <div>
-      <h3>LLM設定（任意）</h3>
-      <label>llm_complex_model
-        <input type="text" name="llm_complex_model" placeholder="例: gpt-5-mini">
-      </label>
-      <p class="muted">空欄の場合はデフォルトを使用します。</p>
+    <!-- ステップ選択（折りたたみ） -->
+    <div class="collapse collapse-arrow bg-base-100 shadow-xl">
+      <input type="checkbox" />
+      <div class="collapse-title font-medium flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+        </svg>
+        ステップ選択（任意）
+      </div>
+      <div class="collapse-content">
+        <p class="text-sm text-base-content/60 pt-4 mb-4">特定のステップ範囲のみ実行する場合に指定します。空欄で全ステップを実行します。</p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="form-control w-full">
+            <label class="label">
+              <span class="label-text">開始ステップ（step_from）</span>
+            </label>
+            <select name="step_from" class="select select-bordered select-sm w-full">
+              <option value="">（最初から）</option>
+              <optgroup label="realモード">
+                <option value="ensure_text_a">ensure_text_a</option>
+                <option value="ensure_text_b">ensure_text_b</option>
+                <option value="build_blueprint_a">build_blueprint_a</option>
+                <option value="build_blueprint_b">build_blueprint_b</option>
+                <option value="build_ast_a">build_ast_a</option>
+                <option value="build_ast_b">build_ast_b</option>
+                <option value="summarize_ast_a">summarize_ast_a</option>
+                <option value="summarize_ast_b">summarize_ast_b</option>
+                <option value="compare_setup">compare_setup</option>
+                <option value="pre_analysis">pre_analysis</option>
+                <option value="compare_analysis">compare_analysis</option>
+              </optgroup>
+              <optgroup label="dummyモード">
+                <option value="dummy_prepare">dummy_prepare</option>
+                <option value="dummy_agent_trace">dummy_agent_trace</option>
+                <option value="dummy_write_template_draft">dummy_write_template_draft</option>
+                <option value="dummy_analyze">dummy_analyze</option>
+                <option value="dummy_fill_template">dummy_fill_template</option>
+              </optgroup>
+            </select>
+          </div>
+          <div class="form-control w-full">
+            <label class="label">
+              <span class="label-text">終了ステップ（step_to）</span>
+            </label>
+            <select name="step_to" class="select select-bordered select-sm w-full">
+              <option value="">（最後まで）</option>
+              <optgroup label="realモード">
+                <option value="ensure_text_a">ensure_text_a</option>
+                <option value="ensure_text_b">ensure_text_b</option>
+                <option value="build_blueprint_a">build_blueprint_a</option>
+                <option value="build_blueprint_b">build_blueprint_b</option>
+                <option value="build_ast_a">build_ast_a</option>
+                <option value="build_ast_b">build_ast_b</option>
+                <option value="summarize_ast_a">summarize_ast_a</option>
+                <option value="summarize_ast_b">summarize_ast_b</option>
+                <option value="compare_setup">compare_setup</option>
+                <option value="pre_analysis">pre_analysis</option>
+                <option value="compare_analysis">compare_analysis</option>
+              </optgroup>
+              <optgroup label="dummyモード">
+                <option value="dummy_prepare">dummy_prepare</option>
+                <option value="dummy_agent_trace">dummy_agent_trace</option>
+                <option value="dummy_write_template_draft">dummy_write_template_draft</option>
+                <option value="dummy_analyze">dummy_analyze</option>
+                <option value="dummy_fill_template">dummy_fill_template</option>
+              </optgroup>
+            </select>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div>
-      <button class="btn" type="submit">Run作成</button>
+    <!-- 送信ボタン -->
+    <div class="card bg-base-100 shadow-xl">
+      <div class="card-body">
+        <div class="flex flex-col sm:flex-row gap-4 justify-end">
+          <a href="/" class="btn btn-ghost">キャンセル</a>
+          <button type="submit" class="btn btn-primary">
+            <span class="htmx-indicator loading loading-spinner loading-sm"></span>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Run作成
+          </button>
+        </div>
+      </div>
     </div>
   </form>
 </div>

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import asyncio
 import os
+import shutil
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,9 @@ def create_app() -> FastAPI:
     app.state.repo = repo
     app.state.events = events
     app.state.artifacts_repo = artifacts_repo
+    
+    # ドキュメント中心アーキテクチャ: FileArtifactStoreからdoc_repoを取得
+    doc_repo = executor.artifacts.doc_repo
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
@@ -39,6 +43,58 @@ def create_app() -> FastAPI:
                 "db_path": getattr(repo, "db_path", None),
             },
         )
+
+
+    # ----------------------------
+    # ドキュメント管理（ドキュメント中心アーキテクチャ）
+    # ----------------------------
+
+    @app.get("/documents", response_class=HTMLResponse)
+    def documents_list(request: Request):
+        """ドキュメント一覧画面"""
+        docs = doc_repo.list_all()
+        return templates.TemplateResponse(
+            "documents.html",
+            {"request": request, "documents": docs},
+        )
+
+    @app.get("/api/documents")
+    def api_list_documents():
+        """ドキュメント一覧API"""
+        docs = doc_repo.list_all()
+        return JSONResponse([d.to_dict() for d in docs])
+
+    @app.get("/api/documents/{doc_hash}")
+    def api_get_document(doc_hash: str):
+        """ドキュメント詳細API"""
+        doc = doc_repo.get(doc_hash)
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+        return JSONResponse(doc.to_dict())
+
+    @app.post("/api/documents")
+    async def api_upload_document(file: UploadFile = File(...)):
+        """ドキュメントアップロードAPI"""
+        content = await file.read()
+        doc = doc_repo.add(content, file.filename or "uploaded.txt")
+        return JSONResponse(doc.to_dict())
+
+    @app.delete("/api/documents/{doc_hash}")
+    def api_delete_document(doc_hash: str):
+        """ドキュメント削除API"""
+        deleted = doc_repo.delete(doc_hash)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Document not found")
+        return JSONResponse({"deleted": True, "doc_hash": doc_hash})
+
+    @app.delete("/documents/{doc_hash}", response_class=HTMLResponse)
+    def delete_document_ui(request: Request, doc_hash: str):
+        """ドキュメント削除（UI用・HTMXから呼び出し）"""
+        deleted = doc_repo.delete(doc_hash)
+        if not deleted:
+            return HTMLResponse("<div class='alert alert-error'>ドキュメントが見つかりません</div>", status_code=404)
+        # 削除成功時は空のレスポンス（行が消える）
+        return HTMLResponse("")
 
     # ----------------------------
     # JSON API（UI未実装でも使えるI/F）
@@ -78,9 +134,47 @@ def create_app() -> FastAPI:
             }
         )
 
+    @app.delete("/api/runs/{run_id}")
+    def api_delete_run(run_id: str):
+        """Run削除API（DB上のrun/events/artifacts + FSのrun dir）。"""
+        try:
+            run = repo.get_run(run_id)
+        except Exception:
+            raise HTTPException(status_code=404, detail="run not found")
+
+        # 実行中なら協調キャンセルを要求（best effort）
+        try:
+            if str(getattr(run, "status", "")).lower() == "running":
+                executor.request_cancel(run_id)
+        except Exception:
+            pass
+
+        deleted = False
+        if hasattr(repo, "delete_run"):
+            deleted = bool(repo.delete_run(run_id))  # type: ignore[attr-defined]
+        else:
+            raise HTTPException(status_code=500, detail="repo does not support delete_run")
+
+        # FS掃除（best effort）
+        try:
+            if run.workdir:
+                shutil.rmtree(run.workdir, ignore_errors=True)
+        except Exception:
+            pass
+
+        if not deleted:
+            raise HTTPException(status_code=404, detail="run not found")
+        return JSONResponse({"deleted": True, "run_id": run_id})
+
     @app.get("/runs/new", response_class=HTMLResponse)
     def runs_new(request: Request):
-        return templates.TemplateResponse("run_new.html", {"request": request})
+        # ドキュメント中心アーキテクチャ: 既存ドキュメント一覧を取得
+        documents = doc_repo.list_all()
+        
+        return templates.TemplateResponse("run_new.html", {
+            "request": request, 
+            "documents": documents,
+        })
 
     def _save_upload_to_temp(upload: UploadFile) -> str:
         # Windowsでも扱いやすいように NamedTemporaryFile(delete=False)
@@ -141,8 +235,10 @@ def create_app() -> FastAPI:
     @app.post("/runs")
     async def runs_create(
         request: Request,
-        doc_a: UploadFile = File(...),
-        doc_b: UploadFile = File(...),
+        doc_a: Optional[UploadFile] = File(None),
+        doc_b: Optional[UploadFile] = File(None),
+        doc_a_hash: str = Form(""),
+        doc_b_hash: str = Form(""),
         mode: str = Form("dummy"),
         pdf_mode_a: str = Form("fast"),
         pdf_mode_b: str = Form("fast"),
@@ -151,12 +247,43 @@ def create_app() -> FastAPI:
         pdf_batch_size: str = Form("5"),
         pdf_use_image: Optional[str] = Form(None),
         summarize_ast: Optional[str] = Form(None),
-        ast_summary_model: str = Form("gpt-5-mini"),
+        ast_summary_model: str = Form("gpt-4o-mini"),
         llm_complex_model: str = Form(""),
+        step_from: str = Form(""),
+        step_to: str = Form(""),
         start_now: Optional[str] = Form("on"),
     ):
-        tmp_a = _save_upload_to_temp(doc_a)
-        tmp_b = _save_upload_to_temp(doc_b)
+        # ドキュメント中心アーキテクチャ: ハッシュ指定または新規アップロード
+        use_doc_a_hash = str(doc_a_hash).strip() if doc_a_hash else None
+        use_doc_b_hash = str(doc_b_hash).strip() if doc_b_hash else None
+        
+        tmp_a = tmp_b = None
+        
+        # ドキュメントA
+        if use_doc_a_hash:
+            # 既存ドキュメントを使用
+            if not doc_repo.exists(use_doc_a_hash):
+                from starlette.responses import HTMLResponse
+                return HTMLResponse(f"ドキュメントA ({use_doc_a_hash}) が見つかりません", status_code=400)
+        elif doc_a and doc_a.filename:
+            # 新規アップロード
+            tmp_a = _save_upload_to_temp(doc_a)
+        else:
+            from starlette.responses import HTMLResponse
+            return HTMLResponse("ドキュメントAが必要です（既存選択またはアップロード）", status_code=400)
+        
+        # ドキュメントB
+        if use_doc_b_hash:
+            # 既存ドキュメントを使用
+            if not doc_repo.exists(use_doc_b_hash):
+                from starlette.responses import HTMLResponse
+                return HTMLResponse(f"ドキュメントB ({use_doc_b_hash}) が見つかりません", status_code=400)
+        elif doc_b and doc_b.filename:
+            # 新規アップロード
+            tmp_b = _save_upload_to_temp(doc_b)
+        else:
+            from starlette.responses import HTMLResponse
+            return HTMLResponse("ドキュメントBが必要です（既存選択またはアップロード）", status_code=400)
         try:
             m = str(mode).lower().strip()
             if m not in {"dummy", "real"}:
@@ -193,17 +320,32 @@ def create_app() -> FastAPI:
             if str(llm_complex_model).strip():
                 params["llm_complex_model"] = str(llm_complex_model).strip()
 
-            run = executor.create_run(doc_a_path=tmp_a, doc_b_path=tmp_b, params=params)
+            # ステップ選択（step filtering）
+            if str(step_from).strip():
+                params["step_from"] = str(step_from).strip()
+            if str(step_to).strip():
+                params["step_to"] = str(step_to).strip()
+
+            # Run作成（ドキュメントハッシュまたはパスを指定）
+            run = executor.create_run(
+                doc_a_path=tmp_a,
+                doc_b_path=tmp_b,
+                doc_a_hash=use_doc_a_hash,
+                doc_b_hash=use_doc_b_hash,
+                params=params,
+            )
         finally:
-            # run配下へコピー後なので削除
-            try:
-                os.remove(tmp_a)
-            except Exception:
-                pass
-            try:
-                os.remove(tmp_b)
-            except Exception:
-                pass
+            # アップロードした一時ファイルを削除
+            if tmp_a:
+                try:
+                    os.remove(tmp_a)
+                except Exception:
+                    pass
+            if tmp_b:
+                try:
+                    os.remove(tmp_b)
+                except Exception:
+                    pass
 
         if start_now:
             executor.start(run.run_id)
@@ -218,6 +360,47 @@ def create_app() -> FastAPI:
             "run_detail.html",
             {"request": request, "run": run, "initial_events": initial_events},
         )
+
+    @app.delete("/runs/{run_id}", response_class=HTMLResponse)
+    def runs_delete_ui(request: Request, run_id: str):
+        """Run削除（UI用・HTMXから呼び出し）。成功時は空で行を消す。"""
+        try:
+            run = repo.get_run(run_id)
+        except Exception:
+            # 行置換を想定: エラー表示の<tr>を返す
+            return HTMLResponse(
+                "<tr><td colspan='6'><div class='alert alert-error'>Runが見つかりません</div></td></tr>",
+                status_code=200,
+            )
+
+        # 実行中なら協調キャンセルを要求（best effort）。その上で削除を続行する。
+        try:
+            if str(getattr(run, "status", "")).lower() == "running":
+                executor.request_cancel(run_id)
+        except Exception:
+            pass
+
+        if not hasattr(repo, "delete_run"):
+            return HTMLResponse(
+                "<tr><td colspan='6'><div class='alert alert-error'>この環境ではRun削除に対応していません</div></td></tr>",
+                status_code=200,
+            )
+
+        deleted = bool(repo.delete_run(run_id))  # type: ignore[attr-defined]
+        if not deleted:
+            return HTMLResponse(
+                "<tr><td colspan='6'><div class='alert alert-error'>Runが見つかりません</div></td></tr>",
+                status_code=200,
+            )
+
+        # FS掃除（best effort）
+        try:
+            if run.workdir:
+                shutil.rmtree(run.workdir, ignore_errors=True)
+        except Exception:
+            pass
+
+        return HTMLResponse("")
 
     @app.post("/runs/{run_id}/start", response_class=HTMLResponse)
     def runs_start(request: Request, run_id: str):
@@ -509,7 +692,7 @@ def create_app() -> FastAPI:
         if p.exists():
             content = p.read_text(encoding="utf-8", errors="replace")
         else:
-            content = "(not generated yet)"
+            content = ""  # ファイルが存在しない場合は空（UIで「-」表示）
         return templates.TemplateResponse("partials/template.html", {"request": request, "content": content})
 
     @app.get("/runs/{run_id}/partials/template", response_class=HTMLResponse)

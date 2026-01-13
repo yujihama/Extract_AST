@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-3xl font-bold">ドキュメント一覧</h1>
+    <p class="text-base-content/60 mt-1">登録済みのドキュメント（入力ファイル）を管理します</p>
+  </div>
+  <div class="flex gap-2">
+    <a href="/runs/new" class="btn btn-primary">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+      </svg>
+      新規Run作成
+    </a>
+  </div>
+</div>
+
+{% if documents %}
+<div class="overflow-x-auto">
+  <table class="table table-zebra w-full">
+    <thead>
+      <tr>
+        <th>ハッシュ</th>
+        <th>ファイル名</th>
+        <th>文字数</th>
+        <th>AST</th>
+        <th>Blueprint</th>
+        <th>作成日時</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for doc in documents %}
+      <tr class="hover" id="doc-row-{{ doc.doc_hash }}">
+        <td>
+          <code class="text-xs bg-base-200 px-2 py-1 rounded">{{ doc.doc_hash }}</code>
+        </td>
+        <td class="font-medium">{{ doc.original_filename }}</td>
+        <td>{{ "{:,}".format(doc.char_count) }}</td>
+        <td>
+          {% if doc.has_ast %}
+          <span class="badge badge-success badge-sm">生成済み</span>
+          {% else %}
+          <span class="badge badge-ghost badge-sm">未生成</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if doc.has_blueprint %}
+          <span class="badge badge-success badge-sm">生成済み</span>
+          {% else %}
+          <span class="badge badge-ghost badge-sm">未生成</span>
+          {% endif %}
+        </td>
+        <td class="text-sm text-base-content/60">
+          {{ doc.created_at.strftime('%Y-%m-%d %H:%M') if doc.created_at else '-' }}
+        </td>
+        <td>
+          <button 
+            class="btn btn-ghost btn-xs text-error"
+            hx-delete="/documents/{{ doc.doc_hash }}"
+            hx-target="#doc-row-{{ doc.doc_hash }}"
+            hx-swap="outerHTML"
+            hx-confirm="「{{ doc.original_filename }}」を削除しますか？&#10;この操作は取り消せません。"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card bg-base-100 shadow-xl">
+  <div class="card-body items-center text-center">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-base-content/30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+    </svg>
+    <h2 class="card-title text-base-content/50">ドキュメントがありません</h2>
+    <p class="text-base-content/40">新規Runを作成するとドキュメントが登録されます</p>
+    <div class="card-actions mt-4">
+      <a href="/runs/new" class="btn btn-primary">新規Runを作成</a>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

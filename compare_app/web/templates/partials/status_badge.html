@@ -1,0 +1,37 @@
+{# ステータスバッジ - status変数を受け取って色分け表示 #}
+{% if status == "succeeded" %}
+  <span class="badge badge-success gap-1">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+    </svg>
+    {{ status }}
+  </span>
+{% elif status == "failed" %}
+  <span class="badge badge-error gap-1">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+    </svg>
+    {{ status }}
+  </span>
+{% elif status == "running" %}
+  <span class="badge badge-info gap-1">
+    <span class="loading loading-spinner loading-xs"></span>
+    {{ status }}
+  </span>
+{% elif status == "cancelled" %}
+  <span class="badge badge-warning gap-1">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+    </svg>
+    {{ status }}
+  </span>
+{% elif status == "queued" %}
+  <span class="badge badge-ghost gap-1">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    {{ status }}
+  </span>
+{% else %}
+  <span class="badge badge-neutral">{{ status or "-" }}</span>
+{% endif %}

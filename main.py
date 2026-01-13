@@ -2,6 +2,7 @@
 import os
 import re
 import json
+import asyncio
 import dotenv
 import threading
 from datetime import datetime
@@ -117,14 +118,14 @@ if not os.path.exists(os.path.join("data", "input", target_file)):
 # convert_pdf_to_txt(target_file)
 
 ### 視覚的な要素が多いPDF
-result = await convert_pdf_with_llm(  # type: ignore[top-level-await]
+result = asyncio.run(convert_pdf_with_llm(
     pdf_path=target_file,
     start_page=1,
     end_page=None,
     batch_size=20,
     use_image=True,
     verbose=False,
-)
+))
 print(result)
 
 # %% #blueprint作成

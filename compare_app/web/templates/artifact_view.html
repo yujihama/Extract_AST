@@ -1,11 +1,83 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card">
-  <h1>成果物プレビュー</h1>
-  <p class="muted">{{ rel }}</p>
-  <a class="btn secondary" href="/runs/{{ run_id }}/artifacts/download/{{ rel }}">ダウンロード</a>
-</div>
-<div class="card">
-  <pre class="pre">{{ content }}</pre>
+<div class="flex flex-col gap-6">
+  <!-- ヘッダー -->
+  <div class="card bg-base-100 shadow-xl">
+    <div class="card-body">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div class="flex items-center gap-2">
+          <a href="/runs/{{ run_id }}" class="btn btn-ghost btn-sm">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </a>
+          <div>
+            <h1 class="card-title text-xl">成果物プレビュー</h1>
+            <p class="font-mono text-sm text-base-content/60 break-all">{{ rel }}</p>
+          </div>
+        </div>
+        <a href="/runs/{{ run_id }}/artifacts/download/{{ rel }}" class="btn btn-primary btn-sm">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          ダウンロード
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- コンテンツ -->
+  <div class="card bg-base-100 shadow-xl">
+    <div class="card-body p-0">
+      {% if rel.endswith('.md') %}
+      <!-- Markdownの場合はレンダリング -->
+      <div class="p-6">
+        <div class="tabs tabs-bordered mb-4">
+          <a class="tab tab-active" onclick="showTab('rendered')">レンダリング</a>
+          <a class="tab" onclick="showTab('source')">ソース</a>
+        </div>
+        <div id="tab-rendered" class="prose prose-sm max-w-none"></div>
+        <div id="tab-source" class="hidden">
+          <div class="bg-neutral text-neutral-content rounded-lg p-4 max-h-[70vh] overflow-auto">
+            <pre class="text-xs"><code>{{ content }}</code></pre>
+          </div>
+        </div>
+      </div>
+      <script>
+        document.getElementById('tab-rendered').innerHTML = marked.parse(`{{ content | replace('`', '\\`') | replace('${', '\\${') | safe }}`);
+        hljs.highlightAll();
+        
+        function showTab(tab) {
+          const rendered = document.getElementById('tab-rendered');
+          const source = document.getElementById('tab-source');
+          const tabs = document.querySelectorAll('.tab');
+          
+          if (tab === 'rendered') {
+            rendered.classList.remove('hidden');
+            source.classList.add('hidden');
+            tabs[0].classList.add('tab-active');
+            tabs[1].classList.remove('tab-active');
+          } else {
+            rendered.classList.add('hidden');
+            source.classList.remove('hidden');
+            tabs[0].classList.remove('tab-active');
+            tabs[1].classList.add('tab-active');
+          }
+        }
+      </script>
+      {% elif rel.endswith('.json') %}
+      <!-- JSONの場合はシンタックスハイライト -->
+      <div class="bg-neutral text-neutral-content rounded-lg p-4 max-h-[70vh] overflow-auto">
+        <pre class="text-xs"><code class="language-json">{{ content }}</code></pre>
+      </div>
+      <script>hljs.highlightAll();</script>
+      {% else %}
+      <!-- その他はプレーンテキスト -->
+      <div class="bg-neutral text-neutral-content rounded-lg p-4 max-h-[70vh] overflow-auto">
+        <pre class="text-xs"><code>{{ content }}</code></pre>
+      </div>
+      {% endif %}
+    </div>
+  </div>
 </div>
 {% endblock %}

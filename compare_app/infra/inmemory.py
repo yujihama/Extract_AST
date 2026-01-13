@@ -87,6 +87,8 @@ class InMemoryRunRepository:
     def update_status(self, run_id: str, status: RunStatus, *, message: str | None = None) -> None:
         with self._lock:
             cur = self._runs[run_id]
+            # running / succeeded 時はエラーメッセージをクリア
+            new_error_message = None if status in {"running", "succeeded"} else cur.error_message
             self._runs[run_id] = RunRecord(
                 run_id=cur.run_id,
                 status=status,
@@ -94,7 +96,7 @@ class InMemoryRunRepository:
                 started_at=cur.started_at if status != "running" else (cur.started_at or _utcnow()),
                 finished_at=cur.finished_at if status not in {"succeeded", "failed", "cancelled"} else (cur.finished_at or _utcnow()),
                 params=cur.params,
-                error_message=cur.error_message,
+                error_message=new_error_message,
                 workdir=cur.workdir,
             )
 
@@ -119,6 +121,11 @@ class InMemoryRunRepository:
         off = max(0, int(offset))
         lim = max(1, int(limit))
         return runs[off : off + lim]
+
+    def delete_run(self, run_id: str) -> bool:
+        """Runを削除する（in-memory）。"""
+        with self._lock:
+            return self._runs.pop(str(run_id), None) is not None
 
 
 @dataclass

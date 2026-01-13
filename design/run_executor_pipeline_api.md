@@ -124,6 +124,15 @@ UI/CLIは **Coreの `RunExecutor`** のみを呼ぶ（InfraはDIで注入）。
 
 範囲外のステップには `step_skipped` がemitされる。
 
+### 軽量モードによる自動スキップ
+
+`pre_analysis`ステップが軽量ドキュメントと判断した場合、後続の`compare_analysis`を自動でスキップする:
+
+- **判定基準**: LLMが統計情報（セクション数、文字数、マッチング統計）を参考に判断
+- **フラグ**: `work/.skip_compare_analysis`ファイルが存在する場合、`compare_analysis`の`should_run()`が`False`を返す
+- **出力**: `is_complete=True`の場合、`pre_analysis`が`out/template_filled.md`を直接出力（`template_draft.md`は作成しない）
+- **イベント**: `pipeline_skip_flag_created`イベントがemitされる
+
 ---
 
 ## 4) RunExecutor I/F（UI/CLI共通入口）

@@ -72,7 +72,13 @@ def build_default_executor() -> Tuple[RunExecutor, SqliteRunRepository, SqliteEv
     default_runs_root = str((repo_root / "data" / "runs").resolve())
     raw_runs_root = _env("COMPARE_APP_RUNS_ROOT", default_runs_root)
     runs_root = Path(_resolve_path(repo_root, raw_runs_root))
-    artifacts = FileArtifactStore(runs_root=runs_root)
+    
+    # ドキュメント中心アーキテクチャ: DocumentRepository, DocumentPairRepository を初期化
+    from compare_app.infra.document_store import DocumentPairRepository, DocumentRepository
+    doc_repo = DocumentRepository(base_dir=repo_root / "data" / "documents")
+    pair_repo = DocumentPairRepository(base_dir=repo_root / "data" / "document_pairs")
+    
+    artifacts = FileArtifactStore(runs_root=runs_root, doc_repo=doc_repo, pair_repo=pair_repo)
     cancellations = InMemoryCancellationRegistry()
 
     def _is_dummy(ctx) -> bool:

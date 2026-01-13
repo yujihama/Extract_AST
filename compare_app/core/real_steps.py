@@ -237,34 +237,35 @@ class BuildBlueprintStep:
             analyze_visual_contents,
         ]
 
+        parent_mw = EventSinkMiddleware(
+            run_id=ctx.run_id,
+            events=ctx.events,
+            cancellation=ctx.cancellation,
+            agent_name=f"blueprint_builder_{which}",
+        )
+        validate_mw = EventSinkMiddleware(
+            run_id=ctx.run_id,
+            events=ctx.events,
+            cancellation=ctx.cancellation,
+            agent_name=f"validate_blueprint_agent_{which}",
+            is_subagent=True,
+            forced_parent_invocation_id=parent_mw.invocation_id,
+            forced_parent_agent_name=parent_mw.agent_name,
+        )
+
         agent = create_deep_agent(
             model=llm_complex,
             tools=tools_blueprint_builder,
             system_prompt=blueprint_ast_builder_prompt,
             response_format=DocumentStructureBlueprint,
-            middleware=[
-                EventSinkMiddleware(
-                    run_id=ctx.run_id,
-                    events=ctx.events,
-                    cancellation=ctx.cancellation,
-                    agent_name=f"blueprint_builder_{which}",
-                )
-            ],
+            middleware=[parent_mw],
             subagents=[
                 {
                     "name": "validate_blueprint_agent",
                     "description": "blueprintを複数の観点で検証して必要に応じて修正します。blueprintのパスを指示してください。",
                     "system_prompt": blueprint_validate_prompt,
                     "tools": tools_blueprint_validator,
-                    "middleware": [
-                        EventSinkMiddleware(
-                            run_id=ctx.run_id,
-                            events=ctx.events,
-                            cancellation=ctx.cancellation,
-                            agent_name=f"validate_blueprint_agent_{which}",
-                            is_subagent=True,
-                        )
-                    ],
+                    "middleware": [validate_mw],
                     "model": llm,
                 }
             ],
@@ -279,12 +280,20 @@ class BuildBlueprintStep:
         if blueprint is None:
             raise RuntimeError("blueprint agent returned no structured_response")
 
-        # 永続化
+        # 永続化（Runのworkディレクトリ）
+        blueprint_data = blueprint.model_dump()
         with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(blueprint.model_dump(), f, ensure_ascii=False, indent=2)
+            json.dump(blueprint_data, f, ensure_ascii=False, indent=2)
 
         rel = out_path.relative_to(run_dir).as_posix()
         ctx.events.emit(ctx.run_id, "artifact_updated", {"ts": _utcnow_iso(), "kind": f"blueprint_{which}", "path": rel})
+        
+        # ドキュメントリポジトリにも保存（has_blueprintフラグを更新）
+        doc_hash = ctx.params.get(f"doc_{which}_hash")
+        if doc_hash:
+            from compare_app.infra.document_store import DocumentRepository
+            doc_repo = DocumentRepository()
+            doc_repo.save_blueprint(doc_hash, blueprint_data)
 
 
 @dataclass
@@ -325,6 +334,14 @@ class BuildAstStep:
 
         rel = out_ast.relative_to(run_dir).as_posix()
         ctx.events.emit(ctx.run_id, "artifact_updated", {"ts": _utcnow_iso(), "kind": f"ast_{which}", "path": rel})
+        
+        # ドキュメントリポジトリにも保存（has_astフラグを更新）
+        doc_hash = ctx.params.get(f"doc_{which}_hash")
+        if doc_hash:
+            from compare_app.infra.document_store import DocumentRepository
+            ast_data = json.loads(out_ast.read_text(encoding="utf-8"))
+            doc_repo = DocumentRepository()
+            doc_repo.save_ast(doc_hash, ast_data)
 
 
 @dataclass

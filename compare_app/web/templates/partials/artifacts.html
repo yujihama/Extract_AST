@@ -1,23 +1,73 @@
-<h3>成果物一覧</h3>
-<table>
-  <thead>
-    <tr>
-      <th>path</th>
-      <th>kind</th>
-      <th>size</th>
-      <th>updated</th>
-    </tr>
-  </thead>
-  <tbody>
-  {% for it in items %}
-    <tr>
-      <td><a href="/runs/{{ run_id }}/artifacts/view/{{ it.rel }}">{{ it.rel }}</a></td>
-      <td>{{ it.kind or "-" }}</td>
-      <td>{{ it.size or "-" }}</td>
-      <td>{{ it.updated_at or "-" }}</td>
-    </tr>
+<div class="card-body">
+  <h2 class="card-title text-lg">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+    </svg>
+    成果物一覧
+    {% if items %}
+    <span class="badge badge-sm">{{ items | length }}</span>
+    {% endif %}
+  </h2>
+  
+  {% if items %}
+  <div class="overflow-x-auto">
+    <table class="table table-xs">
+      <thead>
+        <tr>
+          <th>ファイル</th>
+          <th>種別</th>
+          <th>サイズ</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for it in items %}
+        <tr class="hover">
+          <td class="max-w-[150px]">
+            <a href="/runs/{{ run_id }}/artifacts/view/{{ it.rel }}" 
+               class="link link-primary text-xs font-mono truncate block"
+               title="{{ it.rel }}">
+              {{ it.rel | truncate(30) }}
+            </a>
+          </td>
+          <td>
+            {% if it.kind %}
+              {% if it.kind == 'input' %}
+                <span class="badge badge-xs badge-info">{{ it.kind }}</span>
+              {% elif it.kind in ['blueprint', 'ast'] %}
+                <span class="badge badge-xs badge-secondary">{{ it.kind }}</span>
+              {% elif it.kind in ['template_draft', 'template_filled'] %}
+                <span class="badge badge-xs badge-accent">{{ it.kind }}</span>
+              {% elif it.kind == 'file' %}
+                <span class="badge badge-xs badge-ghost">{{ it.kind }}</span>
+              {% else %}
+                <span class="badge badge-xs">{{ it.kind }}</span>
+              {% endif %}
+            {% else %}
+              <span class="text-base-content/40">-</span>
+            {% endif %}
+          </td>
+          <td class="text-xs text-base-content/60">{{ it.size or "-" }}</td>
+          <td>
+            <a href="/runs/{{ run_id }}/artifacts/download/{{ it.rel }}" 
+               class="btn btn-ghost btn-xs"
+               title="ダウンロード">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            </a>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% else %}
-    <tr><td colspan="4" class="muted">成果物はまだありません。</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
+  <div class="flex flex-col items-center justify-center py-8 text-base-content/50">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+    </svg>
+    <p class="text-sm">成果物はまだありません</p>
+  </div>
+  {% endif %}
+</div>

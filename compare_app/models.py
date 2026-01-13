@@ -29,6 +29,8 @@ class RunRecord:
     run_id: str
     status: RunStatus
     created_at: datetime
+    doc_a_hash: Optional[str] = None  # ドキュメントAのハッシュ
+    doc_b_hash: Optional[str] = None  # ドキュメントBのハッシュ
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     params: dict[str, Any] | None = None

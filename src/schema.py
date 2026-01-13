@@ -232,9 +232,9 @@ class DocumentStructureBlueprint(BaseModel):
         ..., 
         description="階層定義のリスト。レベル順にソートされていることが望ましい。"
     )
-    global_exclusion_rules: Optional[Dict[str, ExclusionRule]] = Field(
+    global_exclusion_rules: Optional[List[ExclusionRule]] = Field(
         default=None,
-        description="文書全体で適用される除外ルール（キーはルール名）"
+        description="文書全体で適用される除外ルールのリスト"
     )
 
     def get_rule_by_level(self, level: int) -> Optional[HierarchyRule]:
@@ -250,8 +250,18 @@ class PreAnalysisResult(BaseModel):
     - reason: 上記判断に至った理由（内容や構成の分析結果）
     - plan: [手順1, 手順2, ...] ※doc比較の具体的な分析手順
     - template: <Markdown> ※doc比較結果記載用テンプレート（マークダウン形式）
+    - is_complete: True の場合、pre_analysisで分析が完結（後続のcompare_analysisをスキップ）
+    - filled_report: is_complete=True の場合、記入済みの分析結果（Markdown形式）
     """
     relation: str = Field(description="本doc間の関係タイプ（Fix/Revision/Derivative/Heterogeneous/Subset）")
     reason: str = Field(description="上記関係タイプを推定した理由。doc内容・章立て・構成・記載範囲の違いなど。")
     plan: list[str] = Field(description="分析実施のための具体手順リスト")
     template: str = Field(description="分析結果記載用テンプレートのファイル名")
+    is_complete: bool = Field(
+        default=False, 
+        description="True の場合、このpre_analysisで分析が完結しており、後続のcompare_analysisをスキップする"
+    )
+    filled_report: Optional[str] = Field(
+        default=None,
+        description="is_complete=True の場合、記入済みの分析レポート（Markdown形式）。軽量なドキュメントの場合に使用。"
+    )

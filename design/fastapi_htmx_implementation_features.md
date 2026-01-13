@@ -63,6 +63,27 @@
 - TXT入力で end-to-end（txt→blueprint→AST→compare_setup→pre/compare analysis→filled）が `succeeded` まで完走することを確認済み
 - PDF入力は fast変換で end-to-end が `succeeded` まで完走することを確認済み（llm変換は未検証）
 
+### 実装済み（軽量モード / Lightweight Mode）
+
+軽量なドキュメントペアの場合、`pre_analysis`ステップで分析を完結し、後続の`compare_analysis`をスキップする機能。
+
+- **軽量判定**: LLMが以下の論理式で判断
+  ```
+  is_lightweight = (total_chars <= 10000) OR (relation == 'Fix')
+  ```
+  - `total_chars`: docA + docB の総文字数
+  - `relation`: 関係タイプ（Fix/Revision/Derivative/Heterogeneous/Subset）
+  - Fixは軽微な修正のため、文字数に関係なく軽量扱い
+- **動作**:
+  - `is_complete=True`の場合、`filled_report`に記入済みレポートを出力
+  - `template_filled.md`を`out/`に保存（`compare_analysis`の出力と同等）
+  - `template_draft.md`は作成しない（UIでは「-」表示）
+  - `.skip_compare_analysis`フラグファイルを作成し、後続ステップをスキップ
+- **パラメータ**:
+  - `comparison_focus`: 重点比較観点のリスト（将来のUI入力を見据えて注入可能）
+    - 例: `["ルールの追加・削除", "条件式の変更"]`
+- **スキーマ**: `PreAnalysisResult`に`is_complete`（必須bool）と`filled_report`（必須str）を追加
+
 ### 残課題（MVP後の優先度高）
 
 - PDF→TXT（LLM）の実測検証（ページ範囲/コスト/品質、UIパラメータ調整）
@@ -241,8 +262,45 @@ UIで未実装の機能（例: AST検索/blueprint検証/テキスト貼り付�
 - embedding cache: 共有 or run専用（まずは既存JSONキャッシュのパスを利用）
 - マッチング: top_k, alpha, beta, min_score
 - LLMモデル（必要なら）
-  - `llm_complex_model`（比較/blueprintなどの“複雑系”に使うモデル）
+  - `llm_complex_model`（比較/blueprintなどの"複雑系"に使うモデル）
   - `summarize_ast` / `ast_summary_model`（AST枝サマリ付与）
+
+### 3.4 重点比較観点（comparison_focus）
+
+- `comparison_focus`: 重点比較観点のリスト（任意）
+  - 例: `["ルールの追加・削除", "条件式の変更", "例外処理の変更"]`
+  - 指定すると`pre_analysis`のプロンプトに注入され、LLMがその観点を重視して分析
+  - 将来的にUI上でユーザーが入力することを想定
+
+### 3.5 成果物流用（reuse_artifacts_from）
+
+- `reuse_artifacts_from`: 既存RunのID（任意）
+  - 指定すると、以下の成果物をコピーして再利用:
+    - `work/ast_a.ast.json`, `ast_b.ast.json`
+    - `work/initial_matching.json`
+    - `work/blueprint_a.json`, `blueprint_b.json`
+    - `cache/embedding_cache.json`
+  - ユースケース: AST作成済みのRunを流用して、`pre_analysis`のみ再実行
+  - UI: Run作成画面で「成果物流用」セクションから選択可能（succeededのRunのみ表示）
+  - イベント: `artifacts_reused`または`artifacts_reuse_failed`がemitされる
+
+### 3.6 入力ファイル流用（use_files_from_run）
+
+- `use_files_from_run`: 既存RunのID（任意）
+  - 指定すると、そのRunの入力ファイル（`in/doc_a.*`, `in/doc_b.*`）を再利用
+  - 新規ファイルアップロードが不要になる
+  - UI: Run作成画面で「過去のRunから入力ファイルを選択」ドロップダウン
+    - 各Runのファイル名も表示: `run_id... | ファイルA / ファイルB (日時)`
+  - ユースケース: 同じドキュメントで異なるパラメータで再実行
+
+### 3.7 ステップ選択（step filtering）
+
+- `step_from`: 開始ステップ名（空欄で最初から）
+- `step_to`: 終了ステップ名（空欄で最後まで）
+- **UI対応済み**: Run作成画面のドロップダウンで選択可能
+- 利用可能なステップ名:
+  - **realモード**: `ensure_text_a`, `ensure_text_b`, `build_blueprint_a`, `build_blueprint_b`, `build_ast_a`, `build_ast_b`, `summarize_ast_a`, `summarize_ast_b`, `compare_setup`, `pre_analysis`, `compare_analysis`
+  - **dummyモード**: `dummy_prepare`, `dummy_agent_trace`, `dummy_write_template_draft`, `dummy_analyze`, `dummy_fill_template`
 
 ---
 

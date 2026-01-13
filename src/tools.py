@@ -473,9 +473,12 @@ def read_ast(
     max_depth: int = 3,
     include_content: bool = False,
     max_content_chars: int = 500,
+    state: Annotated[dict, InjectedState] = None,
 ) -> str:
     """
     AST JSONファイルを効率的に読み込むツール。
+    
+    仮想ファイルシステムのみを参照します（実ファイルは参照しません）。
 
     モード:
         - "summary": ファイルメタデータと統計情報のみ（デフォルト、最小コンテキスト）
@@ -498,23 +501,30 @@ def read_ast(
     try:
         # file_pathが / で始まる場合も許容する （相対・絶対どちらもOK）
         clean_path = file_path.lstrip("/")
-        normalized_path = os.path.normpath(clean_path)
-        # ファイル存在チェック
-        if not os.path.exists(normalized_path):
+        
+        # 仮想FSから読み込みを試みる（仮想FSのみを参照）
+        content = _get_file_content_from_state(state, clean_path)
+        if content is None:
             return json.dumps({
                 "ok": False,
-                "error": f"File not found: {normalized_path}"
+                "error": f"File not found in virtual filesystem: {clean_path}",
+                "hint": "Use 'ls' tool to list available files in virtual filesystem"
             }, ensure_ascii=False)
 
-        # ファイルサイズチェック（警告用）
-        file_size = os.path.getsize(normalized_path)
+        # JSONとしてパース
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError as e:
+            return json.dumps({
+                "ok": False,
+                "error": f"Invalid JSON in virtual file: {str(e)}"
+            }, ensure_ascii=False)
         
-        with open(normalized_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        file_size = len(content)
 
         root = data.get("root", {})
         meta = data.get("__meta__", {})
-        file_name = data.get("file_name", os.path.basename(normalized_path))
+        file_name = data.get("file_name", os.path.basename(clean_path))
 
         # === mode: summary ===
         if mode == "summary":

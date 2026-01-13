@@ -1,39 +1,240 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card">
-  <h1>Run詳細</h1>
-  <p><span class="tag">run_id</span> {{ run.run_id }}</p>
-  <div class="grid grid-2">
-    <div>
-      <div id="status-panel" hx-get="/runs/{{ run.run_id }}/partials/status" hx-trigger="load, refresh"></div>
-      <div style="margin-top: 8px;">
-        <button class="btn" hx-post="/runs/{{ run.run_id }}/start" hx-target="#status-panel" hx-swap="innerHTML">開始</button>
-        <button class="btn danger" hx-post="/runs/{{ run.run_id }}/cancel" hx-target="#status-panel" hx-swap="innerHTML">キャンセル</button>
+<div class="flex flex-col gap-6">
+  <!-- ヘッダー -->
+  <div class="card bg-base-100 shadow-xl">
+    <div class="card-body">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div class="flex items-center gap-2">
+          <a href="/" class="btn btn-ghost btn-sm">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </a>
+          <div>
+            <h1 class="card-title text-2xl">Run詳細</h1>
+            <p class="font-mono text-sm text-base-content/60">{{ run.run_id }}</p>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-primary btn-sm" 
+                  hx-post="/runs/{{ run.run_id }}/start" 
+                  hx-target="#status-panel" 
+                  hx-swap="innerHTML"
+                  hx-indicator="#start-indicator">
+            <span id="start-indicator" class="htmx-indicator loading loading-spinner loading-xs"></span>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+            </svg>
+            開始
+          </button>
+          <button class="btn btn-error btn-outline btn-sm" 
+                  hx-post="/runs/{{ run.run_id }}/cancel" 
+                  hx-target="#status-panel" 
+                  hx-swap="innerHTML"
+                  hx-confirm="本当にキャンセルしますか？"
+                  hx-indicator="#cancel-indicator">
+            <span id="cancel-indicator" class="htmx-indicator loading loading-spinner loading-xs"></span>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            キャンセル
+          </button>
+        </div>
       </div>
     </div>
-    <div>
-      <h3>パラメータ</h3>
-      <pre class="pre">{{ run.params | tojson(indent=2, ensure_ascii=false) }}</pre>
+  </div>
+
+  <!-- ステータス＆パラメータ -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="card bg-base-100 shadow-xl">
+      <div class="card-body">
+        <h2 class="card-title text-lg">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          ステータス
+        </h2>
+        <div id="status-panel" hx-get="/runs/{{ run.run_id }}/partials/status" hx-trigger="load, refresh">
+          <div class="flex justify-center py-4">
+            <span class="loading loading-spinner loading-md"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card bg-base-100 shadow-xl">
+      <div class="card-body">
+        <h2 class="card-title text-lg">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          パラメータ
+        </h2>
+        <div class="bg-neutral text-neutral-content rounded-lg p-4 text-xs max-h-48 overflow-auto">
+          <pre><code>{{ run.params | tojson(indent=2) }}</code></pre>
+        </div>
+      </div>
     </div>
   </div>
-</div>
 
-<div class="grid grid-2">
-  <div class="card" id="artifacts-panel" hx-get="/runs/{{ run.run_id }}/partials/artifacts" hx-trigger="load, refresh" hx-target="this"></div>
-  <div class="card">
-    <h3>テンプレ（Draft）</h3>
-    <div id="template-draft" hx-get="/runs/{{ run.run_id }}/partials/template?kind=draft" hx-trigger="load, refresh"></div>
+  <!-- 成果物＆テンプレート -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- 成果物一覧 -->
+    <div class="card bg-base-100 shadow-xl" id="artifacts-panel" hx-get="/runs/{{ run.run_id }}/partials/artifacts" hx-trigger="load, refresh" hx-target="this">
+      <div class="card-body">
+        <div class="flex justify-center py-8">
+          <span class="loading loading-spinner loading-md"></span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- テンプレート（Draft） -->
+    <div class="card bg-base-100 shadow-xl">
+      <div class="card-body">
+        <h2 class="card-title text-lg">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+          テンプレ（Draft）
+        </h2>
+        <div id="template-draft" hx-get="/runs/{{ run.run_id }}/partials/template?kind=draft" hx-trigger="load, refresh">
+          <div class="flex justify-center py-4">
+            <span class="loading loading-spinner loading-sm"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- テンプレート（Filled） -->
+    <div class="card bg-base-100 shadow-xl">
+      <div class="card-body">
+        <h2 class="card-title text-lg">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          テンプレ（Filled）
+        </h2>
+        <div id="template-filled" hx-get="/runs/{{ run.run_id }}/partials/template?kind=filled" hx-trigger="load, refresh">
+          <div class="flex justify-center py-4">
+            <span class="loading loading-spinner loading-sm"></span>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
-  <div class="card">
-    <h3>テンプレ（Filled）</h3>
-    <div id="template-filled" hx-get="/runs/{{ run.run_id }}/partials/template?kind=filled" hx-trigger="load, refresh"></div>
-  </div>
-</div>
 
-<div class="card">
-  <h2>イベントタイムライン</h2>
-  <div id="events" class="pre">{% for ev in initial_events %}[{{ ev.event_id }}] {{ ev.ts.isoformat() }} {{ ev.event_type }} {{ ev.payload }}
-{% endfor %}</div>
+  <!-- エージェントフロー可視化 -->
+  <div class="card bg-base-100 shadow-xl">
+    <div class="card-body">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+        <h2 class="card-title text-lg">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          エージェントフロー
+        </h2>
+        <div class="flex gap-2 items-center">
+          <span id="flow-status" class="badge badge-outline badge-sm">待機中</span>
+          <div class="dropdown dropdown-end">
+            <label tabindex="0" class="btn btn-ghost btn-xs">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </label>
+            <ul tabindex="0" class="dropdown-content menu p-2 shadow bg-base-200 rounded-box w-40 z-10">
+              <li><a onclick="toggleLogPanel()">ログ表示切替</a></li>
+              <li><a onclick="clearFlow()">フローをクリア</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      
+      <div class="grid grid-cols-1 gap-6">
+        <!-- 左: パイプライン進捗（階層ツリー + 詳細） -->
+        <div>
+          <h3 class="text-sm font-semibold mb-3 text-base-content/70">パイプライン進捗</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-3">
+            <div class="bg-base-200 rounded-lg p-2 overflow-auto max-h-[520px]">
+              <div class="text-[11px] font-semibold text-base-content/70 mb-2">Workflow Hierarchy</div>
+              <ul id="pipeline-tree" class="menu menu-sm w-full"></ul>
+            </div>
+            <div class="bg-base-200 rounded-lg p-3 overflow-auto max-h-[520px]">
+              <div class="text-[11px] font-semibold text-base-content/70 mb-2">Node Details</div>
+              <div id="pipeline-node-details" class="text-xs text-base-content/70">
+                左のツリーからノードを選択すると詳細が表示されます。
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- イベントログパネル（折りたたみ可能） -->
+  <div id="event-log-panel" class="card bg-base-100 shadow-xl">
+    <div class="card-body">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+        <h2 class="card-title text-lg">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          イベントログ
+        </h2>
+        <div class="flex gap-2 flex-wrap">
+          <button class="btn btn-xs btn-outline filter-btn" data-filter="all" onclick="setEventFilter('all')">すべて</button>
+          <button class="btn btn-xs btn-outline filter-btn" data-filter="step" onclick="setEventFilter('step')">Step</button>
+          <button class="btn btn-xs btn-outline filter-btn" data-filter="tool" onclick="setEventFilter('tool')">Tool</button>
+          <button class="btn btn-xs btn-outline filter-btn" data-filter="agent" onclick="setEventFilter('agent')">Agent</button>
+        </div>
+      </div>
+      
+      <div id="events" class="max-h-96 overflow-y-auto space-y-2">
+        {% for ev in initial_events %}
+        <div class="event-item p-3 bg-base-200 rounded-lg text-sm" data-event-type="{{ ev.event_type }}">
+          <div class="flex items-start gap-3">
+            <div class="flex-shrink-0">
+              {% if 'finished' in ev.event_type or 'succeeded' in ev.event_type or 'result' in ev.event_type %}
+                <span class="text-success">●</span>
+              {% elif 'failed' in ev.event_type or 'error' in ev.event_type %}
+                <span class="text-error">●</span>
+              {% elif 'skipped' in ev.event_type %}
+                <span class="text-warning">●</span>
+              {% elif 'started' in ev.event_type or 'start' in ev.event_type %}
+                <span class="text-info">●</span>
+              {% elif 'tool' in ev.event_type %}
+                <span class="text-secondary">●</span>
+              {% elif 'agent' in ev.event_type %}
+                <span class="text-accent">●</span>
+              {% else %}
+                <span class="text-base-content/40">●</span>
+              {% endif %}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="badge badge-sm badge-ghost font-mono">#{{ ev.event_id }}</span>
+                <span class="font-medium">{{ ev.event_type }}</span>
+                {% if 'tool' in ev.event_type and ev.payload.get('tool_name') %}
+                  <span class="badge badge-sm badge-secondary">{{ ev.payload.get('tool_name') }}</span>
+                {% endif %}
+                {% if 'agent' in ev.event_type and ev.payload.get('agent_name') %}
+                  <span class="badge badge-sm badge-accent">{{ ev.payload.get('agent_name') }}{% if ev.payload.get('is_subagent') %} (sub){% endif %}</span>
+                {% endif %}
+                {% if 'step' in ev.event_type and ev.payload.get('step') %}
+                  <span class="badge badge-sm badge-info">{{ ev.payload.get('step') }}</span>
+                {% endif %}
+                <span class="text-xs text-base-content/50">{{ ev.ts.isoformat() }}</span>
+              </div>
+              <div class="text-xs text-base-content/70 mt-2 bg-base-300 p-2 rounded overflow-x-auto">
+                <pre class="whitespace-pre-wrap break-all">{{ ev.payload | tojson(indent=2) }}</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -43,25 +244,855 @@
   const artifactsPanel = document.getElementById("artifacts-panel");
   const templateDraft = document.getElementById("template-draft");
   const templateFilled = document.getElementById("template-filled");
+  const flowStatus = document.getElementById("flow-status");
+  const pipelineTree = document.getElementById("pipeline-tree");
+  const pipelineNodeDetails = document.getElementById("pipeline-node-details");
 
-  function appendEvent(payload) {
-    const line = `[${payload.event_id}] ${payload.ts} ${payload.event_type} ${JSON.stringify(payload.payload)}`;
-    eventsEl.textContent += `\n${line}`;
-    eventsEl.scrollTop = eventsEl.scrollHeight;
+  let currentFilter = 'all';
+  
+  // 実行状態管理（パイプラインツリー/ログ表示用）
+  const flowState = {
+    agents: new Map(),      // invocation_id -> {id,name,isSubagent,parentId,rawDepth,depth,step,status,seq,tools:[{name,status,tool_call_id,ts}]}
+    steps: new Map(),       // step_name -> {status}
+    stepMeta: new Map(),    // step_name -> {startedTs?: string, finishedTs?: string}
+    stepOrder: [],          // 表示順（出現順）
+    currentStep: null,      // 直近の step_started を保持（agent_start へ関連付け）
+    pendingSubagentParents: [], // tool(task) -> 次の subagent_start の親推定に使う（既存run互換）
+    activeAgentId: null,
+    selectedTreeNodeKey: null, // "type:id"
+    openTreeNodeKeys: new Set(), // 展開状態
+    eventBuffer: [],        // 最近のイベント（詳細表示のフィルタ用）
+    // サーバー側の初期状態に合わせる（SSE接続前でもツリーのroot表示が自然になる）
+    runStatus: "{{ run.status if run.status else 'idle' }}",
+    pipelineRenderPending: false,
+    seq: 0,
+  };
+
+  // ツリー初期状態
+  flowState.openTreeNodeKeys.add(`run:${runId}`);
+
+  function nodeKey(type, id) {
+    return `${type}:${id}`;
   }
 
-  const source = new EventSource(`/runs/${runId}/events`);
-  source.onmessage = (event) => {
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = (text ?? '').toString();
+    return div.innerHTML;
+  }
+
+  function statusBadgeClass(status) {
+    switch (status) {
+      case 'running':
+      case 'active':
+        return 'badge-primary';
+      case 'finished':
+      case 'success':
+      case 'succeeded':
+        return 'badge-success';
+      case 'failed':
+      case 'error':
+        return 'badge-error';
+      case 'skipped':
+        return 'badge-warning';
+      default:
+        return 'badge-ghost';
+    }
+  }
+
+  function statusDotClass(status) {
+    switch (status) {
+      case 'running':
+      case 'active':
+        return 'bg-primary';
+      case 'finished':
+      case 'success':
+      case 'succeeded':
+        return 'bg-success';
+      case 'failed':
+      case 'error':
+        return 'bg-error';
+      case 'skipped':
+        return 'bg-warning';
+      default:
+        return 'bg-base-content/30';
+    }
+  }
+
+  function schedulePipelineRender() {
+    if (!pipelineTree) return;
+    if (flowState.pipelineRenderPending) return;
+    flowState.pipelineRenderPending = true;
+    requestAnimationFrame(() => {
+      flowState.pipelineRenderPending = false;
+      renderPipelineTree();
+    });
+  }
+
+  function toggleTreeOpen(key) {
+    if (flowState.openTreeNodeKeys.has(key)) flowState.openTreeNodeKeys.delete(key);
+    else flowState.openTreeNodeKeys.add(key);
+    schedulePipelineRender();
+  }
+
+  function selectTreeNode(type, id, data) {
+    const key = nodeKey(type, id);
+    flowState.selectedTreeNodeKey = key;
+    renderPipelineNodeDetails(type, id, data);
+    schedulePipelineRender();
+  }
+
+  function lastEventsForFilter(predicate, limit = 8) {
+    const out = [];
+    for (let i = flowState.eventBuffer.length - 1; i >= 0; i--) {
+      const ev = flowState.eventBuffer[i];
+      if (!ev) continue;
+      if (predicate(ev)) out.push(ev);
+      if (out.length >= limit) break;
+    }
+    return out;
+  }
+
+  function renderPipelineNodeDetails(type, id, data) {
+    if (!pipelineNodeDetails) return;
+
+    const safeType = escapeHtml(type);
+    const safeId = escapeHtml(id);
+
+    let title = `${safeType}`;
+    let subtitle = safeId;
+    let status = '';
+    let metaRows = [];
+    let events = [];
+
+    if (type === 'run') {
+      title = 'Run';
+      subtitle = escapeHtml(runId);
+      status = flowState.runStatus;
+      events = lastEventsForFilter(() => true, 10);
+      metaRows = [
+        ['status', status],
+      ];
+    } else if (type === 'step') {
+      title = 'Step';
+      subtitle = safeId;
+      status = (flowState.steps.get(id)?.status) || 'pending';
+      events = lastEventsForFilter((ev) => (ev?.payload?.step || ev?.payload?.step_name) === id, 10);
+      const agentCount = Array.from(flowState.agents.values()).filter(a => a.step === id).length;
+      metaRows = [
+        ['status', status],
+        ['agents', agentCount.toString()],
+      ];
+    } else if (type === 'agent') {
+      title = data?.isSubagent ? 'Sub Agent' : 'Agent';
+      subtitle = escapeHtml(data?.name || id);
+      status = data?.status || 'active';
+      events = lastEventsForFilter((ev) => (ev?.payload?.invocation_id === id), 10);
+      metaRows = [
+        ['invocation_id', id],
+        ['step', data?.step || ''],
+        ['status', status],
+        ['parent', data?.parentId || ''],
+        ['tools', (data?.tools?.length || 0).toString()],
+      ];
+    } else if (type === 'tool') {
+      title = 'Tool';
+      subtitle = escapeHtml(data?.name || id);
+      status = data?.status || 'running';
+      const toolCallId = data?.tool_call_id;
+      events = lastEventsForFilter((ev) => (toolCallId && ev?.payload?.tool_call_id === toolCallId), 10);
+      metaRows = [
+        ['tool_call_id', toolCallId || ''],
+        ['status', status],
+        ['ts', data?.ts || ''],
+      ];
+    }
+
+    const badgeCls = statusBadgeClass(status);
+    const metaHtml = metaRows
+      .filter(([k, v]) => (v ?? '').toString().trim() !== '')
+      .map(([k, v]) => `<div class="flex gap-2"><div class="w-24 text-base-content/50">${escapeHtml(k)}</div><div class="font-mono break-all">${escapeHtml(v)}</div></div>`)
+      .join('');
+
+    const eventsHtml = (events && events.length > 0)
+      ? events.map((ev) => {
+          const et = escapeHtml(ev.event_type || '');
+          const ts = escapeHtml(ev.ts || '');
+          const payloadStr = escapeHtml(JSON.stringify(ev.payload || {}, null, 2));
+          return `
+            <div class="mt-2 p-2 bg-base-300 rounded">
+              <div class="flex items-center justify-between gap-2">
+                <div class="text-[11px] font-semibold">${et}</div>
+                <div class="text-[11px] text-base-content/50">${ts}</div>
+              </div>
+              <pre class="text-[11px] mt-1 whitespace-pre-wrap break-all">${payloadStr}</pre>
+            </div>
+          `;
+        }).join('')
+      : `<div class="text-[11px] text-base-content/50">該当イベントがまだありません。</div>`;
+
+    pipelineNodeDetails.innerHTML = `
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <div class="text-sm font-bold">${escapeHtml(title)}</div>
+          <div class="text-[11px] text-base-content/60 font-mono break-all">${escapeHtml(subtitle)}</div>
+        </div>
+        <span class="badge badge-sm ${badgeCls}">${escapeHtml(status || 'pending')}</span>
+      </div>
+      <div class="mt-3 space-y-1">
+        ${metaHtml || ''}
+      </div>
+      <div class="mt-4">
+        <div class="text-[11px] font-semibold text-base-content/70 mb-1">Execution Logs (recent)</div>
+        ${eventsHtml}
+      </div>
+    `;
+  }
+
+  function buildAgentChildrenMap(stepName) {
+    const children = new Map(); // parentId -> [childId]
+    flowState.agents.forEach((a) => {
+      if (a.step !== stepName) return;
+      if (!a.parentId) return;
+      if (!children.has(a.parentId)) children.set(a.parentId, []);
+      children.get(a.parentId).push(a.id);
+    });
+    children.forEach((list) => {
+      list.sort((x, y) => (flowState.agents.get(x)?.seq || 0) - (flowState.agents.get(y)?.seq || 0));
+    });
+    return children;
+  }
+
+  function buildStepRootAgents(stepName) {
+    const roots = [];
+    flowState.agents.forEach((a) => {
+      if (a.step !== stepName) return;
+      const p = a.parentId ? flowState.agents.get(a.parentId) : null;
+      // 親がいない / 親が未登録 / 親が別step の場合は step直下のroot扱い
+      if (!a.parentId || !p || p.step !== stepName) roots.push(a.id);
+    });
+    roots.sort((x, y) => (flowState.agents.get(x)?.seq || 0) - (flowState.agents.get(y)?.seq || 0));
+    return roots;
+  }
+
+  function renderPipelineTree() {
+    if (!pipelineTree) return;
+
+    const stepNames = (flowState.stepOrder && flowState.stepOrder.length > 0)
+      ? [...flowState.stepOrder]
+      : Array.from(flowState.steps.keys());
+
+    // 何も無い場合はプレースホルダ
+    if (stepNames.length === 0) {
+      pipelineTree.innerHTML = `
+        <li>
+          <div class="text-xs text-base-content/50 px-2 py-2">Run開始待ち…</div>
+        </li>
+      `;
+      // details は初期文言のまま
+      return;
+    }
+
+    const selected = flowState.selectedTreeNodeKey;
+
+    function rowHtml({ type, id, label, status, depth, hasChildren, open, extraBadge }) {
+      const key = nodeKey(type, id);
+      const isSelected = selected === key;
+      const dot = statusDotClass(status);
+      const badge = statusBadgeClass(status);
+      const pad = Math.max(0, depth) * 10;
+      const caret = hasChildren
+        ? `<button class="btn btn-ghost btn-xs px-1" type="button" data-action="toggle" data-key="${escapeHtml(key)}" aria-label="toggle">${open ? '▾' : '▸'}</button>`
+        : `<span class="inline-block w-6"></span>`;
+      const badges = [
+        `<span class="badge badge-xs ${badge}">${escapeHtml(status || 'pending')}</span>`,
+        extraBadge ? `<span class="badge badge-xs badge-outline">${escapeHtml(extraBadge)}</span>` : ''
+      ].join(' ');
+
+      return `
+        <li>
+          <a class="flex items-center gap-2 ${isSelected ? 'active' : ''}"
+             style="padding-left:${pad}px"
+             data-action="select"
+             data-type="${escapeHtml(type)}"
+             data-id="${escapeHtml(id)}"
+             data-key="${escapeHtml(key)}">
+            ${caret}
+            <span class="inline-block w-2 h-2 rounded-full ${dot}"></span>
+            <span class="flex-1 min-w-0 truncate">${escapeHtml(label)}</span>
+            <span class="flex items-center gap-1">${badges}</span>
+          </a>
+        </li>
+      `;
+    }
+
+    let html = '';
+
+    // Run root
+    const runKey = nodeKey('run', runId);
+    const runOpen = flowState.openTreeNodeKeys.has(runKey);
+    html += rowHtml({
+      type: 'run',
+      id: runId,
+      label: `Run: ${runId}`,
+      status: flowState.runStatus,
+      depth: 0,
+      hasChildren: true,
+      open: runOpen,
+      extraBadge: null
+    });
+
+    if (runOpen) {
+      // Steps
+      stepNames.forEach((stepName) => {
+        const stepStatus = flowState.steps.get(stepName)?.status || 'pending';
+        const childrenMap = buildAgentChildrenMap(stepName);
+        const roots = buildStepRootAgents(stepName);
+        const stepKey = nodeKey('step', stepName);
+        const stepOpen = flowState.openTreeNodeKeys.has(stepKey) || stepStatus === 'running';
+        if (stepOpen) flowState.openTreeNodeKeys.add(stepKey);
+
+        html += rowHtml({
+          type: 'step',
+          id: stepName,
+          label: `Task: ${stepName}`,
+          status: stepStatus,
+          depth: 1,
+          hasChildren: (roots.length > 0),
+          open: stepOpen,
+          extraBadge: null
+        });
+
+        function renderAgentSubtree(agentId, depth) {
+          const a = flowState.agents.get(agentId);
+          if (!a) return;
+          const aKey = nodeKey('agent', a.id);
+          const aHasChildren = (childrenMap.get(a.id)?.length || 0) > 0 || (a.tools?.length || 0) > 0;
+          const aOpen = flowState.openTreeNodeKeys.has(aKey) || a.status === 'active';
+          if (aOpen) flowState.openTreeNodeKeys.add(aKey);
+
+          html += rowHtml({
+            type: 'agent',
+            id: a.id,
+            label: a.isSubagent ? `Sub Agent: ${a.name}` : `Agent: ${a.name}`,
+            status: a.status === 'active' ? 'running' : a.status,
+            depth,
+            hasChildren: aHasChildren,
+            open: aOpen,
+            extraBadge: a.isSubagent ? 'sub' : null
+          });
+
+          if (!aOpen) return;
+
+          // Tools (先に表示)
+          (a.tools || []).forEach((t, idx) => {
+            const tid = t.tool_call_id ? `#${t.tool_call_id}` : `${a.id}:${idx}`;
+            const tKey = nodeKey('tool', tid);
+            html += rowHtml({
+              type: 'tool',
+              id: tid,
+              label: `Tool: ${t.name || 'tool'}${t.tool_call_id ? ` #${t.tool_call_id}` : ''}`,
+              status: (t.status === 'running') ? 'running' : t.status,
+              depth: depth + 1,
+              hasChildren: false,
+              open: false,
+              extraBadge: null
+            });
+          });
+
+          // Sub agents
+          const kids = childrenMap.get(a.id) || [];
+          kids.forEach((cid) => renderAgentSubtree(cid, depth + 1));
+        }
+
+        if (stepOpen) {
+          roots.forEach((aid) => renderAgentSubtree(aid, 2));
+        }
+      });
+    }
+
+    pipelineTree.innerHTML = html;
+  }
+
+  // ツリーのクリック処理は単一のイベント委譲で扱う（renderごとの多重リスナーを避ける）
+  if (pipelineTree) {
+    pipelineTree.addEventListener('click', (e) => {
+      const el = e.target.closest('[data-action]');
+      if (!el || !pipelineTree.contains(el)) return;
+
+      const action = el.dataset.action;
+      if (action === 'toggle') {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleTreeOpen(el.dataset.key);
+        return;
+      }
+
+      if (action === 'select') {
+        e.preventDefault();
+        const type = el.dataset.type;
+        const id = el.dataset.id;
+        if (type === 'agent') {
+          selectTreeNode(type, id, flowState.agents.get(id));
+        } else if (type === 'tool') {
+          // tool の data は id から直接引けないため横断探索
+          let toolData = null;
+          flowState.agents.forEach((ag) => {
+            (ag.tools || []).forEach((t, idx) => {
+              const tid = t.tool_call_id ? `#${t.tool_call_id}` : `${ag.id}:${idx}`;
+              if (tid === id) toolData = t;
+            });
+          });
+          selectTreeNode(type, id, toolData);
+        } else {
+          selectTreeNode(type, id, null);
+        }
+      }
+    });
+  }
+
+  // ===== イベントフィルタ =====
+  function setEventFilter(filter) {
+    currentFilter = filter;
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.classList.remove('btn-active', 'btn-primary');
+      if (btn.dataset.filter === filter) {
+        btn.classList.add('btn-active', 'btn-primary');
+      }
+    });
+    filterEvents();
+  }
+
+  function filterEvents() {
+    document.querySelectorAll('.event-item').forEach(item => {
+      const eventType = item.dataset.eventType || '';
+      let show = true;
+      if (currentFilter === 'step') {
+        show = eventType.includes('step');
+      } else if (currentFilter === 'tool') {
+        show = eventType.includes('tool');
+      } else if (currentFilter === 'agent') {
+        show = eventType.includes('agent');
+      }
+      item.style.display = show ? 'block' : 'none';
+    });
+  }
+
+  function getEventColor(eventType) {
+    if (eventType.includes('finished') || eventType.includes('succeeded') || eventType.includes('result')) return 'text-success';
+    if (eventType.includes('failed') || eventType.includes('error')) return 'text-error';
+    if (eventType.includes('skipped')) return 'text-warning';
+    if (eventType.includes('started') || eventType.includes('start')) return 'text-info';
+    if (eventType.includes('tool')) return 'text-secondary';
+    if (eventType.includes('agent')) return 'text-accent';
+    return 'text-base-content/40';
+  }
+
+  // ===== イベントログ追加 =====
+  function appendEventLog(payload) {
+    const colorClass = getEventColor(payload.event_type);
+    const data = payload.payload || {};
+    const payloadStr = JSON.stringify(data, null, 2);
+    
+    // ラベルを構築
+    let labels = '';
+    if (payload.event_type.includes('tool') && data.tool_name) {
+      labels += `<span class="badge badge-sm badge-secondary">${data.tool_name}</span>`;
+    }
+    if (payload.event_type.includes('agent') && data.agent_name) {
+      const subLabel = data.is_subagent ? ' (sub)' : '';
+      labels += `<span class="badge badge-sm badge-accent">${data.agent_name}${subLabel}</span>`;
+    }
+    if (payload.event_type.includes('step') && (data.step || data.step_name)) {
+      labels += `<span class="badge badge-sm badge-info">${data.step || data.step_name}</span>`;
+    }
+    
+    const eventHtml = `
+      <div class="event-item p-3 bg-base-200 rounded-lg text-sm animate-pulse" data-event-type="${payload.event_type}">
+        <div class="flex items-start gap-3">
+          <div class="flex-shrink-0">
+            <span class="${colorClass}">●</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="badge badge-sm badge-ghost font-mono">#${payload.event_id}</span>
+              <span class="font-medium">${payload.event_type}</span>
+              ${labels}
+              <span class="text-xs text-base-content/50">${payload.ts}</span>
+            </div>
+            <div class="text-xs text-base-content/70 mt-2 bg-base-300 p-2 rounded overflow-x-auto">
+              <pre class="whitespace-pre-wrap break-all">${escapeHtml(payloadStr)}</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    eventsEl.insertAdjacentHTML('beforeend', eventHtml);
+    eventsEl.scrollTop = eventsEl.scrollHeight;
+    
+    setTimeout(() => {
+      const items = eventsEl.querySelectorAll('.animate-pulse');
+      items.forEach(item => item.classList.remove('animate-pulse'));
+    }, 1000);
+    
+    filterEvents();
+  }
+  
+  // escapeHtml は上で定義済み
+
+  // ===== パイプライン進捗（階層）更新 =====
+  function updatePipelineStep(stepName, status) {
+    if (!stepName) return;
+    flowState.steps.set(stepName, { status });
+    if (!flowState.stepMeta.has(stepName)) flowState.stepMeta.set(stepName, {});
+    const meta = flowState.stepMeta.get(stepName);
+    if (status === 'running' && !meta.startedTs) meta.startedTs = new Date().toISOString();
+    if ((status === 'finished' || status === 'failed' || status === 'skipped') && !meta.finishedTs) meta.finishedTs = new Date().toISOString();
+    if (status === 'running') {
+      flowStatus.textContent = stepName + ' 実行中';
+      flowStatus.classList.remove('badge-outline', 'badge-success', 'badge-error', 'badge-warning');
+      flowStatus.classList.add('badge-primary');
+    } else if (status === 'failed' || status === 'error') {
+      flowStatus.textContent = 'エラー';
+      flowStatus.classList.remove('badge-outline', 'badge-primary', 'badge-success', 'badge-warning');
+      flowStatus.classList.add('badge-error');
+    }
+    schedulePipelineRender();
+  }
+
+  // ===== Workflow Execution Tree View は廃止 =====
+  // 旧: SVGフロー図/ズーム/選択/接続線などの描画ロジックは削除しました。
+
+  function addAgentNode(invocationId, agentName, isSubagent, parentInvocationId, depth) {
+    const id = invocationId || `agent-${Date.now()}`;
+    const parentId = parentInvocationId || null;
+
+    const rawDepth = (depth === 0 || depth === "0") ? 0 : (depth ? parseInt(depth, 10) : null);
+    const inferredDepth = (() => {
+      if (parentId && flowState.agents.has(parentId)) {
+        const pd = parseInt(flowState.agents.get(parentId).depth || 1, 10);
+        return Number.isNaN(pd) ? 1 : (pd + 1);
+      }
+      if (rawDepth !== null && rawDepth !== undefined && !Number.isNaN(rawDepth)) {
+        // middleware 側が root=0 の場合があるので最低1に丸める
+        return Math.max(1, rawDepth);
+      }
+      return 1;
+    })();
+
+    const existing = flowState.agents.get(id);
+    if (!existing) {
+      flowState.agents.set(id, {
+        id,
+        name: agentName || 'agent',
+        isSubagent: !!isSubagent,
+        parentId,
+        rawDepth,
+        depth: inferredDepth,
+        step: flowState.currentStep,
+        status: 'active',
+        seq: ++flowState.seq,
+        tools: [],
+      });
+    } else {
+      existing.name = agentName || existing.name;
+      existing.isSubagent = !!isSubagent;
+      existing.parentId = parentId || existing.parentId;
+      existing.rawDepth = (rawDepth !== null && rawDepth !== undefined) ? rawDepth : existing.rawDepth;
+      existing.depth = inferredDepth || existing.depth || 1;
+      existing.step = existing.step || flowState.currentStep;
+      existing.status = 'active';
+    }
+
+    flowState.activeAgentId = id;
+  }
+
+  function addToolCall(invocationId, toolName, status, toolCallId, ts) {
+    const agent = flowState.agents.get(invocationId);
+    if (!agent) return;
+    agent.tools = agent.tools || [];
+    agent.tools.push({
+      name: toolName || 'tool',
+      status: status || 'running',
+      tool_call_id: toolCallId || null,
+      ts: ts || null,
+    });
+  }
+
+  function updateToolStatus(invocationId, toolRef, status) {
+    const agent = flowState.agents.get(invocationId);
+    if (!agent || !agent.tools || agent.tools.length === 0) return;
+
+    let idx = -1;
+    if (typeof toolRef === 'number') {
+      idx = toolRef;
+    } else if (toolRef) {
+      idx = agent.tools.findIndex((t) => t.tool_call_id === toolRef);
+    }
+    if (idx < 0) idx = agent.tools.length - 1;
+    if (idx < 0 || idx >= agent.tools.length) return;
+
+    agent.tools[idx].status = status;
+  }
+
+  function completeAgent(invocationId, status) {
+    const agent = flowState.agents.get(invocationId);
+    if (!agent) return;
+    agent.status = (status === 'error') ? 'error' : 'success';
+    if (flowState.activeAgentId === invocationId) flowState.activeAgentId = null;
+  }
+
+  function clearFlow() {
+    flowState.agents.clear();
+    flowState.steps.clear();
+    flowState.stepMeta.clear();
+    flowState.stepOrder = [];
+    flowState.currentStep = null;
+    flowState.pendingSubagentParents = [];
+    flowState.activeAgentId = null;
+    flowState.selectedTreeNodeKey = null;
+    flowState.openTreeNodeKeys.clear();
+    flowState.openTreeNodeKeys.add(`run:${runId}`);
+    flowState.eventBuffer = [];
+    flowState.runStatus = 'idle';
+    if (flowStatus) {
+      flowStatus.textContent = '待機中';
+      flowStatus.classList.remove('badge-primary', 'badge-success', 'badge-error', 'badge-warning');
+      flowStatus.classList.add('badge-outline');
+    }
+    if (pipelineNodeDetails) {
+      pipelineNodeDetails.innerHTML = '左のツリーからノードを選択すると詳細が表示されます。';
+    }
+    schedulePipelineRender();
+  }
+
+  function toggleLogPanel() {
+    const panel = document.getElementById('event-log-panel');
+    panel.classList.toggle('hidden');
+  }
+
+  // ===== SSEイベントハンドラ =====
+  function handleSSEEvent(event) {
     try {
       const payload = JSON.parse(event.data);
-      appendEvent(payload);
+      // 詳細表示用に最近のイベントを保持（メモリ保護のため上限あり）
+      flowState.eventBuffer.push(payload);
+      if (flowState.eventBuffer.length > 500) {
+        flowState.eventBuffer.splice(0, flowState.eventBuffer.length - 500);
+      }
+      appendEventLog(payload);
+      processFlowEvent(payload);
     } catch (err) {
       console.warn("Failed to parse event", err);
     }
+  }
+
+  function processFlowEvent(payload) {
+    const eventType = payload.event_type;
+    const data = payload.payload || {};
+    
+    switch (eventType) {
+      case 'run_status_changed':
+        if (data.status === 'running') {
+          flowState.runStatus = 'running';
+          flowStatus.textContent = '実行中';
+          flowStatus.classList.remove('badge-outline', 'badge-success', 'badge-error');
+          flowStatus.classList.add('badge-primary');
+        } else if (data.status === 'succeeded') {
+          flowState.runStatus = 'succeeded';
+          flowStatus.textContent = '完了';
+          flowStatus.classList.remove('badge-outline', 'badge-primary', 'badge-error');
+          flowStatus.classList.add('badge-success');
+        } else if (data.status === 'failed') {
+          flowState.runStatus = 'failed';
+          flowStatus.textContent = 'エラー';
+          flowStatus.classList.remove('badge-outline', 'badge-primary', 'badge-success');
+          flowStatus.classList.add('badge-error');
+          // agent_end が届かないケースを救済（例: 例外中断）
+          flowState.agents.forEach((a) => {
+            if (a.status === 'active') {
+              a.status = 'error';
+            }
+          });
+        }
+        schedulePipelineRender();
+        break;
+        
+      case 'step_started':
+        const startedStep = data.step || data.step_name;
+        flowState.currentStep = startedStep || flowState.currentStep;
+        if (startedStep && !flowState.stepOrder.includes(startedStep)) {
+          flowState.stepOrder.push(startedStep);
+        }
+        if (startedStep) {
+          if (!flowState.stepMeta.has(startedStep)) flowState.stepMeta.set(startedStep, {});
+          const meta = flowState.stepMeta.get(startedStep);
+          // 可能ならイベント時刻を採用（表示のタイムライン精度向上）
+          meta.startedTs = meta.startedTs || data.ts || payload.ts || new Date().toISOString();
+        }
+        updatePipelineStep(startedStep, 'running');
+        break;
+        
+      case 'step_finished':
+        {
+          const s = data.step || data.step_name;
+          if (s) {
+            if (!flowState.stepMeta.has(s)) flowState.stepMeta.set(s, {});
+            const meta = flowState.stepMeta.get(s);
+            meta.finishedTs = meta.finishedTs || data.ts || payload.ts || new Date().toISOString();
+          }
+        }
+        updatePipelineStep(data.step || data.step_name, 'finished');
+        break;
+        
+      case 'step_failed':
+        {
+          const s = data.step || data.step_name;
+          if (s) {
+            if (!flowState.stepMeta.has(s)) flowState.stepMeta.set(s, {});
+            const meta = flowState.stepMeta.get(s);
+            meta.finishedTs = meta.finishedTs || data.ts || payload.ts || new Date().toISOString();
+          }
+        }
+        updatePipelineStep(data.step || data.step_name, 'failed');
+        if (flowState.activeAgentId) {
+          completeAgent(flowState.activeAgentId, 'error');
+        }
+        break;
+        
+      case 'step_skipped':
+        {
+          const s = data.step || data.step_name;
+          if (s) {
+            if (!flowState.stepMeta.has(s)) flowState.stepMeta.set(s, {});
+            const meta = flowState.stepMeta.get(s);
+            meta.finishedTs = meta.finishedTs || data.ts || payload.ts || new Date().toISOString();
+          }
+        }
+        updatePipelineStep(data.step || data.step_name, 'skipped');
+        break;
+        
+      case 'agent_start':
+        let parentId = data.parent_invocation_id;
+        // 既存run互換: subagent なのに parent_invocation_id が欠けるケースを tool(task) から推定
+        if ((!parentId || parentId === null) && data.is_subagent) {
+          parentId = flowState.pendingSubagentParents.shift() || flowState.activeAgentId;
+        }
+        addAgentNode(
+          data.invocation_id || `agent-${Date.now()}`,
+          data.agent_name || 'agent',
+          data.is_subagent || false,
+          parentId,
+          data.depth
+        );
+        schedulePipelineRender();
+        break;
+        
+      case 'agent_end':
+        // 追加情報があれば保持（将来の詳細表示用）
+        if (data.invocation_id && flowState.agents.has(data.invocation_id)) {
+          const a = flowState.agents.get(data.invocation_id);
+          a.final_response_preview = data.final_response_preview || a.final_response_preview;
+        }
+        completeAgent(
+          data.invocation_id || flowState.activeAgentId,
+          'success'
+        );
+        schedulePipelineRender();
+        break;
+        
+      case 'tool_call_start':
+        const toolName = (data.tool_name || 'tool').toString();
+        if (toolName.toLowerCase() === 'task') {
+          const callerId = data.invocation_id || flowState.activeAgentId;
+          if (callerId) flowState.pendingSubagentParents.push(callerId);
+        }
+        addToolCall(
+          data.invocation_id || flowState.activeAgentId,
+          toolName,
+          'running',
+          data.tool_call_id,
+          data.ts
+        );
+        schedulePipelineRender();
+        break;
+        
+      case 'tool_call_result':
+        updateToolStatus(
+          data.invocation_id || flowState.activeAgentId,
+          data.tool_call_id,
+          'success'
+        );
+        schedulePipelineRender();
+        break;
+        
+      case 'tool_call_error':
+        updateToolStatus(
+          data.invocation_id || flowState.activeAgentId,
+          data.tool_call_id,
+          'error'
+        );
+        schedulePipelineRender();
+        break;
+    }
+  }
+
+  // 初期イベントからフロー状態を復元（完了Runでもフローを表示できるようにする）
+  async function hydrateFlowFromApi() {
+    try {
+      const res = await fetch(`/api/runs/${runId}/events?limit=300`);
+      if (!res.ok) return;
+      const evs = await res.json();
+      if (!Array.isArray(evs) || evs.length === 0) return;
+
+      // 既存bufferが空のときだけ復元（SSEで流れてくる間の二重適用を避ける）
+      if (flowState.eventBuffer.length > 0 || flowState.agents.size > 0) return;
+
+      evs.forEach((ev) => {
+        const p = {
+          event_id: ev.event_id,
+          ts: ev.ts,
+          event_type: ev.event_type,
+          payload: ev.payload || {},
+        };
+        flowState.eventBuffer.push(p);
+        // ログはすでにサーバー描画済みなので appendEventLog は呼ばない
+        processFlowEvent(p);
+      });
+      // 仕上げ（ツリー/フローの再描画）
+      schedulePipelineRender();
+    } catch (e) {
+      // noop
+    }
+  }
+
+  // SSE接続
+  hydrateFlowFromApi();
+  const source = new EventSource(`/runs/${runId}/events`);
+  
+  source.onmessage = handleSSEEvent;
+  
+  const eventTypes = [
+    'run_created', 'run_status_changed', 'document_linked', 'cancel_requested',
+    'step_started', 'step_finished', 'step_failed', 'step_skipped', 'run_cancelled',
+    'agent_start', 'agent_end',
+    'tool_call_start', 'tool_call_result', 'tool_call_error',
+    'artifact_updated', 'artifact_created', 'artifacts_reused', 'artifacts_reuse_failed',
+    'heartbeat', 'ast_summarized'
+  ];
+  eventTypes.forEach(eventType => {
+    source.addEventListener(eventType, handleSSEEvent);
+  });
+
+  source.onerror = (err) => {
+    console.warn("SSE connection error", err);
+    flowStatus.textContent = '接続エラー';
+    flowStatus.classList.add('badge-warning');
   };
 
+  // パネル更新
   const refreshTargets = [statusPanel, artifactsPanel, templateDraft, templateFilled];
-  ["artifact_updated", "step_finished", "run_status_changed"].forEach((eventName) => {
+  ["artifact_updated", "artifact_created", "step_finished", "run_status_changed"].forEach((eventName) => {
     source.addEventListener(eventName, () => {
       refreshTargets.forEach((el) => {
         if (el) {
@@ -69,6 +1100,18 @@
         }
       });
     });
+  });
+
+  // 初期化
+  document.querySelector('.filter-btn[data-filter="all"]').classList.add('btn-active', 'btn-primary');
+  // 既存のログ（サーバー描画分）を eventBuffer にも入れておく（詳細表示の初期体験向上）
+  // ※ テンプレート側の JSON は文字列化されているので、ここでは SSE 受信分を主とする
+  schedulePipelineRender();
+  
+  // 初期イベントからフロー状態を復元
+  document.querySelectorAll('.event-item').forEach(item => {
+    const eventType = item.dataset.eventType;
+    // 既存イベントの処理はログ表示のみ（フロー図は新規イベントのみ）
   });
 </script>
 {% endblock %}

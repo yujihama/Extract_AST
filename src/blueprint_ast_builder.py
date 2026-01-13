@@ -125,11 +125,18 @@ def _compile_rules(blueprint: Dict[str, Any]) -> Tuple[List[_Rule], List[_Rule]]
 
 
 def _compile_exclusions(blueprint: Dict[str, Any]) -> List[re.Pattern]:
-    ex = blueprint.get("global_exclusion_rules") or {}
-    if not isinstance(ex, dict):
+    ex = blueprint.get("global_exclusion_rules") or []
+    # リスト形式に対応（後方互換のため辞書形式も許容）
+    if isinstance(ex, dict):
+        # 旧形式: Dict[str, ExclusionRule] → values のみ使用
+        items = list(ex.values())
+    elif isinstance(ex, list):
+        # 新形式: List[ExclusionRule]
+        items = ex
+    else:
         return []
     patterns: List[re.Pattern] = []
-    for _name, rec in ex.items():
+    for rec in items:
         if not isinstance(rec, dict):
             continue
         rx = rec.get("regex")

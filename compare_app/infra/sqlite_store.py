@@ -48,6 +48,8 @@ def init_db(db_path: str) -> None:
               run_id TEXT PRIMARY KEY,
               status TEXT NOT NULL,
               created_at TEXT NOT NULL,
+              doc_a_hash TEXT,
+              doc_b_hash TEXT,
               started_at TEXT,
               finished_at TEXT,
               params_json TEXT,
@@ -56,6 +58,15 @@ def init_db(db_path: str) -> None:
             )
             """
         )
+        # マイグレーション: 既存テーブルにカラムを追加
+        try:
+            cur.execute("ALTER TABLE runs ADD COLUMN doc_a_hash TEXT")
+        except sqlite3.OperationalError:
+            pass  # カラムが既に存在
+        try:
+            cur.execute("ALTER TABLE runs ADD COLUMN doc_b_hash TEXT")
+        except sqlite3.OperationalError:
+            pass  # カラムが既に存在
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS run_events (
@@ -207,13 +218,15 @@ class SqliteRunRepository:
             cur = con.cursor()
             cur.execute(
                 """
-                INSERT INTO runs(run_id, status, created_at, started_at, finished_at, params_json, error_message, workdir)
-                VALUES (?,?,?,?,?,?,?,?)
+                INSERT INTO runs(run_id, status, created_at, doc_a_hash, doc_b_hash, started_at, finished_at, params_json, error_message, workdir)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     run.run_id,
                     run.status,
                     run.created_at.isoformat(),
+                    run.doc_a_hash,
+                    run.doc_b_hash,
                     run.started_at.isoformat() if run.started_at else None,
                     run.finished_at.isoformat() if run.finished_at else None,
                     json.dumps(run.params or {}, ensure_ascii=False) if run.params is not None else None,
@@ -231,7 +244,7 @@ class SqliteRunRepository:
         try:
             cur = con.cursor()
             cur.execute(
-                "SELECT run_id, status, created_at, started_at, finished_at, params_json, error_message, workdir FROM runs WHERE run_id=?",
+                "SELECT run_id, status, created_at, doc_a_hash, doc_b_hash, started_at, finished_at, params_json, error_message, workdir FROM runs WHERE run_id=?",
                 (str(run_id),),
             )
             row = cur.fetchone()
@@ -241,7 +254,7 @@ class SqliteRunRepository:
         if row is None:
             raise KeyError(f"run not found: {run_id}")
 
-        run_id_s, status, created_at, started_at, finished_at, params_json, error_message, workdir = row
+        run_id_s, status, created_at, doc_a_hash, doc_b_hash, started_at, finished_at, params_json, error_message, workdir = row
         params: dict[str, Any] | None
         if params_json:
             try:
@@ -264,6 +277,8 @@ class SqliteRunRepository:
             run_id=str(run_id_s),
             status=str(status),  # type: ignore[assignment]
             created_at=datetime.fromisoformat(created_at),
+            doc_a_hash=doc_a_hash,
+            doc_b_hash=doc_b_hash,
             started_at=_parse_ts(started_at),
             finished_at=_parse_ts(finished_at),
             params=params,
@@ -279,11 +294,18 @@ class SqliteRunRepository:
             cur = con.cursor()
             # started_at / finished_at は必要に応じて埋める
             if status == "running":
+                # 実行開始時にエラーメッセージをクリア
                 cur.execute(
-                    "UPDATE runs SET status=?, started_at=COALESCE(started_at, ?) WHERE run_id=?",
+                    "UPDATE runs SET status=?, started_at=COALESCE(started_at, ?), error_message=NULL WHERE run_id=?",
                     (status, now, str(run_id)),
                 )
-            elif status in {"succeeded", "failed", "cancelled"}:
+            elif status == "succeeded":
+                # 成功時もエラーメッセージをクリア
+                cur.execute(
+                    "UPDATE runs SET status=?, finished_at=COALESCE(finished_at, ?), error_message=NULL WHERE run_id=?",
+                    (status, now, str(run_id)),
+                )
+            elif status in {"failed", "cancelled"}:
                 cur.execute(
                     "UPDATE runs SET status=?, finished_at=COALESCE(finished_at, ?) WHERE run_id=?",
                     (status, now, str(run_id)),
@@ -313,7 +335,7 @@ class SqliteRunRepository:
             cur = con.cursor()
             cur.execute(
                 """
-                SELECT run_id, status, created_at, started_at, finished_at, params_json, error_message, workdir
+                SELECT run_id, status, created_at, doc_a_hash, doc_b_hash, started_at, finished_at, params_json, error_message, workdir
                 FROM runs
                 ORDER BY created_at DESC
                 LIMIT ? OFFSET ?
@@ -326,7 +348,7 @@ class SqliteRunRepository:
 
         out: list[RunRecord] = []
         for row in rows:
-            rid, status, created_at, started_at, finished_at, params_json, error_message, workdir = row
+            rid, status, created_at, doc_a_hash, doc_b_hash, started_at, finished_at, params_json, error_message, workdir = row
             params: dict[str, Any] | None
             if params_json:
                 try:
@@ -350,6 +372,8 @@ class SqliteRunRepository:
                     run_id=str(rid),
                     status=str(status),  # type: ignore[assignment]
                     created_at=datetime.fromisoformat(created_at),
+                    doc_a_hash=doc_a_hash,
+                    doc_b_hash=doc_b_hash,
                     started_at=_parse_ts(started_at),
                     finished_at=_parse_ts(finished_at),
                     params=params,
@@ -358,6 +382,27 @@ class SqliteRunRepository:
                 )
             )
         return out
+
+    def delete_run(self, run_id: str) -> bool:
+        """Runと関連データ（events/artifacts）を削除する。
+
+        Returns:
+            True: runsから削除できた（存在していた）
+            False: runが存在しない
+        """
+        init_db(self.db_path)
+        con = sqlite3.connect(self.db_path)
+        try:
+            cur = con.cursor()
+            # 関連テーブルから先に掃除（外部キーは無いが整合性のため）
+            cur.execute("DELETE FROM artifacts WHERE run_id=?", (str(run_id),))
+            cur.execute("DELETE FROM run_events WHERE run_id=?", (str(run_id),))
+            cur.execute("DELETE FROM runs WHERE run_id=?", (str(run_id),))
+            deleted = int(cur.rowcount or 0) > 0
+            con.commit()
+            return deleted
+        finally:
+            con.close()
 
 
 @dataclass

@@ -3,10 +3,12 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Mapping, Optional, Protocol
+from pathlib import Path
+from typing import Any, Mapping, Optional, Protocol, Union
 
 from compare_app.contracts import CancellationRegistry, EventSink, JobQueue
 from compare_app.core.pipeline import CancelledError, Pipeline, RunContext
+from compare_app.infra.document_store import Document
 from compare_app.models import RunRecord, RunStatus
 
 
@@ -29,11 +31,17 @@ class RunRepository(Protocol):
 
 
 class ArtifactStore(Protocol):
-    """FS成果物の配置（run_dir作成・入力コピー等）。"""
+    """FS成果物の配置（ドキュメント中心アーキテクチャ対応）。"""
 
     def ensure_run_dirs(self, run_id: str) -> dict[str, str]: ...
 
-    def add_input(self, run_id: str, *, which: str, src_path: str) -> str: ...
+    def add_input(self, run_id: str, *, which: str, src_path: str) -> Document: ...
+    
+    def add_input_by_hash(self, run_id: str, *, which: str, doc_hash: str) -> Document: ...
+    
+    def get_run_config(self, run_id: str) -> dict[str, Any]: ...
+    
+    def save_run_config(self, run_id: str, config: dict[str, Any]) -> None: ...
 
 
 @dataclass
@@ -116,36 +124,68 @@ class RunExecutor:
         except Exception:
             return
 
-    def create_run(self, *, doc_a_path: str, doc_b_path: str, params: Mapping[str, Any]) -> RunRecord:
+    def create_run(
+        self,
+        *,
+        doc_a_path: Optional[str] = None,
+        doc_b_path: Optional[str] = None,
+        doc_a_hash: Optional[str] = None,
+        doc_b_hash: Optional[str] = None,
+        params: Mapping[str, Any],
+    ) -> RunRecord:
+        """Runを作成する。
+        
+        入力ドキュメントは以下のいずれかの方法で指定:
+        - doc_a_path/doc_b_path: ファイルパスから新規登録
+        - doc_a_hash/doc_b_hash: 既存ドキュメントのハッシュで参照
+        """
         run_id = uuid.uuid4().hex
         run_dir_paths = self.artifacts.ensure_run_dirs(run_id)
 
-        # 入力をrun配下に確保（UIアップロード・CLIパスの両方で同じ流れにする）
-        dst_a = self.artifacts.add_input(run_id, which="a", src_path=doc_a_path)
-        dst_b = self.artifacts.add_input(run_id, which="b", src_path=doc_b_path)
+        # ドキュメントを解決
+        if doc_a_hash:
+            doc_a = self.artifacts.add_input_by_hash(run_id, which="a", doc_hash=doc_a_hash)
+        elif doc_a_path:
+            doc_a = self.artifacts.add_input(run_id, which="a", src_path=doc_a_path)
+        else:
+            raise ValueError("Either doc_a_path or doc_a_hash must be provided")
+        
+        if doc_b_hash:
+            doc_b = self.artifacts.add_input_by_hash(run_id, which="b", doc_hash=doc_b_hash)
+        elif doc_b_path:
+            doc_b = self.artifacts.add_input(run_id, which="b", src_path=doc_b_path)
+        else:
+            raise ValueError("Either doc_b_path or doc_b_hash must be provided")
+
+        # 既存のペア成果物（matching, embedding_cache）があればwork_dir/cache_dirにコピー
+        self._copy_pair_artifacts_if_exist(
+            run_id, doc_a.doc_hash, doc_b.doc_hash, run_dir_paths
+        )
 
         rec = RunRecord(
             run_id=run_id,
             status="queued",
             created_at=_utcnow(),
+            doc_a_hash=doc_a.doc_hash,
+            doc_b_hash=doc_b.doc_hash,
             params=dict(params),
             workdir=run_dir_paths.get("run_dir"),
         )
         self.repo.create_run(rec)
         self.events.emit(run_id, "run_created", {"ts": _utcnow().isoformat()})
 
-        # 入力ファイルもartifactとして記録（一覧/監査のため）
-        try:
-            from pathlib import Path
-
-            run_dir = Path(run_dir_paths.get("run_dir") or (Path("data") / "runs" / run_id))
-            rel_a = Path(dst_a).relative_to(run_dir).as_posix()
-            rel_b = Path(dst_b).relative_to(run_dir).as_posix()
-            self.events.emit(run_id, "artifact_created", {"ts": _utcnow().isoformat(), "kind": "input_doc_a", "path": rel_a})
-            self.events.emit(run_id, "artifact_created", {"ts": _utcnow().isoformat(), "kind": "input_doc_b", "path": rel_b})
-        except Exception:
-            # 失敗してもrun作成自体は継続
-            pass
+        # ドキュメント情報をイベントとして記録
+        self.events.emit(
+            run_id,
+            "document_linked",
+            {
+                "ts": _utcnow().isoformat(),
+                "doc_a_hash": doc_a.doc_hash,
+                "doc_a_filename": doc_a.original_filename,
+                "doc_b_hash": doc_b.doc_hash,
+                "doc_b_filename": doc_b.original_filename,
+            },
+        )
         return rec
 
     def start(self, run_id: str) -> str:
@@ -159,14 +199,129 @@ class RunExecutor:
         self.cancellations.request_cancel(run_id)
         self.events.emit(run_id, "cancel_requested", {"ts": _utcnow().isoformat()})
 
+    def _copy_pair_artifacts_if_exist(
+        self, run_id: str, doc_a_hash: str, doc_b_hash: str, paths: Mapping[str, str]
+    ) -> list[str]:
+        """既存のペア成果物をwork_dir/cache_dirにコピーする。
+        
+        コピー対象:
+        - initial_matching.json → work_dir
+        - embedding_cache.json → cache_dir
+        
+        Returns:
+            コピーしたファイルのリスト
+        """
+        import shutil
+        from pathlib import Path
+        
+        copied = []
+        work_dir = Path(paths["work_dir"])
+        cache_dir = Path(paths["cache_dir"])
+        
+        # ペアディレクトリを取得
+        pair_hash = self.artifacts.pair_repo.compute_pair_hash(doc_a_hash, doc_b_hash)
+        pair_dir = self.artifacts.pair_repo.base_dir / pair_hash
+        
+        if not pair_dir.exists():
+            return copied
+        
+        # initial_matching.json
+        matching_src = pair_dir / "initial_matching.json"
+        matching_dest = work_dir / "initial_matching.json"
+        if matching_src.exists() and not matching_dest.exists():
+            shutil.copy2(matching_src, matching_dest)
+            copied.append("work/initial_matching.json")
+        
+        # embedding_cache.json
+        cache_src = pair_dir / "embedding_cache.json"
+        cache_dest = cache_dir / "embedding_cache.json"
+        if cache_src.exists() and not cache_dest.exists():
+            shutil.copy2(cache_src, cache_dest)
+            copied.append("cache/embedding_cache.json")
+        
+        if copied:
+            self.events.emit(
+                run_id,
+                "pair_artifacts_reused",
+                {"ts": _utcnow().isoformat(), "doc_a_hash": doc_a_hash, "doc_b_hash": doc_b_hash, "files": copied},
+            )
+        
+        return copied
+
+    def _copy_artifacts_from_run(self, source_run_id: str, target_run_id: str, paths: Mapping[str, str]) -> list[str]:
+        """別runから成果物をコピーする。
+
+        コピー対象:
+        - work/ast_a.ast.json, ast_b.ast.json
+        - work/initial_matching.json
+        - work/blueprint_a.json, blueprint_b.json
+        - cache/embedding_cache.json
+
+        Returns:
+            コピーしたファイルのリスト
+        """
+        import shutil
+        from pathlib import Path
+
+        copied = []
+        source_run_dir = Path("data") / "runs" / source_run_id
+        target_work = Path(paths["work_dir"])
+        target_cache = Path(paths["cache_dir"])
+
+        # work配下のファイル
+        work_files = [
+            "ast_a.ast.json",
+            "ast_b.ast.json",
+            "initial_matching.json",
+            "blueprint_a.json",
+            "blueprint_b.json",
+        ]
+        for fname in work_files:
+            src = source_run_dir / "work" / fname
+            if src.exists():
+                shutil.copy(src, target_work / fname)
+                copied.append(f"work/{fname}")
+
+        # cache配下のファイル
+        cache_src = source_run_dir / "cache" / "embedding_cache.json"
+        if cache_src.exists():
+            shutil.copy(cache_src, target_cache / "embedding_cache.json")
+            copied.append("cache/embedding_cache.json")
+
+        return copied
+
     def execute(self, run_id: str, *, params_override: Optional[Mapping[str, Any]] = None) -> None:
         """CLI/テスト向け: 同期実行する（例外はそのまま上げる）。"""
         run = self.repo.get_run(run_id)
         params = dict(run.params or {})
         if params_override:
             params.update(dict(params_override))
+        
+        # ドキュメントハッシュをparamsに追加（ステップで利用可能にする）
+        if run.doc_a_hash:
+            params["doc_a_hash"] = run.doc_a_hash
+        if run.doc_b_hash:
+            params["doc_b_hash"] = run.doc_b_hash
 
         paths = self.artifacts.ensure_run_dirs(run_id)
+
+        # reuse_artifacts_from: 別runから成果物をコピー
+        reuse_from = params.get("reuse_artifacts_from")
+        if reuse_from:
+            try:
+                copied = self._copy_artifacts_from_run(reuse_from, run_id, paths)
+                if copied:
+                    self.events.emit(
+                        run_id,
+                        "artifacts_reused",
+                        {"ts": _utcnow().isoformat(), "source_run_id": reuse_from, "files": copied},
+                    )
+            except Exception as e:
+                self.events.emit(
+                    run_id,
+                    "artifacts_reuse_failed",
+                    {"ts": _utcnow().isoformat(), "source_run_id": reuse_from, "error": str(e)},
+                )
         token = self.cancellations.get(run_id)
 
         self.repo.update_status(run_id, "running")

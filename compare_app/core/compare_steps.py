@@ -20,6 +20,123 @@ def _have_llm_key() -> bool:
     return bool(os.getenv("OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_API_KEY"))
 
 
+def _restore_compare_state_if_needed(ctx: RunContext) -> bool:
+    """
+    COMPARE_STATEが空、または別のrunのデータで初期化されている場合、
+    現在のrunのデータでcompare_setupを再実行して状態を復元する。
+    
+    compare_setupステップで作成された成果物（ASTファイル、embedding cache）が
+    存在することを前提とする。
+    
+    Returns:
+        True: 復元が必要で成功した / 既に初期化済み
+        False: 復元に失敗（必要なファイルが存在しないなど）
+    """
+    from src.tools import COMPARE_STATE
+    
+    # 既に現在のrunのデータで初期化されている場合は何もしない
+    # （run_idを記録して、異なるrunの場合は再初期化する）
+    current_run_id = COMPARE_STATE.get("_run_id")
+    if current_run_id == ctx.run_id and COMPARE_STATE.get("ast_a") is not None:
+        return True
+    
+    # 別のrunのデータが入っている場合はクリアして再初期化
+    if current_run_id is not None and current_run_id != ctx.run_id:
+        ctx.events.emit(
+            ctx.run_id,
+            "compare_state_restore",
+            {"ts": _utcnow_iso(), "status": "clearing", "message": f"Clearing COMPARE_STATE from different run: {current_run_id}"},
+        )
+        COMPARE_STATE.clear()
+    
+    work_dir = Path(ctx.paths["work_dir"])
+    cache_dir = Path(ctx.paths["cache_dir"])
+    
+    ast_a = work_dir / "ast_a.ast.json"
+    ast_b = work_dir / "ast_b.ast.json"
+    cache_path = cache_dir / "embedding_cache.json"
+    initial_matching_path = work_dir / "initial_matching.json"
+    
+    # 必要なファイルが存在しない場合は復元不可
+    if not ast_a.exists() or not ast_b.exists():
+        ctx.events.emit(
+            ctx.run_id,
+            "compare_state_restore",
+            {"ts": _utcnow_iso(), "success": False, "reason": "AST files not found"},
+        )
+        return False
+    
+    if not _have_llm_key():
+        ctx.events.emit(
+            ctx.run_id,
+            "compare_state_restore",
+            {"ts": _utcnow_iso(), "success": False, "reason": "LLM API key not set"},
+        )
+        return False
+    
+    ctx.events.emit(
+        ctx.run_id,
+        "compare_state_restore",
+        {"ts": _utcnow_iso(), "status": "restoring", "message": "Restoring COMPARE_STATE from previous run..."},
+    )
+    
+    try:
+        from src.tools import compare_all_chunk_similarity_matching, compare_setup
+        import json
+        
+        # compare_setupを再実行（embedding cacheがあれば高速）
+        setup_json = compare_setup.invoke(
+            {
+                "docA": str(ast_a),
+                "docB": str(ast_b),
+                "embedding_model": ctx.params.get("embedding_model"),
+                "cache_path": str(cache_path),
+                "batch_size": int(ctx.params.get("embedding_batch_size", 64)),
+            }
+        )
+        
+        # initial_matchingが既にファイルとして存在する場合はそれを読み込む
+        if initial_matching_path.exists():
+            try:
+                initial_matching = json.loads(initial_matching_path.read_text(encoding="utf-8"))
+                COMPARE_STATE["initial_matching"] = initial_matching
+            except Exception:
+                pass
+        
+        # initial_matchingがまだ無い場合は再生成
+        if not COMPARE_STATE.get("initial_matching"):
+            initial_matching_json = compare_all_chunk_similarity_matching.invoke(
+                {
+                    "top_k": int(ctx.params.get("match_top_k", 3)),
+                    "alpha": float(ctx.params.get("match_alpha", 0.3)),
+                    "beta": float(ctx.params.get("match_beta", 0.4)),
+                    "min_score": float(ctx.params.get("match_min_score", 0.25)),
+                }
+            )
+            try:
+                COMPARE_STATE["initial_matching"] = json.loads(initial_matching_json)
+            except Exception:
+                pass
+        
+        # run_idを記録（別のrunを実行した後の復元時に判別するため）
+        COMPARE_STATE["_run_id"] = ctx.run_id
+        
+        ctx.events.emit(
+            ctx.run_id,
+            "compare_state_restore",
+            {"ts": _utcnow_iso(), "success": True, "message": "COMPARE_STATE restored successfully"},
+        )
+        return True
+        
+    except Exception as e:
+        ctx.events.emit(
+            ctx.run_id,
+            "compare_state_restore",
+            {"ts": _utcnow_iso(), "success": False, "reason": str(e)},
+        )
+        return False
+
+
 def _run_with_cancellation(ctx: RunContext, *, label: str, func) -> Any:
     done = threading.Event()
     result: dict[str, Any] = {}
@@ -118,6 +235,9 @@ class CompareSetupStep:
         except Exception:
             COMPARE_STATE["initial_matching"] = None
 
+        # run_idを記録（別のrunを実行した後の復元時に判別するため）
+        COMPARE_STATE["_run_id"] = ctx.run_id
+
         ctx.events.emit(
             ctx.run_id,
             "compare_setup_done",
@@ -155,6 +275,9 @@ class PreAnalysisStep:
 
         if not ast_a.exists() or not ast_b.exists():
             raise FileNotFoundError("AST files not found for pre_analysis")
+
+        # COMPARE_STATEが空の場合は復元（compare_setupステップがスキップされた場合など）
+        _restore_compare_state_if_needed(ctx)
 
         if not _have_llm_key():
             # フォールバック（LLM無しでもパイプラインは進められる）
@@ -304,33 +427,181 @@ class PreAnalysisStep:
             debug=False,
         )
 
-        # deep_agentのfileツールも使えるように、AST/キャッシュを仮想FSにも投入しておく（任意）
+        # deep_agentのfileツールも使えるように、前ステップの成果物を仮想FSに投入
+        input_dir = Path(ctx.paths["input_dir"])
         cache_path = Path(ctx.paths["cache_dir"]) / "embedding_cache.json"
         cache_text = cache_path.read_text(encoding="utf-8", errors="replace") if cache_path.exists() else "{}"
+
         files = {
+            # AST
             "/ast_a.ast.json": create_file_data(ast_a.read_text(encoding="utf-8", errors="replace")),
             "/ast_b.ast.json": create_file_data(ast_b.read_text(encoding="utf-8", errors="replace")),
+            # キャッシュ
             "/.embedding_cache.json": create_file_data(cache_text),
         }
 
-        query = "\n".join(
-            [
-                "次の2つのAST文書（*.ast.json）の関係性を分析してください。また重点比較観点を分析するための具体的なプランを策定してください。",
+        # initial_matching.json を追加（存在すれば）
+        initial_matching_path = work_dir / "initial_matching.json"
+        if initial_matching_path.exists():
+            files["/initial_matching.json"] = create_file_data(
+                initial_matching_path.read_text(encoding="utf-8", errors="replace")
+            )
+
+        # blueprint を追加（存在すれば）
+        for bp_name in ["blueprint_a.json", "blueprint_b.json"]:
+            bp_path = work_dir / bp_name
+            if bp_path.exists():
+                files[f"/{bp_name}"] = create_file_data(
+                    bp_path.read_text(encoding="utf-8", errors="replace")
+                )
+
+        # 入力テキスト（doc_a.txt, doc_b.txt）を追加（存在すれば）
+        for doc_name in ["doc_a.txt", "doc_b.txt"]:
+            doc_path = work_dir / doc_name
+            if doc_path.exists():
+                files[f"/{doc_name}"] = create_file_data(
+                    doc_path.read_text(encoding="utf-8", errors="replace")
+                )
+            else:
+                input_doc_path = input_dir / doc_name
+                if input_doc_path.exists():
+                    files[f"/{doc_name}"] = create_file_data(
+                        input_doc_path.read_text(encoding="utf-8", errors="replace")
+                    )
+
+        # ユーザー指定の重点比較観点（UI/CLIから注入可能）
+        # params.comparison_focus: str | list[str] | None
+        user_focus = ctx.params.get("comparison_focus")
+        if user_focus:
+            if isinstance(user_focus, list):
+                focus_lines = [f"- {f}" for f in user_focus]
+            else:
+                focus_lines = [f"- {user_focus}"]
+        else:
+            # デフォルトの比較観点
+            focus_lines = ["- 変更箇所とその影響の特定"]
+
+        # LLMに軽量判定の材料を提供するための統計情報を収集
+        def _get_doc_stats(ast_path: Path) -> dict:
+            """AST JSONから統計情報を抽出"""
+            try:
+                ast_data = json.loads(ast_path.read_text(encoding="utf-8", errors="replace"))
+                root = ast_data.get("root", {})
+                
+                def count_nodes(node, depth=0):
+                    total = 1
+                    max_d = depth
+                    content_chars = len(node.get("content", "") or "")
+                    for child in node.get("children", []):
+                        if isinstance(child, dict):
+                            c, d, chars = count_nodes(child, depth + 1)
+                            total += c
+                            max_d = max(max_d, d)
+                            content_chars += chars
+                    return total, max_d, content_chars
+                
+                sections, max_depth, total_chars = count_nodes(root)
+                return {
+                    "sections": sections,
+                    "max_depth": max_depth,
+                    "total_chars": total_chars,
+                }
+            except Exception:
+                return {"sections": 0, "max_depth": 0, "total_chars": 0}
+
+        stats_a = _get_doc_stats(ast_a)
+        stats_b = _get_doc_stats(ast_b)
+
+        # initial_matchingからマッチング統計を取得
+        initial_matching_path = work_dir / "initial_matching.json"
+        matching_stats = {}
+        if initial_matching_path.exists():
+            try:
+                matching_data = json.loads(initial_matching_path.read_text(encoding="utf-8"))
+                groups = matching_data.get("groups", [])
+                unmatched_b = matching_data.get("unmatched_b", [])
+                
+                all_scores = []
+                for g in groups:
+                    for m in g.get("matches", []):
+                        if isinstance(m, dict):
+                            all_scores.append(m.get("score", 0))
+                
+                matching_stats = {
+                    "total_groups": len(groups),
+                    "unmatched_b_count": len(unmatched_b),
+                    "avg_score": round(sum(all_scores) / len(all_scores), 3) if all_scores else 0,
+                    "high_similarity_count": sum(1 for s in all_scores if s >= 0.8),
+                    "low_similarity_count": sum(1 for s in all_scores if s < 0.5),
+                }
+            except Exception:
+                pass
+
+        # LLM判断用の統計情報をプロンプトに含める
+        stats_lines = [
+            "## ドキュメント統計情報（軽量判定の参考）",
+            "",
+            "**docA:**",
+            f"- セクション数: {stats_a['sections']}",
+            f"- 最大階層深度: {stats_a['max_depth']}",
+            f"- 総文字数: {stats_a['total_chars']:,}",
+            "",
+            "**docB:**",
+            f"- セクション数: {stats_b['sections']}",
+            f"- 最大階層深度: {stats_b['max_depth']}",
+            f"- 総文字数: {stats_b['total_chars']:,}",
+            "",
+        ]
+        
+        if matching_stats:
+            stats_lines.extend([
+                "**マッチング統計:**",
+                f"- チャンクグループ数: {matching_stats.get('total_groups', 0)}",
+                f"- 未マッチBチャンク: {matching_stats.get('unmatched_b_count', 0)}",
+                f"- 平均類似度スコア: {matching_stats.get('avg_score', 0)}",
+                f"- 高類似度(>=0.8): {matching_stats.get('high_similarity_count', 0)}件",
+                f"- 低類似度(<0.5): {matching_stats.get('low_similarity_count', 0)}件",
                 "",
-                "- docA: ast_a.ast.json",
-                "- docB: ast_b.ast.json",
-                "",
-                "**重点比較観点**",
-                "- 変更箇所とその影響の特定",
-                "",
-                "プランは概要レベルではなく、具体的かつ単純なタスクまで細分化・具体化して回答してください。",
-                "また網羅的に比較ができたことを確認するための検証ステップもプランには含めてください。",
-                "",
-                "さらに、上記プランに基づいて結果を記入するためのMarkdownテンプレートも作成してください。",
-                "テンプレートは `template_draft.md` として出力してください。",
-                "（可能なら段階的に編集しながら作成してください）",
-            ]
-        )
+            ])
+
+        query_lines = [
+            "次の2つのAST文書（*.ast.json）の関係性を分析してください。",
+            "",
+            "- docA: ast_a.ast.json",
+            "- docB: ast_b.ast.json",
+            "",
+            *stats_lines,
+            "**重点比較観点**",
+            *focus_lines,
+            "",
+            "# 指示",
+            "",
+            "## Step 1: relation判定",
+            "relation ∈ {Fix, Revision, Derivative, Heterogeneous, Subset}",
+            "",
+            "## Step 2: is_complete判定（論理式）",
+            "",
+            "```",
+            "total_chars = docA.total_chars + docB.total_chars",
+            f"total_chars = {stats_a['total_chars']} + {stats_b['total_chars']} = {stats_a['total_chars'] + stats_b['total_chars']}",
+            "",
+            "is_lightweight = (total_chars <= 10000) OR (relation == 'Fix')",
+            "",
+            "IF is_lightweight:",
+            "    is_complete = true",
+            "    filled_report = <Markdown形式の分析レポート>",
+            "ELSE:",
+            "    is_complete = false",
+            "    filled_report = ''",
+            "```",
+            "",
+            "## Step 3: 出力",
+            "",
+            "is_lightweight == true の場合: filled_reportに完成したレポートを出力",
+            "is_lightweight == false の場合: planに分析手順、templateに空欄テンプレートを出力",
+        ]
+
+        query = "\n".join(query_lines)
 
         result = _run_with_cancellation(
             ctx,
@@ -377,7 +648,26 @@ class PreAnalysisStep:
                 ]
             )
 
-        out_draft.write_text(template_text, encoding="utf-8")
+        # is_completeフラグを取得（軽量ファイルの場合にpre_analysisで完結）
+        is_complete = getattr(structured, "is_complete", False)
+        filled_report = getattr(structured, "filled_report", "") or ""
+
+        # is_complete=Trueの場合、filled_reportを最終成果物として保存（Draftは作成しない）
+        if is_complete and filled_report:
+            # 記入済みレポートをtemplate_filled.mdとして保存（compare_analysisをスキップ）
+            out_dir = Path(ctx.paths["out_dir"])
+            out_dir.mkdir(parents=True, exist_ok=True)
+            filled_path = out_dir / "template_filled.md"
+            filled_path.write_text(filled_report, encoding="utf-8")
+            ctx.events.emit(
+                ctx.run_id,
+                "artifact_updated",
+                {"ts": _utcnow_iso(), "kind": "template_filled", "path": filled_path.relative_to(run_dir).as_posix()},
+            )
+            # is_complete=Trueの場合はtemplate_draft.mdを作成しない（軽量データでは空欄テンプレートの概念がない）
+        else:
+            out_draft.write_text(template_text, encoding="utf-8")
+
         out_meta.write_text(
             json.dumps(
                 {
@@ -385,6 +675,13 @@ class PreAnalysisStep:
                     "reason": getattr(structured, "reason", None),
                     "plan": getattr(structured, "plan", None),
                     "template_name": getattr(structured, "template", None),
+                    "is_complete": is_complete,
+                    # LLM判断用に提供した統計情報
+                    "doc_stats": {
+                        "docA": stats_a,
+                        "docB": stats_b,
+                        "matching": matching_stats,
+                    },
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -403,6 +700,17 @@ class PreAnalysisStep:
             {"ts": _utcnow_iso(), "kind": "pre_analysis", "path": out_meta.relative_to(run_dir).as_posix()},
         )
 
+        # is_complete=Trueの場合、後続のcompare_analysisをスキップするフラグを設定
+        if is_complete:
+            ctx.events.emit(
+                ctx.run_id,
+                "pre_analysis_complete",
+                {"ts": _utcnow_iso(), "is_complete": True, "message": "Pre-analysis completed. Skipping compare_analysis."},
+            )
+            # skip_compare_analysisフラグをwork_dirに保存（後続ステップが参照）
+            skip_flag_path = work_dir / ".skip_compare_analysis"
+            skip_flag_path.write_text("true", encoding="utf-8")
+
 
 @dataclass
 class CompareAnalysisStep:
@@ -411,9 +719,36 @@ class CompareAnalysisStep:
     name: str = "compare_analysis"
 
     def should_run(self, ctx: RunContext) -> bool:
+        work_dir = Path(ctx.paths["work_dir"])
         out_dir = Path(ctx.paths["out_dir"])
         filled = out_dir / "template_filled.md"
         force = bool(ctx.params.get("force", False))
+
+        # pre_analysisで完結した場合はスキップ
+        skip_flag_path = work_dir / ".skip_compare_analysis"
+        if skip_flag_path.exists():
+            ctx.events.emit(
+                ctx.run_id,
+                "step_skipped_reason",
+                {"ts": _utcnow_iso(), "step": self.name, "reason": "Pre-analysis marked as complete (lightweight documents)"},
+            )
+            return False
+
+        # pre_analysis.jsonからis_completeを確認
+        pre_analysis_path = work_dir / "pre_analysis.json"
+        if pre_analysis_path.exists():
+            try:
+                pre_analysis = json.loads(pre_analysis_path.read_text(encoding="utf-8"))
+                if pre_analysis.get("is_complete", False):
+                    ctx.events.emit(
+                        ctx.run_id,
+                        "step_skipped_reason",
+                        {"ts": _utcnow_iso(), "step": self.name, "reason": "Pre-analysis is_complete=true"},
+                    )
+                    return False
+            except Exception:
+                pass
+
         return force or (not filled.exists())
 
     def run(self, ctx: RunContext) -> None:
@@ -427,6 +762,9 @@ class CompareAnalysisStep:
 
         if not draft_path.exists():
             raise FileNotFoundError(str(draft_path))
+
+        # COMPARE_STATEが空の場合は復元（compare_setupステップがスキップされた場合など）
+        _restore_compare_state_if_needed(ctx)
 
         if not _have_llm_key():
             # フォールバック: そのままコピー＋注記
@@ -539,17 +877,17 @@ class CompareAnalysisStep:
             analyze_visual_contents,
         ]
 
+        parent_mw = EventSinkMiddleware(
+            run_id=ctx.run_id,
+            events=ctx.events,
+            cancellation=ctx.cancellation,
+            agent_name="compare_parent",
+        )
+
         agent = create_deep_agent(
             model=llm_complex,
             system_prompt=compare_parent_agent_prompt,
-            middleware=[
-                EventSinkMiddleware(
-                    run_id=ctx.run_id,
-                    events=ctx.events,
-                    cancellation=ctx.cancellation,
-                    agent_name="compare_parent",
-                )
-            ],
+            middleware=[parent_mw],
             subagents=[
                 {
                     "name": "compare_general_purpose_agent",
@@ -563,6 +901,8 @@ class CompareAnalysisStep:
                             cancellation=ctx.cancellation,
                             agent_name="compare_general",
                             is_subagent=True,
+                            forced_parent_invocation_id=parent_mw.invocation_id,
+                            forced_parent_agent_name=parent_mw.agent_name,
                         )
                     ],
                     "model": llm,
@@ -579,6 +919,8 @@ class CompareAnalysisStep:
                             cancellation=ctx.cancellation,
                             agent_name="compare_agent",
                             is_subagent=True,
+                            forced_parent_invocation_id=parent_mw.invocation_id,
+                            forced_parent_agent_name=parent_mw.agent_name,
                         )
                     ],
                     "model": llm,
@@ -595,6 +937,8 @@ class CompareAnalysisStep:
                             cancellation=ctx.cancellation,
                             agent_name="deep_research_agent",
                             is_subagent=True,
+                            forced_parent_invocation_id=parent_mw.invocation_id,
+                            forced_parent_agent_name=parent_mw.agent_name,
                         )
                     ],
                     "model": llm,
@@ -611,6 +955,8 @@ class CompareAnalysisStep:
                             cancellation=ctx.cancellation,
                             agent_name="validate_agent",
                             is_subagent=True,
+                            forced_parent_invocation_id=parent_mw.invocation_id,
+                            forced_parent_agent_name=parent_mw.agent_name,
                         )
                     ],
                     "model": llm,
@@ -627,6 +973,8 @@ class CompareAnalysisStep:
                             cancellation=ctx.cancellation,
                             agent_name="report_agent",
                             is_subagent=True,
+                            forced_parent_invocation_id=parent_mw.invocation_id,
+                            forced_parent_agent_name=parent_mw.agent_name,
                         )
                     ],
                 },
@@ -634,19 +982,60 @@ class CompareAnalysisStep:
             debug=False,
         )
 
-        # 仮想FSへ投入
-        ast_a = (work_dir / "ast_a.ast.json").read_text(encoding="utf-8", errors="replace")
-        ast_b = (work_dir / "ast_b.ast.json").read_text(encoding="utf-8", errors="replace")
+        # 仮想FSへ投入（前のステップで作成された成果物を全てマッピング）
+        ast_a_text = (work_dir / "ast_a.ast.json").read_text(encoding="utf-8", errors="replace")
+        ast_b_text = (work_dir / "ast_b.ast.json").read_text(encoding="utf-8", errors="replace")
         cache_path = Path(ctx.paths["cache_dir"]) / "embedding_cache.json"
         cache_text = cache_path.read_text(encoding="utf-8", errors="replace") if cache_path.exists() else "{}"
         template_text = draft_path.read_text(encoding="utf-8", errors="replace")
 
         files = {
-            "/ast_a.ast.json": create_file_data(ast_a),
-            "/ast_b.ast.json": create_file_data(ast_b),
+            # AST
+            "/ast_a.ast.json": create_file_data(ast_a_text),
+            "/ast_b.ast.json": create_file_data(ast_b_text),
+            # キャッシュ
             "/.embedding_cache.json": create_file_data(cache_text),
+            # テンプレート
             "/template_draft.md": create_file_data(template_text),
         }
+
+        # pre_analysis.json を追加（存在すれば）
+        pre_analysis_path = work_dir / "pre_analysis.json"
+        if pre_analysis_path.exists():
+            files["/pre_analysis.json"] = create_file_data(
+                pre_analysis_path.read_text(encoding="utf-8", errors="replace")
+            )
+
+        # initial_matching.json を追加（存在すれば）
+        initial_matching_path = work_dir / "initial_matching.json"
+        if initial_matching_path.exists():
+            files["/initial_matching.json"] = create_file_data(
+                initial_matching_path.read_text(encoding="utf-8", errors="replace")
+            )
+
+        # blueprint を追加（存在すれば）
+        for bp_name in ["blueprint_a.json", "blueprint_b.json"]:
+            bp_path = work_dir / bp_name
+            if bp_path.exists():
+                files[f"/{bp_name}"] = create_file_data(
+                    bp_path.read_text(encoding="utf-8", errors="replace")
+                )
+
+        # 入力テキスト（doc_a.txt, doc_b.txt）を追加（存在すれば）
+        for doc_name in ["doc_a.txt", "doc_b.txt"]:
+            # work_dirにコピーされている場合
+            doc_path = work_dir / doc_name
+            if doc_path.exists():
+                files[f"/{doc_name}"] = create_file_data(
+                    doc_path.read_text(encoding="utf-8", errors="replace")
+                )
+            else:
+                # input_dirにある場合
+                input_doc_path = input_dir / doc_name
+                if input_doc_path.exists():
+                    files[f"/{doc_name}"] = create_file_data(
+                        input_doc_path.read_text(encoding="utf-8", errors="replace")
+                    )
 
         query = "\n".join(
             [

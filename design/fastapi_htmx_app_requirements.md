@@ -32,6 +32,7 @@
 - **ステップ選択パラメータ（step filtering）**:
   - `steps_include`: 実行するステップ名のリスト（例: `["build_blueprint_a", "compare_analysis"]`）
   - `step_from` / `step_to`: 範囲指定（開始〜終了ステップ名）
+  - **UI対応済み**: Run作成画面で `step_from` / `step_to` を選択可能
   - 詳細は `design/run_executor_pipeline_api.md` を参照
 
 ### 1.2 入力取り込み

@@ -1,35 +1,98 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card">
-  <h1>Run一覧</h1>
-  <p class="muted">DB: {{ db_path or "(unknown)" }}</p>
-  <a class="btn" href="/runs/new">新規Runを作成</a>
-</div>
+<div class="flex flex-col gap-6">
+  <!-- ヘッダーカード -->
+  <div class="card bg-base-100 shadow-xl">
+    <div class="card-body">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 class="card-title text-2xl">Run一覧</h1>
+          <p class="text-base-content/60 text-sm mt-1">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+            </svg>
+            DB: {{ db_path or "(unknown)" }}
+          </p>
+        </div>
+        <a href="/runs/new" class="btn btn-primary">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+          </svg>
+          新規Runを作成
+        </a>
+      </div>
+    </div>
+  </div>
 
-<div class="card">
-  <table>
-    <thead>
-      <tr>
-        <th>run_id</th>
-        <th>status</th>
-        <th>created</th>
-        <th>started</th>
-        <th>finished</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for run in runs %}
-      <tr>
-        <td><a href="/runs/{{ run.run_id }}">{{ run.run_id }}</a></td>
-        <td class="status">{{ run.status }}</td>
-        <td>{{ run.created_at }}</td>
-        <td>{{ run.started_at or "-" }}</td>
-        <td>{{ run.finished_at or "-" }}</td>
-      </tr>
-    {% else %}
-      <tr><td colspan="5" class="muted">Runはまだありません。</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  <!-- Run一覧テーブル -->
+  <div class="card bg-base-100 shadow-xl">
+    <div class="card-body p-0">
+      <div class="overflow-x-auto">
+        <table class="table table-zebra">
+          <thead>
+            <tr class="bg-base-200">
+              <th>Run ID</th>
+              <th>ステータス</th>
+              <th>作成日時</th>
+              <th>開始日時</th>
+              <th>完了日時</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for run in runs %}
+            <tr class="hover">
+              <td>
+                <a href="/runs/{{ run.run_id }}" class="link link-primary font-mono text-sm">
+                  {{ run.run_id[:8] }}...
+                </a>
+              </td>
+              <td>
+                {% set status = run.status %}
+                {% include "partials/status_badge.html" %}
+              </td>
+              <td class="font-mono text-xs text-base-content/70">{{ run.created_at.strftime('%Y-%m-%d %H:%M:%S') if run.created_at else '-' }}</td>
+              <td class="font-mono text-xs text-base-content/70">{{ run.started_at.strftime('%Y-%m-%d %H:%M:%S') if run.started_at else '-' }}</td>
+              <td class="font-mono text-xs text-base-content/70">{{ run.finished_at.strftime('%Y-%m-%d %H:%M:%S') if run.finished_at else '-' }}</td>
+              <td>
+                <a href="/runs/{{ run.run_id }}" class="btn btn-ghost btn-xs">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                  詳細
+                </a>
+                <button
+                  class="btn btn-ghost btn-xs text-error"
+                  hx-delete="/runs/{{ run.run_id }}"
+                  hx-confirm="Runを削除しますか？この操作は取り消せません。"
+                  hx-target="closest tr"
+                  hx-swap="outerHTML"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3m-4 0h14" />
+                  </svg>
+                  削除
+                </button>
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="6" class="text-center py-8">
+                <div class="flex flex-col items-center gap-2 text-base-content/50">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                  </svg>
+                  <p>Runはまだありません。</p>
+                  <a href="/runs/new" class="btn btn-primary btn-sm mt-2">最初のRunを作成</a>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}

@@ -130,6 +130,12 @@ class SummarizeOptions:
     skip_if_summary_exists: bool = True
 
 
+class SummarizationCancelled(RuntimeError):
+    """要約処理中の協調的キャンセル用（compare_app側で CancelledError に変換する）。"""
+
+    pass
+
+
 def _build_llm(model: Optional[str] = None):
     """
     Notebookの build_llm と同等の環境変数で OpenAI / Azure OpenAI を選択。
@@ -141,12 +147,6 @@ def _build_llm(model: Optional[str] = None):
     from langchain_openai import AzureChatOpenAI, ChatOpenAI
 
     model_name = model or os.getenv("OPENAI_MODEL") or os.getenv("MODEL") or "gpt-5-mini"
-
-
-class SummarizationCancelled(RuntimeError):
-    """要約処理中の協調的キャンセル用（compare_app側で CancelledError に変換する）。"""
-
-    pass
 
     if provider in {"azure", "azureopenai", "azure_openai"}:
         return AzureChatOpenAI(

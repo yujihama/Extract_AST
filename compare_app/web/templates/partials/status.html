@@ -1,9 +1,43 @@
-<div>
-  <div><span class="tag">status</span> <span class="status">{{ run.status }}</span></div>
-  <div class="muted">created: {{ run.created_at }}</div>
-  <div class="muted">started: {{ run.started_at or "-" }}</div>
-  <div class="muted">finished: {{ run.finished_at or "-" }}</div>
+{% set status = run.status %}
+<div class="space-y-3">
+  <div class="flex items-center gap-2">
+    <span class="text-sm font-medium text-base-content/70">ステータス:</span>
+    {% include "partials/status_badge.html" %}
+  </div>
+  
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+    <div class="flex items-center gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-base-content/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+      </svg>
+      <span class="text-base-content/70">作成:</span>
+      <span class="font-mono text-xs">{{ run.created_at.strftime('%Y-%m-%d %H:%M:%S') if run.created_at else '-' }}</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-base-content/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+      </svg>
+      <span class="text-base-content/70">開始:</span>
+      <span class="font-mono text-xs">{{ run.started_at.strftime('%Y-%m-%d %H:%M:%S') if run.started_at else '-' }}</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-base-content/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <span class="text-base-content/70">完了:</span>
+      <span class="font-mono text-xs">{{ run.finished_at.strftime('%Y-%m-%d %H:%M:%S') if run.finished_at else '-' }}</span>
+    </div>
+  </div>
+  
   {% if run.error_message %}
-    <div class="muted">error: {{ run.error_message }}</div>
+  <div class="alert alert-error shadow-sm">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+    </svg>
+    <div>
+      <div class="font-bold">エラー</div>
+      <div class="text-sm">{{ run.error_message }}</div>
+    </div>
+  </div>
   {% endif %}
 </div>
