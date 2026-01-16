@@ -85,10 +85,14 @@ def _restore_compare_state_if_needed(ctx: RunContext) -> bool:
         import json
         
         # compare_setupを再実行（embedding cacheがあれば高速）
+        doc_a_txt = work_dir / "doc_a.txt"
+        doc_b_txt = work_dir / "doc_b.txt"
         setup_json = compare_setup.invoke(
             {
                 "docA": str(ast_a),
                 "docB": str(ast_b),
+                "docA_txt": str(doc_a_txt) if doc_a_txt.exists() else None,
+                "docB_txt": str(doc_b_txt) if doc_b_txt.exists() else None,
                 "embedding_model": ctx.params.get("embedding_model"),
                 "cache_path": str(cache_path),
                 "batch_size": int(ctx.params.get("embedding_batch_size", 64)),
@@ -238,6 +242,40 @@ class CompareSetupStep:
         # run_idを記録（別のrunを実行した後の復元時に判別するため）
         COMPARE_STATE["_run_id"] = ctx.run_id
 
+        # ドキュメントペア成果物として永続化（次runで自動再利用できるようにする）
+        # - initial_matching.json
+        # - embedding_cache.json
+        doc_a_hash = ctx.params.get("doc_a_hash")
+        doc_b_hash = ctx.params.get("doc_b_hash")
+        if doc_a_hash and doc_b_hash:
+            try:
+                from compare_app.infra.document_store import DocumentPairRepository
+
+                pair_repo = DocumentPairRepository()
+
+                matching_data = None
+                try:
+                    matching_data = json.loads(initial_matching_json)
+                except Exception:
+                    # 既にパース済みがあればそれを使う
+                    if isinstance(COMPARE_STATE.get("initial_matching"), dict):
+                        matching_data = COMPARE_STATE.get("initial_matching")
+                if isinstance(matching_data, dict):
+                    pair_repo.save_matching(str(doc_a_hash), str(doc_b_hash), matching_data)
+
+                cache_dir = Path(ctx.paths["cache_dir"])
+                cache_path = cache_dir / "embedding_cache.json"
+                if cache_path.exists():
+                    try:
+                        cache_data = json.loads(cache_path.read_text(encoding="utf-8"))
+                        if isinstance(cache_data, dict):
+                            pair_repo.save_embedding_cache(str(doc_a_hash), str(doc_b_hash), cache_data)
+                    except Exception:
+                        pass
+            except Exception:
+                # compare_setup 自体は成功しているので、永続化失敗は致命にしない
+                pass
+
         ctx.events.emit(
             ctx.run_id,
             "compare_setup_done",
@@ -328,11 +366,15 @@ class PreAnalysisStep:
             compare_search_by_keyphrase,
             compare_specified_chunks_diff,
             compare_specified_chunks_llm,
+            extract_regex_matches,
+            get_file_length,
             read_ast,
+            read_text_file,
+            read_text_segment,
         )
         from src.utils import build_llm
 
-        from compare_app.agents.middleware import EventSinkMiddleware
+        from compare_app.agents.middleware import CompareRestoreConfig, EventSinkMiddleware
 
         llm_complex = build_llm(model=str(ctx.params.get("llm_complex_model", "gpt-5-mini")))
 
@@ -403,6 +445,10 @@ class PreAnalysisStep:
 
         tools = [
             read_ast,
+            read_text_file,
+            read_text_segment,
+            extract_regex_matches,
+            get_file_length,
             compare_get_grouping,
             compare_search_by_keyphrase,
             compare_get_chunk,
@@ -410,6 +456,24 @@ class PreAnalysisStep:
             compare_specified_chunks_llm,
             analyze_visual_contents,
         ]
+
+        cache_path = Path(ctx.paths["cache_dir"]) / "embedding_cache.json"
+        initial_matching_path = work_dir / "initial_matching.json"
+        restore_cfg = CompareRestoreConfig(
+            ast_a_path=str(ast_a),
+            ast_b_path=str(ast_b),
+            txt_a_path=str(work_dir / "doc_a.txt"),
+            txt_b_path=str(work_dir / "doc_b.txt"),
+            cache_path=str(cache_path),
+            initial_matching_path=str(initial_matching_path) if initial_matching_path.exists() else "",
+            embedding_model=ctx.params.get("embedding_model"),
+            embedding_batch_size=int(ctx.params.get("embedding_batch_size", 64)),
+            warmup_matching=not initial_matching_path.exists(),
+            match_top_k=int(ctx.params.get("match_top_k", 3)),
+            match_alpha=float(ctx.params.get("match_alpha", 0.3)),
+            match_beta=float(ctx.params.get("match_beta", 0.4)),
+            match_min_score=float(ctx.params.get("match_min_score", 0.25)),
+        )
 
         agent = create_deep_agent(
             model=llm_complex,
@@ -422,6 +486,7 @@ class PreAnalysisStep:
                     events=ctx.events,
                     cancellation=ctx.cancellation,
                     agent_name="pre_analysis_agent",
+                    compare_restore=restore_cfg,
                 )
             ],
             debug=False,
@@ -429,7 +494,6 @@ class PreAnalysisStep:
 
         # deep_agentのfileツールも使えるように、前ステップの成果物を仮想FSに投入
         input_dir = Path(ctx.paths["input_dir"])
-        cache_path = Path(ctx.paths["cache_dir"]) / "embedding_cache.json"
         cache_text = cache_path.read_text(encoding="utf-8", errors="replace") if cache_path.exists() else "{}"
 
         files = {
@@ -441,7 +505,6 @@ class PreAnalysisStep:
         }
 
         # initial_matching.json を追加（存在すれば）
-        initial_matching_path = work_dir / "initial_matching.json"
         if initial_matching_path.exists():
             files["/initial_matching.json"] = create_file_data(
                 initial_matching_path.read_text(encoding="utf-8", errors="replace")
@@ -483,7 +546,7 @@ class PreAnalysisStep:
 
         # LLMに軽量判定の材料を提供するための統計情報を収集
         def _get_doc_stats(ast_path: Path) -> dict:
-            """AST JSONから統計情報を抽出"""
+            """AST JSONから統計情報を抽出（参考用）"""
             try:
                 ast_data = json.loads(ast_path.read_text(encoding="utf-8", errors="replace"))
                 root = ast_data.get("root", {})
@@ -509,8 +572,22 @@ class PreAnalysisStep:
             except Exception:
                 return {"sections": 0, "max_depth": 0, "total_chars": 0}
 
+        def _get_text_stats(text_path: Path) -> dict:
+            """原文TXTから統計情報を抽出（軽量判定の基準）"""
+            try:
+                text = text_path.read_text(encoding="utf-8", errors="replace")
+                lines = text.splitlines()
+                return {
+                    "total_chars": len(text),
+                    "total_lines": len(lines),
+                }
+            except Exception:
+                return {"total_chars": 0, "total_lines": 0}
+
         stats_a = _get_doc_stats(ast_a)
         stats_b = _get_doc_stats(ast_b)
+        txt_stats_a = _get_text_stats(work_dir / "doc_a.txt")
+        txt_stats_b = _get_text_stats(work_dir / "doc_b.txt")
 
         # initial_matchingからマッチング統計を取得
         initial_matching_path = work_dir / "initial_matching.json"
@@ -542,20 +619,18 @@ class PreAnalysisStep:
             "## ドキュメント統計情報（軽量判定の参考）",
             "",
             "**docA:**",
-            f"- セクション数: {stats_a['sections']}",
-            f"- 最大階層深度: {stats_a['max_depth']}",
-            f"- 総文字数: {stats_a['total_chars']:,}",
+            f"- 原文文字数: {txt_stats_a['total_chars']:,}",
+            f"- 原文行数: {txt_stats_a['total_lines']:,}",
             "",
             "**docB:**",
-            f"- セクション数: {stats_b['sections']}",
-            f"- 最大階層深度: {stats_b['max_depth']}",
-            f"- 総文字数: {stats_b['total_chars']:,}",
+            f"- 原文文字数: {txt_stats_b['total_chars']:,}",
+            f"- 原文行数: {txt_stats_b['total_lines']:,}",
             "",
         ]
         
         if matching_stats:
             stats_lines.extend([
-                "**マッチング統計:**",
+                "**マッチング統計（ASTベース/参考）:**",
                 f"- チャンクグループ数: {matching_stats.get('total_groups', 0)}",
                 f"- 未マッチBチャンク: {matching_stats.get('unmatched_b_count', 0)}",
                 f"- 平均類似度スコア: {matching_stats.get('avg_score', 0)}",
@@ -565,14 +640,23 @@ class PreAnalysisStep:
             ])
 
         query_lines = [
-            "次の2つのAST文書（*.ast.json）の関係性を分析してください。",
+            "2つのドキュメントdocAとdocBの関係性を分析してください。",
+            "原文テキスト（doc_a.txt / doc_b.txt）を主な比較対象として扱ってください。",
+            "AST（ast_a.ast.json / ast_b.ast.json）は参考情報であり、階層のズレが起こり得ます。",
             "",
-            "- docA: ast_a.ast.json",
-            "- docB: ast_b.ast.json",
+            "- docA 原文: doc_a.txt",
+            "- docB 原文: doc_b.txt",
+            "- docA AST: ast_a.ast.json",
+            "- docB AST: ast_b.ast.json",
+            "※ASTのcontentは本文の内容で、content_summaryは分析作業の補助のために事前に付与した要約です。",
             "",
             *stats_lines,
             "**重点比較観点**",
             *focus_lines,
+            "",
+            "**前提事項**",
+            "- それぞれのASTファイルは独立して解析し作成されたものです。そのため同じ構成でも階層分けが異なる場合があります。",
+            "- chunk間の類似度は参考程度にしてプランを立ててください。同じcontentでもchunkの分割の違いで類似度が低くなっている場合があります。",
             "",
             "# 指示",
             "",
@@ -583,7 +667,7 @@ class PreAnalysisStep:
             "",
             "```",
             "total_chars = docA.total_chars + docB.total_chars",
-            f"total_chars = {stats_a['total_chars']} + {stats_b['total_chars']} = {stats_a['total_chars'] + stats_b['total_chars']}",
+            f"total_chars = {txt_stats_a['total_chars']} + {txt_stats_b['total_chars']} = {txt_stats_a['total_chars'] + txt_stats_b['total_chars']}",
             "",
             "is_lightweight = (total_chars <= 10000) OR (relation == 'Fix')",
             "",
@@ -794,11 +878,15 @@ class CompareAnalysisStep:
             compare_search_by_keyphrase,
             compare_specified_chunks_diff,
             compare_specified_chunks_llm,
+            extract_regex_matches,
+            get_file_length,
             read_ast,
+            read_text_file,
+            read_text_segment,
         )
         from src.utils import build_llm
 
-        from compare_app.agents.middleware import EventSinkMiddleware
+        from compare_app.agents.middleware import CompareRestoreConfig, EventSinkMiddleware
 
         llm = build_llm()
         llm_complex = build_llm(model=str(ctx.params.get("llm_complex_model", "gpt-5-mini")))
@@ -869,6 +957,10 @@ class CompareAnalysisStep:
 
         tools_compare = [
             read_ast,
+            read_text_file,
+            read_text_segment,
+            extract_regex_matches,
+            get_file_length,
             compare_get_grouping,
             compare_search_by_keyphrase,
             compare_get_chunk,
@@ -877,11 +969,34 @@ class CompareAnalysisStep:
             analyze_visual_contents,
         ]
 
+        # ThreadLocal な COMPARE_STATE 対策:
+        # subagent/tool 実行が別スレッドになっても、compare_* 呼び出し直前に復元できるように設定を渡す
+        ast_a_path = work_dir / "ast_a.ast.json"
+        ast_b_path = work_dir / "ast_b.ast.json"
+        cache_path = Path(ctx.paths["cache_dir"]) / "embedding_cache.json"
+        initial_matching_path = work_dir / "initial_matching.json"
+        restore_cfg = CompareRestoreConfig(
+            ast_a_path=str(ast_a_path),
+            ast_b_path=str(ast_b_path),
+            txt_a_path=str(work_dir / "doc_a.txt"),
+            txt_b_path=str(work_dir / "doc_b.txt"),
+            cache_path=str(cache_path),
+            initial_matching_path=str(initial_matching_path) if initial_matching_path.exists() else "",
+            embedding_model=ctx.params.get("embedding_model"),
+            embedding_batch_size=int(ctx.params.get("embedding_batch_size", 64)),
+            warmup_matching=not initial_matching_path.exists(),
+            match_top_k=int(ctx.params.get("match_top_k", 3)),
+            match_alpha=float(ctx.params.get("match_alpha", 0.3)),
+            match_beta=float(ctx.params.get("match_beta", 0.4)),
+            match_min_score=float(ctx.params.get("match_min_score", 0.25)),
+        )
+
         parent_mw = EventSinkMiddleware(
             run_id=ctx.run_id,
             events=ctx.events,
             cancellation=ctx.cancellation,
             agent_name="compare_parent",
+            compare_restore=restore_cfg,
         )
 
         agent = create_deep_agent(
@@ -903,6 +1018,7 @@ class CompareAnalysisStep:
                             is_subagent=True,
                             forced_parent_invocation_id=parent_mw.invocation_id,
                             forced_parent_agent_name=parent_mw.agent_name,
+                            compare_restore=restore_cfg,
                         )
                     ],
                     "model": llm,
@@ -921,6 +1037,7 @@ class CompareAnalysisStep:
                             is_subagent=True,
                             forced_parent_invocation_id=parent_mw.invocation_id,
                             forced_parent_agent_name=parent_mw.agent_name,
+                            compare_restore=restore_cfg,
                         )
                     ],
                     "model": llm,
@@ -939,6 +1056,7 @@ class CompareAnalysisStep:
                             is_subagent=True,
                             forced_parent_invocation_id=parent_mw.invocation_id,
                             forced_parent_agent_name=parent_mw.agent_name,
+                            compare_restore=restore_cfg,
                         )
                     ],
                     "model": llm,
@@ -957,6 +1075,7 @@ class CompareAnalysisStep:
                             is_subagent=True,
                             forced_parent_invocation_id=parent_mw.invocation_id,
                             forced_parent_agent_name=parent_mw.agent_name,
+                            compare_restore=restore_cfg,
                         )
                     ],
                     "model": llm,
@@ -975,6 +1094,7 @@ class CompareAnalysisStep:
                             is_subagent=True,
                             forced_parent_invocation_id=parent_mw.invocation_id,
                             forced_parent_agent_name=parent_mw.agent_name,
+                            compare_restore=restore_cfg,
                         )
                     ],
                 },
@@ -1039,9 +1159,14 @@ class CompareAnalysisStep:
 
         query = "\n".join(
             [
-                "次の2つの文書（*.ast.json）について分析し、日本語で報告してください。",
-                "- docA: ast_a.ast.json",
-                "- docB: ast_b.ast.json",
+                "次の2つの文書（原文テキスト）について分析し、日本語で報告してください。",
+                "- docA: doc_a.txt（原文）",
+                "- docB: doc_b.txt（原文）",
+                "",
+                "補助情報として ast_a.ast.json / ast_b.ast.json を参照できますが、",
+                "ASTは各ドキュメントを独立に構造化した参考情報であり、",
+                "同一構成でも階層のズレが起こり得ます。ASTは補助として扱い、",
+                "根拠は原文テキスト（doc_a.txt / doc_b.txt）を優先してください。",
                 "",
                 "# 分析観点",
                 "以下に記載されているテンプレートファイル `template_draft.md` を埋めてください。",

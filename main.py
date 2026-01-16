@@ -218,74 +218,74 @@ agent_compare_type_analysis = create_deep_agent(
     debug=False,
 )
 
-## ファイル情報の設定
-docA = "富士フィルム_有価証券報告書.txt.ast.json"
-docB = "富士フィルム_有価証券報告書2.txt.ast.json"
+# ## ファイル情報の設定
+# docA = "富士フィルム_有価証券報告書.txt.ast.json"
+# docB = "富士フィルム_有価証券報告書2.txt.ast.json"
 
-## setupの実行
-_setup_json = compare_setup.invoke(
-    {
-        "docA": os.path.join("data", "ast", docA),
-        "docB": os.path.join("data", "ast", docB),
-        "embedding_model": None,
-        "cache_path": os.path.join("data", "embedding", "embedding_cache.json"),
-        "batch_size": 64,
-    }
-)
+# ## setupの実行
+# _setup_json = compare_setup.invoke(
+#     {
+#         "docA": os.path.join("data", "ast", docA),
+#         "docB": os.path.join("data", "ast", docB),
+#         "embedding_model": None,
+#         "cache_path": os.path.join("data", "embedding", "embedding_cache.json"),
+#         "batch_size": 64,
+#     }
+# )
 
-## all-chunk matchingの実行
-_initial_matching_json = compare_all_chunk_similarity_matching.invoke({"top_k": 3, "alpha": 0.3, "beta": 0.4, "min_score": 0.25})
+# ## all-chunk matchingの実行
+# _initial_matching_json = compare_all_chunk_similarity_matching.invoke({"top_k": 3, "alpha": 0.3, "beta": 0.4, "min_score": 0.25})
 
-# 参照用に保存
-try:
-    COMPARE_STATE["initial_matching"] = json.loads(_initial_matching_json)
-except Exception:
-    COMPARE_STATE["initial_matching"] = None
+# # 参照用に保存
+# try:
+#     COMPARE_STATE["initial_matching"] = json.loads(_initial_matching_json)
+# except Exception:
+#     COMPARE_STATE["initial_matching"] = None
 
-try:
-    _setup_obj = json.loads(_setup_json)
-except Exception:
-    _setup_obj = {"ok": False}
+# try:
+#     _setup_obj = json.loads(_setup_json)
+# except Exception:
+#     _setup_obj = {"ok": False}
 
-print("compare agent ready. tools:", [t.name for t in tools_compare_type_analysis])
-print(
-    "warmup done:",
-    {
-        "docA": docA,
-        "docB": docB,
-        "setup_ok": bool(_setup_obj.get("ok")),
-        "initial_groups": (
-            len(COMPARE_STATE.get("initial_matching", {}).get("groups", []))
-            if isinstance(COMPARE_STATE.get("initial_matching"), dict)
-            else None
-        ),
-    },
-)
-show_all_chunks_by_level(COMPARE_STATE)
+# print("compare agent ready. tools:", [t.name for t in tools_compare_type_analysis])
+# print(
+#     "warmup done:",
+#     {
+#         "docA": docA,
+#         "docB": docB,
+#         "setup_ok": bool(_setup_obj.get("ok")),
+#         "initial_groups": (
+#             len(COMPARE_STATE.get("initial_matching", {}).get("groups", []))
+#             if isinstance(COMPARE_STATE.get("initial_matching"), dict)
+#             else None
+#         ),
+#     },
+# )
+# show_all_chunks_by_level(COMPARE_STATE)
 
 # %% #比較種別判定の実行
 ## ファイル情報の設定
-docA = "富士フィルム_有価証券報告書.txt.ast.json"
-docB = "富士フィルム_有価証券報告書2.txt.ast.json"
+docA = "富士フィルム_有価証券報告書.txt"
+docB = "富士フィルム_有価証券報告書2.txt"
 
 ## ASTファイルの読み込み
-with open(os.path.join("data", "ast", docA), "r", encoding="utf-8") as f:
-    ast_a = f.read()
-with open(os.path.join("data", "ast", docB), "r", encoding="utf-8") as f:
-    ast_b = f.read()
+with open(os.path.join("data", "input", docA), "r", encoding="utf-8") as f:
+    doc_a = f.read()
+with open(os.path.join("data", "input", docB), "r", encoding="utf-8") as f:
+    doc_b = f.read()
 with open(os.path.join("data", "embedding", "embedding_cache.json"), "r", encoding="utf-8") as f:
     cache = f.read()
 
 ## 仮想ファイルシステムに設定
 initial_files_compare_type_analysis = {
-    f"/{docA}": create_file_data(ast_a),
-    f"/{docB}": create_file_data(ast_b),
+    f"/{docA}": create_file_data(doc_a),
+    f"/{docB}": create_file_data(doc_b),
     "/.embedding_cache.json": create_file_data(cache),
 }
 
 ## promptの設定
 query_compare_type_analysis = f"""
-次の2つのAST文書（*.ast.json）の関係性を分析してください。また重点比較観点を分析するための具体的なプランを策定してください。
+次の2つの文書の関係性を分析してください。また重点比較観点を分析するための具体的なプランを策定してください。
 
 - docA: {docA}
 - docB: {docB}
@@ -441,33 +441,30 @@ agent_compare_analysis = create_deep_agent(
 template_compare_analysis = "diff_analysis_template_fujifilm_yuho.md"
 
 ## ファイル内容を読み込む
-with open(os.path.join("data", "ast", docA), "r", encoding="utf-8") as f:
-    ast_a = f.read()
-with open(os.path.join("data", "ast", docB), "r", encoding="utf-8") as f:
-    ast_b = f.read()
+with open(os.path.join("data", "input", docA), "r", encoding="utf-8") as f:
+    doc_a = f.read()
+with open(os.path.join("data", "input", docB), "r", encoding="utf-8") as f:
+    doc_b = f.read()
 with open(os.path.join("data", "embedding", "embedding_cache.json"), "r", encoding="utf-8") as f:
     cache = f.read()
-with open(os.path.join("templates", template_compare_analysis), "r", encoding="utf-8") as f:
-    template_compare_analysis_content = f.read()
 
 ## 仮想ファイルシステムに設定
 initial_files_compare_analysis = {
-    f"/{docA}": create_file_data(ast_a),
-    f"/{docB}": create_file_data(ast_b),
+    f"/{docA}": create_file_data(doc_a),
+    f"/{docB}": create_file_data(doc_b),
     "/.embedding_cache.json": create_file_data(cache),
-    f"/{template_compare_analysis}": create_file_data(template_compare_analysis_content),
+    # f"/{template_compare_analysis}": create_file_data(template_compare_analysis_content),
 }
 
 ## promptの設定
 query_compare_analysis = f"""
-次の2つの文書（*.ast.json）について分析し、日本語で報告してください。
+次の2つの文書について分析し、日本語で報告してください。
  - docA: {docA}
  - docB: {docB}
-# 分析観点
-以下に記載されているテンプレートを埋めてください。テンプレートは最後に一括で更新せず、段階的に編集してください。
-最後にチェックリストもあるので漏れなく確認して埋めてください。
-チェックがつけられない場合は、なぜチェックできないか根拠を記載したうえで、代替となる観点でチェックを行ってください。
-{template_compare_analysis}
+# 分析プラン
+
+"relation\":\"Revision\",\"reason\":\"両文書とも同一会社（富士フイルムホールディングス）・同一提出日（2025年6月25日）・同一事業年度（第129期）・同一種別（有価証券報告書）であり、文書の「版違い（抽出/整形/一部修正）」とみなすのが自然です。一方で、冒頭の体裁が異なり（docAは「EDINET提出書類」等のヘッダが付く、docBは表紙ブロックから開始）、さらに同一箇所と思われる主要指標の表で数値の取り扱い/表現が異なる兆候（例: docAの売上高 3,195,828 に対し docB側では 2,195,828 と読める箇所があり、単なる表記ゆれでは説明できない可能性）があるため、「微修正(Fix)」ではなく、内容改訂を含む「改訂(Revision)」として差分抽出計画を立てるべきです。\",\"plan\":[\"【準備】比較の前提を固定する（作業ログに残す）\",\"1) docA/docBのファイル先頭200行を再取得し、(a)提出日、(b)事業年度、(c)会社名、(d)ページ総数表記（例: 1/225）をメモする。\",\"2) 以降の比較では、表記差（空白、全角/半角、英社名スペース有無、EDINETヘッダの有無）は“体裁差分”として扱い、重要差分（意味・数値・義務開示）から分離する方針を宣言する。\",\"3) diff記入先としてテンプレート（/diff_report_template_fujifilm_yuho.md）を複製し、作業用レポートファイル（例: /diff_report_fujifilm_yuho_filled.md）を作成してそこに記録する。\",\"【ステップA：章立てマッピング（網羅性の土台作り）】\",\"4) docAで「第○部」「【○○】」「○【○○】」「(1)(2)…」などの“章境界っぽい行”をgrepで抽出し、出現順に章リストを作る（行番号も控える）。\",\"5) docBでも同様に章境界っぽい行をgrep抽出して章リスト化する。\",\"6) 4)と5)を突き合わせ、まずは上位（第一部、第二部…相当）→中位（企業の概況、事業の内容…）→下位（主要指標、リスク…）の順で対応表を作る。対応が曖昧な場合は“前後200〜400行”を追加で読み、本文のトピックで確定させる。\",\"7) 対応表で「AにあってBにない」「BにあってAにない」を必ず棚卸しし、(a)本当に欠落、(b)別の場所へ移動、(c)体裁由来（重複ヘッダ等）のどれかに分類する。\",\"【ステップB：差分候補の自動抽出（変更箇所を漏れなく拾う）】\",\"8) まず“数値差分が起きやすい領域”を優先するため、両文書に対して以下のキーフレーズでgrep（content表示）し、該当箇所の行番号を収集する：\",\"  - 「主要な経営指標」「売上高」「税金等調整前」「キャッシュ・フロー」「総資産」「純資産」「従業員数」\",\"  - 「セグメント」「事業区分」「注」「(注)」\",\"9) 次に“影響が大きい開示領域”を拾うため、以下を両文書でgrepし、行番号を収集する：\",\"  - 会計： 「米国会計基準」「収益認識」「減損」「のれん」「引当金」「リース」「時価」「重要な会計上の見積り」\",\"  - リスク： 「事業等のリスク」「訴訟」「コンプライアンス」「サイバー」「情報セキュリティ」「災害」「地政学」\",\"  - ガバナンス： 「内部統制」「政策保有株式」「役員報酬」「取締役」「監査」「株主還元」「配当」\",\"10) 上記8)-9)の各ヒットについて、docA側・docB側で“同一トピックの近傍”をそれぞれ±150〜300行読み、ペア（比較単位）を作る（例：主要指標(連結)の表ブロック、事業の内容、セグメント変更の説明段落、等）。\",\"【ステップC：直接diffで変更箇所を確定（変更点→影響へ接続）】\",\"11) ペアごとに、まずはunified diff相当の比較を行う（手作業なら差分ツール、LLM比較なら「段落A vs 段落B」を投入）。\",\"  - ここでの目的は『差があるか/ないか』と『差分の正確なbefore/after』の確定。\",\"12) 差分を次の型にタグ付けしてテンプレ表へ起票する：\",\"  - 追加 / 削除 / 修正（意味変化あり） / 修正（意味変化なし＝体裁） / 移動 / 数値更新 / 範囲・定義変更\",\"13) “数値が違う”差分は必ず追加手順を踏む：\",\"  - (a) その数値が「同一項目・同一単位・同一対象範囲」か（百万円/千円、連結/提出会社、株式分割考慮前後など）を周辺の(注)で確認\",\"  - (b) 連鎖参照（同じ数値が別表にも出るか）を両文書内検索し、整合している方/崩れている方を把握\",\"  - (c) 影響欄には『投資家の理解/指標解釈が変わるか』『監査上の重要性があるか』を明記\",\"14) “セグメント名変更/区分変更”の差分は、説明段落（事業の内容等）と、セグメント情報（財務注記側）の両方で確認し、片側だけの差分になっていないかをチェックする（影響：前年比較可能性、開示の整合性）。\",\"15) “会計方針・見積り”の差分は、影響評価を必ず付ける（例：収益認識の判断基準変更→売上計上タイミングの変化可能性、減損兆候の記載追加→将来損失リスクの示唆、など）。\",\"【ステップD：変更点の影響評価（重点観点の中核）】\",\"16) 起票済みの変更点（CHG-ID）を、影響分類（財務/リスク/ガバナンス/その他）に振り分ける。\",\"17) 重要度判定ルールをこの案件用に固定し、各変更点に適用する：\",\"  - High: 数値・範囲定義・会計方針・リスク開示・法定記載（義務開示）に関する差分、または他章へ波及する差分\",\"  - Mid: 追加説明で解釈が変わり得るが数値自体は変わらない差分\",\"  - Low: 表記/空白/改行/並び替え等で意味不変\",\"18) Highについては必ず「フォローアップ」を書く（例：どの表/注記/MD&Aで裏取りするか、前年数値の再掲整合性、等）。\",\"【網羅性の検証ステップ（今回の比較で“何が確認できれば網羅的と言えるか”を明文化して実施）】\",\"19) 構造カバレッジ検証：ステップAで作った章対応表について、(a)docA主要章が全て“対応 or 未対応理由”になっている、(b)docB主要章も同様、を満たすまで繰り返す。これが満たせない限り網羅比較完了としない。\",\"20) 差分抽出カバレッジ検証：主要章ごとに「差分なし」宣言を含めた結論行を必ず置く（＝章単位で未評価をゼロにする）。\",\"21) 数値網羅性検証：少なくとも以下の“数値密集領域”について、差分表（テンプレ3章）に記録がある状態にする：\",\"  - 主要な経営指標（連結・提出会社）\",\"  - 株式/配当/株式分割に関する注記（分母・EPS等に影響）\",\"  - セグメント区分に関する説明（本文側）\",\"  ※本回答時点では全文走査は未実施のため、実作業では上記3つを最低ラインとして必ず消化する。\",\"22) 取りこぼし検証（ランダム再点検）：対応表で定義した主要章から各3箇所ずつランダムに行範囲を取り、再度A/Bを並べて確認し、新規差分が出ないことを確認する。新規差分が出た場合は、その章の比較粒度（ブロック分割）を細かくしてステップB〜Cをやり直す。\",\"23) キーフレーズ再検索検証：ステップ8)-9)のキーフレーズを“両文書で再grep”し、ヒットした全箇所が(1)差分表に起票済み、または(2)差分なしとして根拠行番号が記録済み、のどちらかになっていることを確認する。\",\"【成果物化】\",\"24) テンプレートに、(a)章対応表、(b)変更点一覧（影響・重要度付き）、(c)数値差分表、(d)網羅性チェックのチェック結果、を埋めて完成させる。\"],
+
 """.strip()
 
 inputs_compare_analysis = {
@@ -487,6 +484,32 @@ report_compare_analysis = analyze_agent_log(
     agent_result=result_compare_analysis,
 )
 print(report_compare_analysis)
+
+
+# %%
+from langchain.tools import tool
+from langchain_experimental.utilities import PythonREPL
+
+python_repl = PythonREPL()
+
+@tool
+def python_repl_tool(code: str) -> str:
+    """A Python shell. Use this to execute python commands."""
+    return python_repl.run(code)
+
+tools = [python_repl_tool]
+print(tools)
+# %%
+code = """
+import os
+with open(os.path.join('data', 'input', '仕訳定義書.txt'), 'r', encoding='utf-8') as f:
+    doc_a = f.read()
+with open(os.path.join('data', 'input', '仕訳定義書.txt'), 'a', encoding='utf-8') as f:
+    f.write('test')
+"""
+
+result = python_repl_tool.invoke(code)
+print(result)
 
 
 # %%

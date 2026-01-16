@@ -724,12 +724,21 @@ from .ast_compare import (
 COMPARE_STATE: dict = {}
 
 @tool
-def compare_setup(docA: str, docB: str, embedding_model: Optional[str] = None, cache_path: str = "data/embedding/embedding_cache.json", batch_size: int = 128) -> str:
+def compare_setup(
+    docA: str,
+    docB: str,
+    docA_txt: Optional[str] = None,
+    docB_txt: Optional[str] = None,
+    embedding_model: Optional[str] = None,
+    cache_path: str = "data/embedding/embedding_cache.json",
+    batch_size: int = 128,
+) -> str:
     """
     【必須】比較の初期化ツール（docA/docBを読み込み、チャンク化・Embedding Index作成を行います）。
 
     実行内容:
-    - `docA` / `docB` の `*.ast.json` を読み込み
+    - `docA` / `docB` の `*.ast.json` を読み込み（構造は参考情報として使用）
+    - `docA_txt` / `docB_txt` が指定されている場合は原文テキストのパスとして保持
     - 最下層（leaf）ノードの `content` をチャンク化（chunk_id/title_path/node_path を付与）
     - OpenAI / Azure OpenAI の Embedding（text-embedding-3-large）でベクトル化し、検索用Indexを作成
     - 生成物を Notebook グローバル `COMPARE_STATE` に保存（以降のツールが参照）
@@ -744,6 +753,8 @@ def compare_setup(docA: str, docB: str, embedding_model: Optional[str] = None, c
     引数:
     - docA: str = Field(..., description="docA の *.ast.json パス")
     - docB: str = Field(..., description="docB の *.ast.json パス")
+    - docA_txt: Optional[str] = Field(None, description="docA の *.txt パス（原文、参考用）")
+    - docB_txt: Optional[str] = Field(None, description="docB の *.txt パス（原文、参考用）")
     - embedding_model: Optional[str] = Field(
         default=None,
         description="Embeddingモデル/Deployment名。省略時は env に従う（OpenAI: OPENAI_EMBEDDING_MODEL / Azure: AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME）",
@@ -752,7 +763,7 @@ def compare_setup(docA: str, docB: str, embedding_model: Optional[str] = None, c
     - batch_size: int = Field(64, description="埋め込み取得のバッチサイズ")
 
     戻り値:
-    - JSON文字列: { ok, docA, docB, docA_chunks, docB_chunks, cache_path }
+    - JSON文字列: { ok, docA, docB, docA_txt, docB_txt, docA_chunks, docB_chunks, cache_path }
 
     Tips:
     - `cache_path` を指定すると再実行時のEmbeddingコストを大きく減らせます。
@@ -786,6 +797,8 @@ def compare_setup(docA: str, docB: str, embedding_model: Optional[str] = None, c
         {
             "docA": docA,
             "docB": docB,
+            "docA_txt": (str(docA_txt) if docA_txt else None),
+            "docB_txt": (str(docB_txt) if docB_txt else None),
             "doc_id_a": doc_id_a,
             "doc_id_b": doc_id_b,
             "ast_a": ast_a,
@@ -804,6 +817,8 @@ def compare_setup(docA: str, docB: str, embedding_model: Optional[str] = None, c
             "ok": True,
             "docA": docA,
             "docB": docB,
+            "docA_txt": (str(docA_txt) if docA_txt else None),
+            "docB_txt": (str(docB_txt) if docB_txt else None),
             "docA_chunks": len(chunks_a),
             "docB_chunks": len(chunks_b),
             "cache_path": cache_path,
@@ -1293,6 +1308,11 @@ def compare_specified_chunks_diff(
     - title_paths_a: Aの各チャンクのtitle_pathリスト
     - title_paths_b: Bの各チャンクのtitle_pathリスト
     - diff: マージされたテキスト間のunified diff
+    - formatting_only: 正規化後に同一と判定された形式的差分かどうか
+    - formatting_similarity: 正規化後テキストの類似度（0.0-1.0）
+    - pages_a: A側テキストから抽出したページ番号候補
+    - pages_b: B側テキストから抽出したページ番号候補
+    - page_candidates: A/Bのページ番号候補の和集合
     - truncated: diffが切り詰められたかどうか
     """
     if not COMPARE_STATE:
@@ -1308,6 +1328,8 @@ def compare_specified_chunks_diff(
         )
 
     import difflib
+    import re
+    import unicodedata
     from .ast_compare import build_merged_compare_text_for_diff
 
     n = max(0, int(context_lines))
@@ -1357,6 +1379,45 @@ def compare_specified_chunks_diff(
         max_chars_per_content=max_content_chars,
     )
 
+    def _strip_header_footer_blocks(text: str) -> str:
+        # ヘッダ/フッタをマーカーごと除去（LLM変換のPAGE_HEADER/FOOTER対応）
+        t = re.sub(r"<!--\s*PAGE_HEADER\s*-->.*?<!--\s*/PAGE_HEADER\s*-->", " ", text, flags=re.DOTALL)
+        t = re.sub(r"<!--\s*PAGE_FOOTER\s*-->.*?<!--\s*/PAGE_FOOTER\s*-->", " ", t, flags=re.DOTALL)
+        return t
+
+    def _normalize_for_formatting(text: str) -> str:
+        t = unicodedata.normalize("NFKC", text or "")
+        t = _strip_header_footer_blocks(t)
+        # HTMLコメントや視覚マーカーは除去
+        t = re.sub(r"<!--[^>]*-->", " ", t)
+        # Markdownテーブルの罫線行を除去
+        t = re.sub(r"^\\s*\\|?\\s*:?-{2,}:?\\s*(\\|\\s*:?-{2,}:?\\s*)+\\|?\\s*$", " ", t, flags=re.MULTILINE)
+        # テーブル記号の差を吸収
+        t = t.replace("|", " ")
+        # 空白・改行は全除去（表記ゆれ/改行差の吸収）
+        t = re.sub(r"\\s+", "", t)
+        return t
+
+    def _extract_pages(text: str) -> list[int]:
+        pages = set()
+        for m in re.finditer(r"<!--\\s*PAGE:\\s*(\\d+)\\s*-->", text or ""):
+            pages.add(int(m.group(1)))
+        for m in re.finditer(r"<!--\\s*VISUAL_ELEMENT\\s+page=(\\d+)", text or ""):
+            pages.add(int(m.group(1)))
+        return sorted(pages)
+
+    pages_a = _extract_pages(text_a)
+    pages_b = _extract_pages(text_b)
+    page_candidates = sorted(set(pages_a) | set(pages_b))
+
+    norm_a = _normalize_for_formatting(text_a)
+    norm_b = _normalize_for_formatting(text_b)
+    formatting_only = bool(norm_a or norm_b) and norm_a == norm_b
+    if not norm_a and not norm_b:
+        formatting_similarity = 1.0
+    else:
+        formatting_similarity = difflib.SequenceMatcher(None, norm_a, norm_b).ratio()
+
     a_lines = text_a.splitlines(keepends=True)
     b_lines = text_b.splitlines(keepends=True)
 
@@ -1391,6 +1452,11 @@ def compare_specified_chunks_diff(
             "title_paths_a": [ch.title_path for ch in chunks_a],
             "title_paths_b": [ch.title_path for ch in chunks_b],
             "diff": diff_text,
+            "formatting_only": formatting_only,
+            "formatting_similarity": round(float(formatting_similarity), 4),
+            "pages_a": pages_a,
+            "pages_b": pages_b,
+            "page_candidates": page_candidates,
             "truncated": truncated,
         },
         ensure_ascii=False,

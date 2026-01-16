@@ -136,17 +136,6 @@
         </h2>
         <div class="flex gap-2 items-center">
           <span id="flow-status" class="badge badge-outline badge-sm">待機中</span>
-          <div class="dropdown dropdown-end">
-            <label tabindex="0" class="btn btn-ghost btn-xs">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </label>
-            <ul tabindex="0" class="dropdown-content menu p-2 shadow bg-base-200 rounded-box w-40 z-10">
-              <li><a onclick="toggleLogPanel()">ログ表示切替</a></li>
-              <li><a onclick="clearFlow()">フローをクリア</a></li>
-            </ul>
-          </div>
         </div>
       </div>
       
@@ -154,7 +143,7 @@
         <!-- 左: パイプライン進捗（階層ツリー + 詳細） -->
         <div>
           <h3 class="text-sm font-semibold mb-3 text-base-content/70">パイプライン進捗</h3>
-          <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-3">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div class="bg-base-200 rounded-lg p-2 overflow-auto max-h-[520px]">
               <div class="text-[11px] font-semibold text-base-content/70 mb-2">Workflow Hierarchy</div>
               <ul id="pipeline-tree" class="menu menu-sm w-full"></ul>
@@ -171,7 +160,7 @@
     </div>
   </div>
 
-  <!-- イベントログパネル（折りたたみ可能） -->
+  <!-- イベントログパネル -->
   <div id="event-log-panel" class="card bg-base-100 shadow-xl">
     <div class="card-body">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
@@ -549,8 +538,7 @@
         const childrenMap = buildAgentChildrenMap(stepName);
         const roots = buildStepRootAgents(stepName);
         const stepKey = nodeKey('step', stepName);
-        const stepOpen = flowState.openTreeNodeKeys.has(stepKey) || stepStatus === 'running';
-        if (stepOpen) flowState.openTreeNodeKeys.add(stepKey);
+        const stepOpen = flowState.openTreeNodeKeys.has(stepKey);
 
         html += rowHtml({
           type: 'step',
@@ -568,8 +556,7 @@
           if (!a) return;
           const aKey = nodeKey('agent', a.id);
           const aHasChildren = (childrenMap.get(a.id)?.length || 0) > 0 || (a.tools?.length || 0) > 0;
-          const aOpen = flowState.openTreeNodeKeys.has(aKey) || a.status === 'active';
-          if (aOpen) flowState.openTreeNodeKeys.add(aKey);
+          const aOpen = flowState.openTreeNodeKeys.has(aKey);
 
           html += rowHtml({
             type: 'agent',
@@ -842,35 +829,6 @@
     if (flowState.activeAgentId === invocationId) flowState.activeAgentId = null;
   }
 
-  function clearFlow() {
-    flowState.agents.clear();
-    flowState.steps.clear();
-    flowState.stepMeta.clear();
-    flowState.stepOrder = [];
-    flowState.currentStep = null;
-    flowState.pendingSubagentParents = [];
-    flowState.activeAgentId = null;
-    flowState.selectedTreeNodeKey = null;
-    flowState.openTreeNodeKeys.clear();
-    flowState.openTreeNodeKeys.add(`run:${runId}`);
-    flowState.eventBuffer = [];
-    flowState.runStatus = 'idle';
-    if (flowStatus) {
-      flowStatus.textContent = '待機中';
-      flowStatus.classList.remove('badge-primary', 'badge-success', 'badge-error', 'badge-warning');
-      flowStatus.classList.add('badge-outline');
-    }
-    if (pipelineNodeDetails) {
-      pipelineNodeDetails.innerHTML = '左のツリーからノードを選択すると詳細が表示されます。';
-    }
-    schedulePipelineRender();
-  }
-
-  function toggleLogPanel() {
-    const panel = document.getElementById('event-log-panel');
-    panel.classList.toggle('hidden');
-  }
-
   // ===== SSEイベントハンドラ =====
   function handleSSEEvent(event) {
     try {
@@ -929,6 +887,8 @@
           const meta = flowState.stepMeta.get(startedStep);
           // 可能ならイベント時刻を採用（表示のタイムライン精度向上）
           meta.startedTs = meta.startedTs || data.ts || payload.ts || new Date().toISOString();
+          // 開始したStepは自動展開（ただしユーザーが閉じたら維持できるよう、描画時に強制openはしない）
+          flowState.openTreeNodeKeys.add(nodeKey('step', startedStep));
         }
         updatePipelineStep(startedStep, 'running');
         break;
@@ -978,13 +938,18 @@
         if ((!parentId || parentId === null) && data.is_subagent) {
           parentId = flowState.pendingSubagentParents.shift() || flowState.activeAgentId;
         }
+        const newAgentId = data.invocation_id || `agent-${Date.now()}`;
         addAgentNode(
-          data.invocation_id || `agent-${Date.now()}`,
+          newAgentId,
           data.agent_name || 'agent',
           data.is_subagent || false,
           parentId,
           data.depth
         );
+        // 新規/活動中のノードは開始時だけ自動展開
+        if (flowState.currentStep) flowState.openTreeNodeKeys.add(nodeKey('step', flowState.currentStep));
+        if (parentId) flowState.openTreeNodeKeys.add(nodeKey('agent', parentId));
+        flowState.openTreeNodeKeys.add(nodeKey('agent', newAgentId));
         schedulePipelineRender();
         break;
         
@@ -1006,6 +971,12 @@
         if (toolName.toLowerCase() === 'task') {
           const callerId = data.invocation_id || flowState.activeAgentId;
           if (callerId) flowState.pendingSubagentParents.push(callerId);
+        }
+        {
+          const callerId = data.invocation_id || flowState.activeAgentId;
+          // tool開始時は該当Agent/Stepだけ自動展開（以後の開閉はユーザー操作に従う）
+          if (flowState.currentStep) flowState.openTreeNodeKeys.add(nodeKey('step', flowState.currentStep));
+          if (callerId) flowState.openTreeNodeKeys.add(nodeKey('agent', callerId));
         }
         addToolCall(
           data.invocation_id || flowState.activeAgentId,

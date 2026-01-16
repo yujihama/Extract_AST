@@ -210,6 +210,8 @@ def create_app() -> FastAPI:
         # mode をpayload直下でも受ける
         if "mode" in payload and "mode" not in params:
             params["mode"] = payload.get("mode")
+        # デフォルトでAST枝サマリを有効化（明示指定があれば尊重）
+        params.setdefault("summarize_ast", True)
 
         start_now = bool(payload.get("start_now", False))
 
@@ -240,13 +242,15 @@ def create_app() -> FastAPI:
         doc_a_hash: str = Form(""),
         doc_b_hash: str = Form(""),
         mode: str = Form("dummy"),
+        comparison_focus: str = Form(""),
         pdf_mode_a: str = Form("fast"),
         pdf_mode_b: str = Form("fast"),
         pdf_start_page: str = Form("1"),
         pdf_end_page: str = Form(""),
         pdf_batch_size: str = Form("5"),
         pdf_use_image: Optional[str] = Form(None),
-        summarize_ast: Optional[str] = Form(None),
+        # run_new.html 側で hidden(0) + checkbox(1) を送るため、常に値が来る想定
+        summarize_ast: str = Form("1"),
         ast_summary_model: str = Form("gpt-4o-mini"),
         llm_complex_model: str = Form(""),
         step_from: str = Form(""),
@@ -312,13 +316,32 @@ def create_app() -> FastAPI:
             params["pdf_use_image"] = bool(pdf_use_image)
 
             # AST枝サマリ（realのみ）
-            params["summarize_ast"] = bool(summarize_ast)
+            sa = str(summarize_ast or "").strip().lower()
+            params["summarize_ast"] = sa in {"1", "true", "on", "yes", "y"}
             if str(ast_summary_model).strip():
                 params["ast_summary_model"] = str(ast_summary_model).strip()
 
             # 任意: 複雑系モデル
             if str(llm_complex_model).strip():
                 params["llm_complex_model"] = str(llm_complex_model).strip()
+
+            # pre_analysis の重点比較観点（任意）
+            # UIでは textarea（複数行）として受け取り、1行=1観点として list[str] にする。
+            # 1件だけなら str としても良いが、後段での取り回しを安定させるため基本はlistに寄せる。
+            raw_focus = str(comparison_focus or "").strip()
+            if raw_focus:
+                # 改行 or カンマ区切りを許容
+                normalized = raw_focus.replace("\r\n", "\n").replace("\r", "\n")
+                if "\n" in normalized:
+                    items = [x.strip() for x in normalized.split("\n") if x.strip()]
+                elif "," in normalized:
+                    items = [x.strip() for x in normalized.split(",") if x.strip()]
+                else:
+                    items = [normalized.strip()]
+                if len(items) == 1:
+                    params["comparison_focus"] = items[0]
+                else:
+                    params["comparison_focus"] = items
 
             # ステップ選択（step filtering）
             if str(step_from).strip():

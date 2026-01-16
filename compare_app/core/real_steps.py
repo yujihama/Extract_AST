@@ -379,6 +379,18 @@ class SummarizeAstStep:
 
             raise CancelledError("cancelled during ast summarization")
 
+        # ドキュメントリポジトリにも保存（次のrunで要約済みASTを再利用できるようにする）
+        doc_hash = ctx.params.get(f"doc_{which}_hash")
+        if doc_hash:
+            try:
+                from compare_app.infra.document_store import DocumentRepository
+
+                ast_data = json.loads(ast_path.read_text(encoding="utf-8"))
+                DocumentRepository().save_ast(doc_hash, ast_data)
+            except Exception:
+                # 要約自体は完了しているので、永続化失敗は致命にしない
+                pass
+
         rel = ast_path.relative_to(run_dir).as_posix()
         ctx.events.emit(ctx.run_id, "artifact_updated", {"ts": _utcnow_iso(), "kind": f"ast_{which}", "path": rel})
         ctx.events.emit(ctx.run_id, "ast_summarized", {"ts": _utcnow_iso(), "which": which, "model": model})

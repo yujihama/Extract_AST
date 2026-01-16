@@ -106,10 +106,15 @@ NGがある場合は、原因を調査して、blueprintをedit_fileツールで
 compare_type_analysis_prompt = f"""
 あなたは与えられた2つのドキュメントの構造や特性を分析し、後続の差分分析の具体的な手順を策定しようとしています。
 # 目的
-- 2つの階層化されたドキュメント（*.ast.json）を比較し、2つのドキュメントの関係性について以下のいずれに該当するか分析すること。
+- 2つの原文テキスト（doc_a.txt / doc_b.txt）を比較し、2つのドキュメントの関係性について以下のいずれに該当するか分析すること。
 - ドキュメント間の差分を抽出するための具体的な手順を策定すること。
 - ユーザーから重要な観点を指定された場合は、その観点に特化した比較計画を策定すること。
 - 分析結果を記入するためのテンプレートをwrite_fileツールで作成すること。
+
+注意:
+- ast_a.ast.json / ast_b.ast.json は各ドキュメントを独立に構造化した参考情報です。
+- 同一構成でも階層のズレが起こり得るため、ASTは補助として扱ってください。
+- 根拠や引用は原文テキスト（doc_a.txt / doc_b.txt）を優先してください。
 
 # ドキュメント関係性定義と調査戦略マトリクス
 
@@ -176,6 +181,7 @@ compare_parent_agent_prompt = """
 - 最小限のlsや簡単なread_fileや結果のwrite_fileやedit_fileはエージェントではなく直接ツール実行してもよいです。
 
 「*.ast.json」ファイルには直接アクセスせず、サブエージェント経由でアクセスしてください。
+原文テキスト（doc_a.txt / doc_b.txt）が主な比較対象です。ASTは参考情報として扱ってください。
 
 タスク管理:
 - 1回のサブエージェント実行で1つのタスクを実行できるような単位にしてください。
@@ -199,7 +205,10 @@ compare_sub_agent_tool = f"""
 ツール選択ガイド:
 
 【探索・構造理解】
-- ファイル概要確認: read_ast(file_path, mode="summary") → メタデータ・統計情報・推定トークン数 ※read_fileは原則使用しない
+- 原文概要確認: read_text_file(file_path) / get_file_length(file_path) → 原文の概要や長さを把握
+- 原文部分読み: read_text_segment(file_path, start, length) → 必要部分のみ確認
+- 原文検索: extract_regex_matches(file_path, regex_pattern, ...) → キーフレーズ/見出しの位置特定
+- AST概要確認: read_ast(file_path, mode="summary") → メタデータ・統計情報・推定トークン数 ※read_fileは原則使用しない
 - 構造確認: read_ast(file_path, mode="outline", max_depth=3) → セクション構造をツリー形式で取得
 - タイトル検索: read_ast(file_path, mode="search", title_query="キーワード") → セクション検索※本文の検索をする場合はcompare_search_by_keyphraseを使用すること
 - 特定セクション取得: read_ast(file_path, mode="chunk", node_path=[0,1,2]) → セクション本文取得※特定のチャンクの本文を取得する場合はcompare_get_chunkを使用すること
@@ -211,9 +220,13 @@ compare_sub_agent_tool = f"""
 - 特定トピック探索: compare_search_by_keyphrase(phrase, in_doc="A"/"B")
 - 特定チャンク内容確認: compare_get_chunk(chunk_ids=["A_0", ...], in_doc="A"/"B")【最大5件まで】
 - 差分抽出（高類似度）: compare_specified_chunks_diff(chunk_ids_a=[...], chunk_ids_b=[...])【類似度0.7以上推奨】
+  - 返り値の formatting_only=true の場合は、形式的差分の可能性が高いため report には載せないこと
+  - pages_a / pages_b / page_candidates があれば analyze_visual_contents で見た目を確認し、視覚的に同一なら差分を除外すること
+    - document_name は doc_a.txt / doc_b.txt、page_numbers は pages_a / pages_b を使う
 - 差分評価（低類似度）: compare_specified_chunks_llm(chunk_ids_a=[...], chunk_ids_b=[...])
 
 【注意事項】
+- 原文（doc_a.txt / doc_b.txt）を優先し、ASTは補助情報として扱う
 - 大きなファイルは read_ast(mode="summary") で推定トークン数を確認してから読み込む
 - コンテキスト節約のため、必要なセクションのみ段階的に読み込む
 """.strip() 
@@ -270,24 +283,27 @@ compare_sub_agent_general = """
 compare_sub_agent1 = """
 あなたは監査人として、2つのドキュメント間の差分を抽出しようとしています。
 目的: 
-- 2つのドキュメント（*.ast.json）を比較し、意味のある差分を抽出し、影響と根拠（短い引用）付きMarkdown形式のファイルで報告すること。
+- 2つのドキュメント（doc_a.txt / doc_b.txt）を比較し、意味のある差分を抽出し、影響と根拠（短い引用）付きMarkdown形式のファイルで報告すること。
 - 比較作業に際して、ユーザーから指示された観点をもとに作業を行うこと。
 - 結果の回答はユーザーから指定されたファイル名への新規出力（write_file）か、既存のファイルへの更新（edit_file）をすること。
 - 作業のなかで発生した疑問点や仮説はすぐに調査せず、残課題として回答してください。
+注意: AST（*.ast.json）は参考情報であり、階層のズレが起こり得ます。根拠は原文テキストを優先してください。
 """.strip() + compare_sub_agent_prompt + compare_sub_agent_tool + compare_sub_agent_format1
 
 compare_sub_agent2 = """
 あなたは監査人として、2つのドキュメント間の差分を深掘りしようとしています。
 目的: 
-- 2つのドキュメント（*.ast.json）を比較した結果に対して、ユーザーから指示された観点について深掘りした分析をしてください。
+- 2つのドキュメント（doc_a.txt / doc_b.txt）を比較した結果に対して、ユーザーから指示された観点について深掘りした分析をしてください。
 - 作業のなかで発生した疑問点や仮説はすぐに調査せず、次のステップとして回答してください。
+注意: AST（*.ast.json）は参考情報であり、階層のズレが起こり得ます。根拠は原文テキストを優先してください。
 """.strip() + compare_sub_agent_prompt + compare_sub_agent_tool + compare_sub_agent_format2
 
 compare_sub_agent3 = """
 あなたは監査人として、2つのドキュメント間の差分分析の結果を検証しようとしています。批判的な目線で、網羅性、正確性の観点から検証を行ってください。
 目的: 
-- 2つのドキュメント（*.ast.json）を比較した結果に対して、ユーザーから与えられた分析結果について妥当性を検証してください。
+- 2つのドキュメント（doc_a.txt / doc_b.txt）を比較した結果に対して、ユーザーから与えられた分析結果について妥当性を検証してください。
 - 作業のなかで発生した疑問点や仮説はすぐに調査せず、次のステップとして回答してください。
+注意: AST（*.ast.json）は参考情報であり、階層のズレが起こり得ます。根拠は原文テキストを優先してください。
 """.strip() + compare_sub_agent_prompt + compare_sub_agent_tool + compare_sub_agent_format3
 
 compare_sub_agent_report = """

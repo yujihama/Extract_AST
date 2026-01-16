@@ -502,8 +502,10 @@ def convert_pdf_to_txt(target_file: str, input_dir: str = "data/input") -> dict:
                 
                 if current_paragraph:
                     output_parts.append("\n".join(current_paragraph))
-                
-                page_text = "\n\n".join(output_parts)
+
+                # LLM変換と同様のページマーカーを付与してページ位置を参照可能にする
+                page_marker = f"<!-- PAGE: {page_num + 1} -->"
+                page_text = "\n".join([page_marker, "", "\n\n".join(output_parts), ""])
                 text_content.append(page_text)
     
     finally:

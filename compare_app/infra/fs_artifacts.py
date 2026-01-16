@@ -83,6 +83,29 @@ class FileArtifactStore:
         raw_path = self.doc_repo.get_raw_path(doc.doc_hash)
         if raw_path and raw_path.exists():
             shutil.copy2(raw_path, dest)
+
+        # 既存のAST/Blueprintがあればwork_dirにコピー（次runでも要約済みASTを確実に使うため）
+        # add_input_by_hash と同様の挙動に揃える（パス指定でもdoc_hashが同一なら再利用する）
+        work_dir = Path(paths["work_dir"])
+        doc_dir = self.doc_repo.base_dir / doc.doc_hash
+
+        # Blueprint
+        bp_src = doc_dir / "blueprint.json"
+        bp_dest = work_dir / f"blueprint_{which}.json"
+        if bp_src.exists() and not bp_dest.exists():
+            try:
+                shutil.copy2(bp_src, bp_dest)
+            except Exception:
+                pass
+
+        # AST（要約済みcontent_summaryを含む可能性がある）
+        ast_src = doc_dir / "ast.json"
+        ast_dest = work_dir / f"ast_{which}.ast.json"
+        if ast_src.exists() and not ast_dest.exists():
+            try:
+                shutil.copy2(ast_src, ast_dest)
+            except Exception:
+                pass
         
         return doc
 

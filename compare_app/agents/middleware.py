@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
+import threading
 import uuid
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 from langchain.agents.middleware import AgentMiddleware, AgentState
@@ -27,6 +30,45 @@ def _truncate(s: str, n: int = 300) -> str:
 def _generate_invocation_id() -> str:
     """短いユニークな呼び出しIDを生成する。"""
     return uuid.uuid4().hex[:12]
+
+
+@dataclass(frozen=True)
+class CompareRestoreConfig:
+    """
+    `compare_*` ツール呼び出し時に、必要なら compare_setup を再実行して
+    スレッドローカルな COMPARE_STATE を“このスレッド”で初期化するための設定。
+    """
+
+    ast_a_path: str
+    ast_b_path: str
+    cache_path: str
+    txt_a_path: Optional[str] = None
+    txt_b_path: Optional[str] = None
+    initial_matching_path: str = ""
+    embedding_model: Optional[str] = None
+    embedding_batch_size: int = 64
+    warmup_matching: bool = False
+    match_top_k: int = 3
+    match_alpha: float = 0.3
+    match_beta: float = 0.4
+    match_min_score: float = 0.25
+
+
+_COMPARE_RESTORE_LOCKS: dict[str, threading.Lock] = {}
+_COMPARE_RESTORE_LOCKS_GUARD = threading.Lock()
+
+
+def _get_compare_restore_lock(run_id: str) -> threading.Lock:
+    key = str(run_id or "")
+    if not key:
+        # run_id が空のケースは想定外だが、落とさない
+        return threading.Lock()
+    with _COMPARE_RESTORE_LOCKS_GUARD:
+        lock = _COMPARE_RESTORE_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _COMPARE_RESTORE_LOCKS[key] = lock
+        return lock
 
 
 # エージェント呼び出しスタックを追跡するContextVar
@@ -76,9 +118,14 @@ class AgentInvocationContext:
         self._agent_name = agent_name
         self._prefix = prefix or []
         self._token = None
+        # __enter__() を呼んだコンテキスト上の「元のスタック」を保持する。
+        # ContextVar の Token は作成した Context と異なる Context では reset() できず ValueError になるため、
+        # スレッド/タスク跨ぎ等で after_agent が別 Context になった場合のフォールバックに使う。
+        self._prev_stack: Optional[list[tuple[str, str]]] = None
     
     def __enter__(self) -> "AgentInvocationContext":
         stack = _agent_stack.get().copy()
+        self._prev_stack = stack.copy()
         if self._prefix:
             stack.extend(self._prefix)
         stack.append((self._invocation_id, self._agent_name))
@@ -87,8 +134,18 @@ class AgentInvocationContext:
     
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         if self._token is not None:
-            # 直前の状態へ確実に戻す（thread/context跨ぎの補助にもなる）
-            _agent_stack.reset(self._token)
+            # 直前の状態へ確実に戻す（同一 Context なら reset が最も正しい）
+            try:
+                _agent_stack.reset(self._token)
+            except ValueError:
+                # Token が別 Context で作られている場合に発生:
+                # ValueError: <Token ...> was created in a different Context
+                #
+                # ここで例外にすると run 全体が落ちるため、現在の Context 側で安全に復旧する。
+                if self._prev_stack is not None:
+                    _agent_stack.set(self._prev_stack)
+                else:
+                    _agent_stack.set([])
         return None
 
 
@@ -111,6 +168,9 @@ class EventSinkMiddleware(AgentMiddleware):
     # thread/context を跨ぐ subagent 実行でも親子関係を保つためのヒント
     forced_parent_invocation_id: Optional[str] = None
     forced_parent_agent_name: Optional[str] = None
+
+    # `compare_*` ツールを呼ぶ前に、必要なら COMPARE_STATE を復元するための設定
+    compare_restore: Optional[CompareRestoreConfig] = None
     
     # 呼び出しIDは自動生成（インスタンス生成時に確定）
     invocation_id: str = field(default_factory=_generate_invocation_id)
@@ -202,6 +262,12 @@ class EventSinkMiddleware(AgentMiddleware):
         tool_args = tool_call.get("args", {}) or {}
         tool_call_id = tool_call.get("id", "")
 
+        # ThreadLocal な COMPARE_STATE 対策:
+        # - compare_setup は pipeline スレッドで実行されるが、subagent/tool 実行は別スレッドになり得る
+        # - compare_* ツールはメモリ上の COMPARE_STATE が空だと即エラーになる
+        # → compare_* 呼び出し直前に、同一runの成果物から compare_setup を“このスレッド”で再実行して復元する
+        self._maybe_restore_compare_state(tool_name)
+
         self.events.emit(
             self.run_id,
             "tool_call_start",
@@ -254,6 +320,139 @@ class EventSinkMiddleware(AgentMiddleware):
                 },
             )
             raise
+
+    def _maybe_restore_compare_state(self, tool_name: str) -> None:
+        cfg = self.compare_restore
+        if cfg is None:
+            return
+
+        tn = str(tool_name or "")
+        if not tn.startswith("compare_") or tn == "compare_setup":
+            return
+
+        # read_ast は compare_state 非依存なので復元不要
+        if tn == "read_ast":
+            return
+
+        try:
+            from src.tools import COMPARE_STATE  # type: ignore
+        except Exception:
+            return
+
+        # 既にこのスレッドで初期化済みなら何もしない
+        if bool(COMPARE_STATE):
+            return
+
+        # 同一runの同時復元を抑制
+        lock = _get_compare_restore_lock(self.run_id)
+        with lock:
+            # lock取得後に再チェック（他スレッドが先に復元した可能性）
+            try:
+                if bool(COMPARE_STATE):
+                    return
+            except Exception:
+                # ThreadLocalDict が壊れている等のケースは復元を試す
+                pass
+
+            ast_a = Path(str(cfg.ast_a_path))
+            ast_b = Path(str(cfg.ast_b_path))
+            txt_a = Path(str(cfg.txt_a_path)) if cfg.txt_a_path else None
+            txt_b = Path(str(cfg.txt_b_path)) if cfg.txt_b_path else None
+            cache_path = Path(str(cfg.cache_path))
+            initial_matching_path = Path(str(cfg.initial_matching_path)) if cfg.initial_matching_path else None
+
+            if not ast_a.exists() or not ast_b.exists():
+                # 成果物が無ければ復元不能（この場合はツール側のエラーに委ねる）
+                return
+
+            # compare_setup.invoke で ThreadLocal な COMPARE_STATE をこのスレッドで作る
+            try:
+                from src.tools import compare_all_chunk_similarity_matching, compare_setup  # type: ignore
+            except Exception:
+                return
+
+            # できればイベントに残す（デバッグしやすくする）
+            try:
+                self.events.emit(
+                    self.run_id,
+                    "compare_state_restore",
+                    {"ts": _utcnow_iso(), "status": "restoring", "trigger": "tool_call", "tool_name": tn},
+                )
+            except Exception:
+                pass
+
+            try:
+                # cache_path は、ファイルがなくても compare_setup 側で作れる（ただしコスト増）
+                # ここではディレクトリだけ確保しておく
+                if cache_path.parent and not cache_path.parent.exists():
+                    cache_path.parent.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass
+
+            try:
+                compare_setup.invoke(
+                    {
+                        "docA": str(ast_a),
+                        "docB": str(ast_b),
+                        "docA_txt": (str(txt_a) if txt_a and txt_a.exists() else None),
+                        "docB_txt": (str(txt_b) if txt_b and txt_b.exists() else None),
+                        "embedding_model": cfg.embedding_model,
+                        "cache_path": str(cache_path),
+                        "batch_size": int(cfg.embedding_batch_size),
+                    }
+                )
+
+                # run成果物として initial_matching があれば、それを復元（which="last" のフォールバックにもなる）
+                if initial_matching_path is not None and initial_matching_path.exists():
+                    try:
+                        loaded = json.loads(initial_matching_path.read_text(encoding="utf-8"))
+                        COMPARE_STATE["initial_matching"] = loaded
+                    except Exception:
+                        pass
+
+                # 必要なら warmup も行う（ファイルが無い/復元できない時の保険）
+                if cfg.warmup_matching and not COMPARE_STATE.get("initial_matching"):
+                    try:
+                        warm = compare_all_chunk_similarity_matching.invoke(
+                            {
+                                "top_k": int(cfg.match_top_k),
+                                "alpha": float(cfg.match_alpha),
+                                "beta": float(cfg.match_beta),
+                                "min_score": float(cfg.match_min_score),
+                            }
+                        )
+                        try:
+                            COMPARE_STATE["initial_matching"] = json.loads(warm)
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+
+                # 目印（別runとの混線回避とデバッグ用）
+                try:
+                    COMPARE_STATE["_run_id"] = self.run_id
+                except Exception:
+                    pass
+
+                try:
+                    self.events.emit(
+                        self.run_id,
+                        "compare_state_restore",
+                        {"ts": _utcnow_iso(), "success": True, "trigger": "tool_call", "tool_name": tn},
+                    )
+                except Exception:
+                    pass
+            except Exception as e:
+                try:
+                    self.events.emit(
+                        self.run_id,
+                        "compare_state_restore",
+                        {"ts": _utcnow_iso(), "success": False, "trigger": "tool_call", "tool_name": tn, "reason": str(e)},
+                    )
+                except Exception:
+                    pass
+                # ここで例外は上げない（元のtool実行でエラーになるなら、それに委ねる）
+                return
 
     def _summarize_messages(self, messages: list) -> list:
         summary = []

@@ -186,6 +186,24 @@
             </label>
           </div>
         </div>
+
+        <div class="divider"></div>
+
+        <!-- Pre-Analysis: 重点比較観点 -->
+        <div class="form-control w-full">
+          <label class="label">
+            <span class="label-text font-medium">重点比較観点（Pre-Analysis）</span>
+          </label>
+          <textarea
+            name="comparison_focus"
+            class="textarea textarea-bordered w-full"
+            rows="4"
+            placeholder="例）&#10;免責・責任範囲の変更&#10;料金・支払条件の差分&#10;セキュリティ要件の変更&#10;&#10;※1行=1観点（空欄ならデフォルト観点）"
+          ></textarea>
+          <label class="label">
+            <span class="label-text-alt text-base-content/50">ここで指定した観点が pre_analysis のプロンプトに挿入されます。</span>
+          </label>
+        </div>
       </div>
     </div>
 
@@ -268,7 +286,9 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
           <div class="form-control">
             <label class="label cursor-pointer justify-start gap-4">
-              <input type="checkbox" name="summarize_ast" class="checkbox checkbox-sm" />
+              <!-- uncheckedでも値が送られるように hidden + checkbox を併用 -->
+              <input type="hidden" name="summarize_ast" value="0" />
+              <input type="checkbox" name="summarize_ast" value="1" checked class="checkbox checkbox-sm" />
               <div>
                 <span class="label-text font-medium">AST枝サマリを有効化</span>
                 <p class="text-xs text-base-content/50">各ノードに要約を付与（LLMコスト増）</p>

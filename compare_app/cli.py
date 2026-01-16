@@ -58,6 +58,9 @@ def main(argv: list[str] | None = None) -> int:
         if not isinstance(params, dict):
             params = {"params": params}
         params.setdefault("mode", args.mode)
+        # デフォルトで AST 枝サマリを有効化（run跨ぎで要約済みASTを確実に再利用するため）
+        # ※ dummy モードでは SummarizeAstStep 自体が実行されないので安全
+        params.setdefault("summarize_ast", True)
         run = executor.create_run(doc_a_path=args.doc_a, doc_b_path=args.doc_b, params=params)
         _print_json({"run_id": run.run_id, "status": run.status, "created_at": run.created_at.isoformat()})
         return 0
