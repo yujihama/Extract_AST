@@ -543,6 +543,40 @@ class PreAnalysisStep:
         else:
             # デフォルトの比較観点
             focus_lines = ["- 変更箇所とその影響の特定"]
+        
+        # 任意: 重点比較観点ファイル（txtのみ）
+        focus_file_name: Optional[str] = None
+        focus_file_path: Optional[Path] = None
+        focus_param = ctx.params.get("comparison_focus_file")
+        if focus_param:
+            try:
+                focus_param_str = str(focus_param).strip()
+                if focus_param_str:
+                    cand_path = Path(focus_param_str)
+                    if cand_path.is_absolute() and cand_path.exists():
+                        focus_file_path = cand_path
+                    else:
+                        for base in [run_dir, work_dir, input_dir]:
+                            cand = base / focus_param_str
+                            if cand.exists():
+                                focus_file_path = cand
+                                break
+            except Exception:
+                pass
+        if not focus_file_path:
+            for base in [work_dir, input_dir]:
+                cand = base / "comparison_focus.txt"
+                if cand.exists():
+                    focus_file_path = cand
+                    break
+        if focus_file_path and focus_file_path.suffix.lower() == ".txt":
+            try:
+                focus_text = focus_file_path.read_text(encoding="utf-8", errors="replace")
+                if focus_text.strip():
+                    files["/comparison_focus.txt"] = create_file_data(focus_text)
+                    focus_file_name = focus_file_path.name
+            except Exception:
+                pass
 
         # LLMに軽量判定の材料を提供するための統計情報を収集
         def _get_doc_stats(ast_path: Path) -> dict:
@@ -653,6 +687,18 @@ class PreAnalysisStep:
             *stats_lines,
             "**重点比較観点**",
             *focus_lines,
+        ]
+        if focus_file_name:
+            query_lines.extend(
+                [
+                    "",
+                    "**重点比較観点ファイル**",
+                    "- /comparison_focus.txt を必要に応じて参照してください。",
+                    f"- 元ファイル名: {focus_file_name}",
+                ]
+            )
+        query_lines.extend(
+            [
             "",
             "**前提事項**",
             "- それぞれのASTファイルは独立して解析し作成されたものです。そのため同じ構成でも階層分けが異なる場合があります。",
@@ -683,7 +729,8 @@ class PreAnalysisStep:
             "",
             "is_lightweight == true の場合: filled_reportに完成したレポートを出力",
             "is_lightweight == false の場合: planに分析手順、templateに空欄テンプレートを出力",
-        ]
+            ]
+        )
 
         query = "\n".join(query_lines)
 

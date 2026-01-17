@@ -204,6 +204,20 @@
             <span class="label-text-alt text-base-content/50">ここで指定した観点が pre_analysis のプロンプトに挿入されます。</span>
           </label>
         </div>
+        <div class="form-control w-full">
+          <label class="label">
+            <span class="label-text font-medium">重点比較観点ファイル（任意 / .txt）</span>
+          </label>
+          <input
+            type="file"
+            name="comparison_focus_file"
+            class="file-input file-input-bordered w-full"
+            accept=".txt"
+          />
+          <label class="label">
+            <span class="label-text-alt text-base-content/50">テキスト欄と併用可。ファイル内容はプロンプトへ直挿入せず、必要に応じて参照します。</span>
+          </label>
+        </div>
       </div>
     </div>
 

@@ -243,6 +243,7 @@ def create_app() -> FastAPI:
         doc_b_hash: str = Form(""),
         mode: str = Form("dummy"),
         comparison_focus: str = Form(""),
+        comparison_focus_file: Optional[UploadFile] = File(None),
         pdf_mode_a: str = Form("fast"),
         pdf_mode_b: str = Form("fast"),
         pdf_start_page: str = Form("1"),
@@ -288,6 +289,18 @@ def create_app() -> FastAPI:
         else:
             from starlette.responses import HTMLResponse
             return HTMLResponse("ドキュメントBが必要です（既存選択またはアップロード）", status_code=400)
+        
+        # 重点比較観点ファイル（任意）
+        focus_bytes: Optional[bytes] = None
+        focus_original_name: Optional[str] = None
+        if comparison_focus_file and comparison_focus_file.filename:
+            fname = str(comparison_focus_file.filename)
+            if not fname.lower().endswith(".txt"):
+                from starlette.responses import HTMLResponse
+                return HTMLResponse("重点比較観点ファイルは .txt のみ対応しています", status_code=400)
+            focus_bytes = await comparison_focus_file.read()
+            if focus_bytes:
+                focus_original_name = fname
         try:
             m = str(mode).lower().strip()
             if m not in {"dummy", "real"}:
@@ -342,6 +355,12 @@ def create_app() -> FastAPI:
                     params["comparison_focus"] = items[0]
                 else:
                     params["comparison_focus"] = items
+            
+            # 重点比較観点ファイル（任意）
+            if focus_bytes:
+                params["comparison_focus_file"] = "input/comparison_focus.txt"
+                if focus_original_name:
+                    params["comparison_focus_file_name"] = focus_original_name
 
             # ステップ選択（step filtering）
             if str(step_from).strip():
@@ -369,6 +388,25 @@ def create_app() -> FastAPI:
                     os.remove(tmp_b)
                 except Exception:
                     pass
+        
+        # 重点比較観点ファイルをrun_dirへ保存（best effort）
+        if focus_bytes:
+            try:
+                paths = executor.artifacts.ensure_run_dirs(run.run_id)
+                focus_path = Path(paths["input_dir"]) / "comparison_focus.txt"
+                focus_path.write_bytes(focus_bytes)
+                events.emit(
+                    run.run_id,
+                    "artifact_updated",
+                    {
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                        "kind": "file",
+                        "path": focus_path.relative_to(Path(paths["run_dir"])).as_posix(),
+                    },
+                )
+            except Exception:
+                # 保存失敗は致命にしない（Run自体は作成済み）
+                pass
 
         if start_now:
             executor.start(run.run_id)
