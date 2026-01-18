@@ -42,11 +42,11 @@ class FileArtifactStore:
         run_dir = self.runs_root / run_id
         paths = {
             "run_dir": str(run_dir),
-            "input_dir": str(run_dir / "input"),  # 互換性のため維持
+            "input_dir": str(run_dir / "input"),  # run入力の配置先
             "work_dir": str(run_dir / "work"),
             "out_dir": str(run_dir / "out"),
             "log_dir": str(run_dir / "log"),
-            "cache_dir": str(run_dir / "cache"),  # 互換性のため維持
+            "cache_dir": str(run_dir / "cache"),  # run単位キャッシュ
         }
         for p in paths.values():
             os.makedirs(p, exist_ok=True)
@@ -73,9 +73,15 @@ class FileArtifactStore:
         doc = self.doc_repo.add_from_path(str(src), src.name)
         
         # Runのconfigに紐付けを記録
-        self._update_run_config(run_id, which, doc.doc_hash)
+        self._update_run_config(
+            run_id,
+            which,
+            doc.doc_hash,
+            original_filename=doc.original_filename,
+            source={"type": "path", "path": str(src)},
+        )
         
-        # 互換性のため、input_dirにもコピー（既存ステップが参照するため）
+        # input_dirにもコピー（既存ステップが参照するため）
         paths = self.ensure_run_dirs(run_id)
         input_dir = Path(paths["input_dir"])
         dest_name = f"doc_{which}{src.suffix}"
@@ -127,13 +133,19 @@ class FileArtifactStore:
             raise ValueError(f"Document not found: {doc_hash}")
         
         # Runのconfigに紐付けを記録
-        self._update_run_config(run_id, which, doc_hash)
+        self._update_run_config(
+            run_id,
+            which,
+            doc_hash,
+            original_filename=doc.original_filename,
+            source={"type": "hash"},
+        )
         
         paths = self.ensure_run_dirs(run_id)
         input_dir = Path(paths["input_dir"])
         work_dir = Path(paths["work_dir"])
         
-        # 互換性のため、input_dirにもコピー（既存ステップが参照するため）
+        # input_dirにもコピー（既存ステップが参照するため）
         original_ext = Path(doc.original_filename).suffix or ".txt"
         dest_name = f"doc_{which}{original_ext}"
         dest = input_dir / dest_name
@@ -158,7 +170,15 @@ class FileArtifactStore:
         
         return doc
 
-    def _update_run_config(self, run_id: str, which: str, doc_hash: str) -> None:
+    def _update_run_config(
+        self,
+        run_id: str,
+        which: str,
+        doc_hash: str,
+        *,
+        original_filename: Optional[str] = None,
+        source: Optional[Dict[str, Any]] = None,
+    ) -> None:
         """Runのconfigを更新"""
         paths = self.ensure_run_dirs(run_id)
         config_path = Path(paths["run_dir"]) / "config.json"
@@ -168,7 +188,26 @@ class FileArtifactStore:
         else:
             config = {}
         
-        config[f"doc_{which}_hash"] = doc_hash
+        doc_id = str(which)
+        config[f"doc_{doc_id}_hash"] = doc_hash
+
+        docs = config.get("documents")
+        if not isinstance(docs, list):
+            docs = []
+
+        entry: Dict[str, Any] = {"doc_id": doc_id, "doc_hash": doc_hash}
+        if original_filename:
+            entry["filename"] = str(original_filename)
+        if source:
+            entry["source"] = dict(source)
+
+        for i, existing in enumerate(docs):
+            if isinstance(existing, dict) and existing.get("doc_id") == doc_id:
+                docs[i] = {**existing, **entry}
+                break
+        else:
+            docs.append(entry)
+        config["documents"] = docs
         config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def get_run_config(self, run_id: str) -> Dict[str, Any]:

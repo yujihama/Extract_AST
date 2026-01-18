@@ -6,8 +6,20 @@ from pathlib import Path
 from datetime import datetime
 from typing import Any, Callable, Optional, Dict
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-from langchain.agents.middleware import AgentMiddleware,AgentState,ModelRequest,ModelResponse
-from langchain.agents.middleware.types import ToolCallRequest
+
+# NOTE:
+# compare_app 側の実行では DebugLoggingMiddleware は必須ではない一方、
+# langchain のバージョン差分により `langchain.agents.middleware` が存在しない環境がある。
+# その場合でも build_llm 等を使えるよう、middleware系importはbest-effortにする。
+try:
+    from langchain.agents.middleware import AgentMiddleware, AgentState, ModelRequest, ModelResponse  # type: ignore
+    from langchain.agents.middleware.types import ToolCallRequest  # type: ignore
+except Exception:  # pragma: no cover
+    AgentMiddleware = object  # type: ignore
+    AgentState = dict  # type: ignore
+    ModelRequest = Any  # type: ignore
+    ModelResponse = Any  # type: ignore
+    ToolCallRequest = Any  # type: ignore
 
 # ログディレクトリの定数
 LOG_DIR = Path("log")

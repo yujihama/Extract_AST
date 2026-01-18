@@ -6,7 +6,7 @@
 - **CLIでも同じ処理を実行できる設計**にする（テスト自動化のため）。
   - FastAPI/HTMXはUI層として位置づけ、コア処理は「UI/CLI共通のライブラリAPI」として実装する。
 - **テンプレートは `templates/` 配下の静的ファイルを使わない**。
-  - 「比較種別判定（Pre-Analysis）」の段階で、**2文書の関係性分析**と同時に **結果記入用テンプレート（Markdown等）を生成**する。
+  - 「Pre-Analysis（タスク計画）」の段階で、**複数ドキュメント（1件以上）＋依頼文**から **結果記入用テンプレート（Markdown等）を生成**する。
   - 最終成果物は「生成テンプレートに段階的に記入した結果（filled template）」。
 - deep_agent は自律的に sub agent / tool を呼び出す。
   - **その過程（どの subagent が何をし、どの tool が何回/何を引数に実行されたか）を UI 上で追える**ことが望ましい。
@@ -22,7 +22,7 @@
 
 ### 1.1 Run（実行）管理
 
-- **Run 作成**: 2文書（docA/docB）と実行パラメータをまとめた実行単位 `run_id` を発行
+- **Run 作成**: **1件以上の入力ドキュメント（documents）** と実行パラメータをまとめた実行単位 `run_id` を発行
 - **状態**: `queued / running / succeeded / failed / cancelled` を保持
 - **進捗**:
   - ステップイベント（`step_started/step_finished/step_failed/step_skipped`）を EventSink に保存
@@ -30,7 +30,7 @@
 - **成果物**:
   - 入力ファイル、生成txt、blueprint、ast、embedding cache、生成テンプレ、filled template、ログ（JSONL/レポート）を Run に紐付けて一覧/閲覧/ダウンロードできる
 - **ステップ選択パラメータ（step filtering）**:
-  - `steps_include`: 実行するステップ名のリスト（例: `["build_blueprint_a", "compare_analysis"]`）
+  - `steps_include`: 実行するステップ名のリスト（例: `["build_blueprint_all", "pre_analysis"]`）
   - `step_from` / `step_to`: 範囲指定（開始〜終了ステップ名）
   - **UI対応済み**: Run作成画面で `step_from` / `step_to` を選択可能
   - 詳細は `design/run_executor_pipeline_api.md` を参照
@@ -39,7 +39,7 @@
 
 - **アップロード**: PDF/TXT をアップロードして Run に紐付けて保存
 - **テキスト入力**: 直接貼り付け（小さいデータ用、任意）
-  - 現状は UI 未対応。JSON API（`POST /api/runs/text`）でのみ作成可能
+  - 現状は UI 未対応。JSON API（`POST /api/runs/multi`）で `documents[].text` として作成可能
 - **前処理**:
   - PDF→txt 変換（高速モード / LLMモード）
   - txt はそのまま利用（エンコーディングは `errors=replace` 等で扱う）
@@ -51,7 +51,7 @@
 - **パラメータ**:
   - `start_page`, `end_page`, `batch_size`, `use_image`
 - **UI要件**:
-  - docA/docBそれぞれで `fast/llm` を選べる（混在可）
+  - `documents` 入力（複数ドキュメント）の場合は **全ドキュメント共通**で `pdf_mode=fast|llm` を選べる
 - **ジョブ化**: 変換は長時間になりうるためバックグラウンド実行が必須
 
 ### 1.4 Blueprint 生成/検証/編集
@@ -71,12 +71,13 @@
 
 ### 1.6 比較種別判定（Pre-Analysis）＋テンプレ生成（重要）
 
-- **入力**: docA AST、docB AST（必要なら embedding cache）
+- **入力**: 依頼文（`request_text`）＋ドキュメント一覧（`doc_id`/`doc_hash` 等）＋各ドキュメントの txt/blueprint/AST（必要に応じて）
 - **出力**:
-  - `relation`（Fix/Revision/Derivative/Heterogeneous/Subset）
-  - `reason`
-  - `plan`（具体タスク列）
-  - `template`（テンプレ本文 or ファイルパス）
+  - `documents`（doc_id/filename/role_guess 等）
+  - `execution_plan`（機械可読な実行計画。必要なら比較ペア準備 `pair_setup` を含む）
+  - `template`（テンプレファイル名。本文は `work/template_draft.md` として保存）
+  - `is_complete`（true の場合、pre_analysisで完結し `out/template_filled.md` を生成）
+  - `filled_report`（`is_complete=true` の場合の最終レポート本文）
 - **要件**:
   - 生成テンプレは Run 成果物として保存され、以降の比較分析がそのテンプレを段階的に編集して埋める
 
@@ -144,7 +145,7 @@ MVPで入れるなら最小で以下:
   - `run_id`（PK）
   - `status`, `created_at`, `started_at`, `finished_at`
   - `params_json`（変換/比較/LLM設定）
-  - `doc_a_path`, `doc_b_path`（artifact path）
+  - `documents[].doc_hash`（入力ドキュメントの参照用）
   - `error_message`（失敗時）
 - `run_events`
   - `id`（PK）
@@ -155,7 +156,7 @@ MVPで入れるなら最小で以下:
 - `artifacts`
   - `id`（PK）
   - `run_id`（FK）
-  - `kind`（input/txt/blueprint/ast/template/filled_template/log…）
+  - `kind`（固定enumではなく文字列。`artifact_updated` のpayloadをそのまま保存）
   - `path`
   - `created_at`
 
@@ -233,7 +234,7 @@ SQLiteは「どのcacheを使ったか/統計」だけ持つのが現実的。
   - `artifacts` は `artifact_created` / `artifact_updated` イベントで自動upsert
 - **ファイル配置（FS）**:
   - `data/runs/{run_id}/input|work|out|log|cache` を作成
-  - 入力アップロード/CLI指定パスを `input/doc_a.*`, `input/doc_b.*` として保持
+  - 入力アップロード/CLI指定パスを `input/doc_<doc_id>.*` として保持
   - Run完了時に `log/events.jsonl`（run_eventsのエクスポート）を生成
 - **バックグラウンド実行（非Celery）**:
   - `InProcessJobQueue`（別スレッド）で `RunExecutor.execute()` を実行
@@ -243,6 +244,8 @@ SQLiteは「どのcacheを使ったか/統計」だけ持つのが現実的。
 - **COMPARE_STATE（比較用グローバル状態）の混線対策**:
   - `src.tools.COMPARE_STATE` を **スレッドローカルProxy** に差し替え（`compare_app/compat/patch_src_tools.py`）
   - InProcessJobQueue（スレッド実行）で複数Runを動かしても混線しにくい形にした
+  - `compare_*` 系ツールは **doc_a_id/doc_b_id を必須**にし、ペアごとの状態復元を行う（pair_dir 永続化を利用）
+  - 本文検索は `search_by_keyphrase(file_path, phrase, intent)` で **単一AST** を対象に実行する（ペア非依存）
 - **Web UI（FastAPI + HTMX）**:
   - Run一覧/作成/詳細、SSEでイベント追跡、テンプレ（draft/filled）プレビュー
   - 成果物一覧（DB優先＋FS補完）/プレビュー（テキスト）/ダウンロード
@@ -259,20 +262,20 @@ SQLiteは「どのcacheを使ったか/統計」だけ持つのが現実的。
 - PDF/TXT → txt（fast/llm） → blueprint（LLM） → AST（非LLM） のステップを追加
   - `compare_app/core/real_steps.py`
   - ※ blueprint生成は LLMキーが必要（未設定時はエラーになる）
-- compare_setup → Pre-Analysis（テンプレ生成） → Compare-Analysis（テンプレ埋め） のステップを追加
+- Pre-Analysis（タスク計画＋テンプレ生成） → Compare-Analysis（テンプレ埋め） のステップを追加
   - `compare_app/core/compare_steps.py`
-  - ※ compare_setup は embedding/LLMキーが必要（未設定時は失敗）
-  - Pre-Analysis/Compare-Analysis はキー未設定時フォールバックでテンプレ生成は可能（ただし内容は簡易）
+  - ※ `pre_analysis` / `execute_analysis` は LLMキーが必要（未設定時は失敗）
+- 必要な比較準備は `pair_compare_setup` ツールで必要ペアだけ準備する
 
 ### 検証済み（realモードの本番接続）
 
 - **TXT入力**で、以下の end-to-end が **`succeeded` まで完走**することを確認済み:
-  - txt → blueprint（LLM）→ AST（非LLM）→ compare_setup（Embedding/Index）→ pre_analysis（関係性分析＋テンプレ生成）→ compare_analysis（テンプレ記入）→ `template_filled.md`
+  - txt → blueprint（LLM）→ AST（非LLM）→ pre_analysis（計画＋テンプレ生成）→ execute_analysis（計画に従い必要ペアを準備しつつテンプレ記入）→ `template_filled.md`
 
 ### 未実装（この要件の“本丸”）
 
 - **PDF→TXT（LLMモード）の実測検証**（コスト/時間/品質）
-  - 実装: UIで選択・パイプライン接続済み（`pdf_mode_{a|b}=llm`）
+  - 実装: UIで選択・パイプライン接続済み（`pdf_mode=llm`）
   - 未: 実PDFでの安定運用（ページ範囲・batch_size・use_image）を含む検証
 - **artifactsテーブルを“完全”に活用**（SQLite＋UIの成果物一覧を拡張）
   - 現状: stepごとの `artifact_updated/created` に加え、Run終了時にFSをスキャンして `artifacts` を補完する（kindは基本 `file`、既存kindは上書きしない）

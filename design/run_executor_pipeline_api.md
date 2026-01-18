@@ -41,7 +41,17 @@ UI/CLIは **Coreの `RunExecutor`** のみを呼ぶ（InfraはDIで注入）。
 
 - `RunStatus`: `queued | running | succeeded | failed | cancelled | waiting_user(予約)`
 - `RunRecord`: `run_id, status, created_at, started_at, finished_at, params_json, error_message, workdir`
-- `ArtifactKind`: `input_doc_a, input_doc_b, txt_a, txt_b, blueprint_a, blueprint_b, ast_a, ast_b, template_draft, template_filled, log_jsonl, ...`
+- `ArtifactKind`: **固定のenumではなく文字列**
+  - `artifacts.kind` は `artifact_updated|artifact_created` イベントの payload（`kind`）をそのまま保存する。
+  - 実装上の代表例（抜粋）:
+    - `txt_<doc_id>`（例: `txt_a`, `txt_d1`）
+    - `blueprint_<doc_id>`（例: `blueprint_b`, `blueprint_d2`）
+    - `ast_<doc_id>`（例: `ast_a`, `ast_d3`）
+    - `template_draft`, `template_filled`
+    - `pre_analysis`, `docs_index`, `request_text`
+    - `initial_matching`, `embedding_cache`, `pair_initial_matching`（ペア準備の成果物）
+    - `events_log_jsonl`
+    - `file`（FSスキャンによる補完登録）
 - `ArtifactRecord`: `artifact_id, run_id, kind, path, created_at, updated_at, meta_json`
 - `RunEvent`: `event_id, run_id, ts, event_type, payload_json`
 
@@ -112,10 +122,10 @@ UI/CLIは **Coreの `RunExecutor`** のみを呼ぶ（InfraはDIで注入）。
 
 `ctx.params` に以下のパラメータを指定すると、パイプラインのステップ実行範囲を絞り込むことができる:
 
-- `steps_include`: 実行するステップ名のリスト（例: `["build_blueprint_a", "compare_analysis"]`）
+- `steps_include`: 実行するステップ名のリスト（例: `["build_blueprint_all", "pre_analysis"]`）
   - 指定したステップ名のみ実行される。未指定なら全ステップ対象。
-- `step_from`: 開始ステップ名（例: `"build_ast_a"`）
-- `step_to`: 終了ステップ名（例: `"compare_analysis"`）
+- `step_from`: 開始ステップ名（例: `"build_ast_all"`）
+- `step_to`: 終了ステップ名（例: `"execute_analysis"`）
   - 両方指定すると `step_from` から `step_to` までの範囲だけ実行される。
   - 片方だけ指定すると、その位置から末尾/先頭までが範囲になる。
   - 存在しないステップ名を指定した場合、全ステップがスキップされる。
@@ -126,12 +136,13 @@ UI/CLIは **Coreの `RunExecutor`** のみを呼ぶ（InfraはDIで注入）。
 
 ### 軽量モードによる自動スキップ
 
-`pre_analysis`ステップが軽量ドキュメントと判断した場合、後続の`compare_analysis`を自動でスキップする:
+`pre_analysis` が軽量（または pre_analysis 単体で完結）と判断した場合、後続の `execute_analysis` は **実質no-op** になる:
 
-- **判定基準**: LLMが統計情報（セクション数、文字数、マッチング統計）を参考に判断
-- **フラグ**: `work/.skip_compare_analysis`ファイルが存在する場合、`compare_analysis`の`should_run()`が`False`を返す
-- **出力**: `is_complete=True`の場合、`pre_analysis`が`out/template_filled.md`を直接出力（`template_draft.md`は作成しない）
-- **イベント**: `pipeline_skip_flag_created`イベントがemitされる
+- **判定**: `work/pre_analysis.json` の `is_complete`（bool）
+- **出力**:
+  - `is_complete=true` の場合、`pre_analysis` が `out/template_filled.md` を直接出力する（必要に応じて `template_draft.md` も生成されうる）。
+  - `execute_analysis` は `pre_analysis.json` を参照し、`is_complete=true` のときは `out/template_filled.md` の存在を検証して終了する。
+- **イベント**: `template_filled`（および `pre_analysis`）が `artifact_updated` として記録される。
 
 ---
 
@@ -139,8 +150,11 @@ UI/CLIは **Coreの `RunExecutor`** のみを呼ぶ（InfraはDIで注入）。
 
 ### create_run
 
-- 入力（docA/docBのパス、params）から `run_id` を作り、FS/DBを初期化
-- `artifact(input_doc_a/input_doc_b)` を登録
+- 入力（**documents（1件以上）**）と `params` から `run_id` を作り、FS/DBを初期化する。
+  - `documents`: `[{doc_id?, path? | doc_hash?}, ...]`
+- 入力ファイルは `data/runs/{run_id}/input/` に `doc_<doc_id>.*` として配置される（doc_idは安全な文字へ正規化される）。
+- `artifacts` への登録は主に `artifact_updated` イベント経由。
+  - Run完了時に `RunExecutor` が FS をスキャンして `kind="file"` で補完登録するため、入力ファイルも一覧に出る。
 - 返り値: `RunRecord`
 
 ### start（UI向け）

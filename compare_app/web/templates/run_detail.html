@@ -60,6 +60,11 @@
             <span class="loading loading-spinner loading-md"></span>
           </div>
         </div>
+        <div id="hitl-panel" class="mt-4" hx-get="/runs/{{ run.run_id }}/partials/hitl" hx-trigger="load, refresh">
+          <div class="flex justify-center py-2">
+            <span class="loading loading-spinner loading-sm"></span>
+          </div>
+        </div>
       </div>
     </div>
     <div class="card bg-base-100 shadow-xl">
@@ -230,6 +235,7 @@
   const runId = "{{ run.run_id }}";
   const eventsEl = document.getElementById("events");
   const statusPanel = document.getElementById("status-panel");
+  const hitlPanel = document.getElementById("hitl-panel");
   const artifactsPanel = document.getElementById("artifacts-panel");
   const templateDraft = document.getElementById("template-draft");
   const templateFilled = document.getElementById("template-filled");
@@ -1049,7 +1055,7 @@
     'agent_start', 'agent_end',
     'tool_call_start', 'tool_call_result', 'tool_call_error',
     'artifact_updated', 'artifact_created', 'artifacts_reused', 'artifacts_reuse_failed',
-    'heartbeat', 'ast_summarized'
+    'heartbeat', 'ast_summarized', 'hitl_interrupt'
   ];
   eventTypes.forEach(eventType => {
     source.addEventListener(eventType, handleSSEEvent);
@@ -1062,7 +1068,7 @@
   };
 
   // パネル更新
-  const refreshTargets = [statusPanel, artifactsPanel, templateDraft, templateFilled];
+  const refreshTargets = [statusPanel, hitlPanel, artifactsPanel, templateDraft, templateFilled];
   ["artifact_updated", "artifact_created", "step_finished", "run_status_changed"].forEach((eventName) => {
     source.addEventListener(eventName, () => {
       refreshTargets.forEach((el) => {

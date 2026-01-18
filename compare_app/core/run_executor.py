@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -7,13 +9,21 @@ from pathlib import Path
 from typing import Any, Mapping, Optional, Protocol, Union
 
 from compare_app.contracts import CancellationRegistry, EventSink, JobQueue
-from compare_app.core.pipeline import CancelledError, Pipeline, RunContext
+from compare_app.core.pipeline import CancelledError, Pipeline, RunContext, WaitingUserError
 from compare_app.infra.document_store import Document
 from compare_app.models import RunRecord, RunStatus
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _normalize_doc_id(raw: Any, fallback: str) -> str:
+    text = str(raw).strip() if raw is not None else ""
+    if not text:
+        return fallback
+    safe = re.sub(r"[^A-Za-z0-9_-]+", "_", text)
+    return safe or fallback
 
 
 class RunRepository(Protocol):
@@ -127,65 +137,138 @@ class RunExecutor:
     def create_run(
         self,
         *,
-        doc_a_path: Optional[str] = None,
-        doc_b_path: Optional[str] = None,
-        doc_a_hash: Optional[str] = None,
-        doc_b_hash: Optional[str] = None,
+        documents: Optional[list[Mapping[str, Any]]] = None,
+        request_text: Optional[str] = None,
+        hil_enabled: Optional[bool] = None,
+        template_file_path: Optional[str] = None,
         params: Mapping[str, Any],
     ) -> RunRecord:
         """Runを作成する。
         
-        入力ドキュメントは以下のいずれかの方法で指定:
-        - doc_a_path/doc_b_path: ファイルパスから新規登録
-        - doc_a_hash/doc_b_hash: 既存ドキュメントのハッシュで参照
+        入力ドキュメントは documents により指定する。
         """
         run_id = uuid.uuid4().hex
         run_dir_paths = self.artifacts.ensure_run_dirs(run_id)
 
-        # ドキュメントを解決
-        if doc_a_hash:
-            doc_a = self.artifacts.add_input_by_hash(run_id, which="a", doc_hash=doc_a_hash)
-        elif doc_a_path:
-            doc_a = self.artifacts.add_input(run_id, which="a", src_path=doc_a_path)
-        else:
-            raise ValueError("Either doc_a_path or doc_a_hash must be provided")
-        
-        if doc_b_hash:
-            doc_b = self.artifacts.add_input_by_hash(run_id, which="b", doc_hash=doc_b_hash)
-        elif doc_b_path:
-            doc_b = self.artifacts.add_input(run_id, which="b", src_path=doc_b_path)
-        else:
-            raise ValueError("Either doc_b_path or doc_b_hash must be provided")
+        docs: list[Document] = []
+        doc_ids: list[str] = []
+
+        if not documents or len(documents) < 1:
+            raise ValueError("At least 1 document must be provided")
+        for idx, spec in enumerate(documents, 1):
+            if not isinstance(spec, Mapping):
+                raise ValueError("documents must be a list of mappings")
+            doc_id = _normalize_doc_id(spec.get("doc_id"), f"d{idx}")
+            # パス or ハッシュのいずれか
+            spec_hash = spec.get("doc_hash") or spec.get("hash")
+            spec_path = spec.get("path")
+            if spec_hash:
+                doc = self.artifacts.add_input_by_hash(run_id, which=doc_id, doc_hash=str(spec_hash))
+            elif spec_path:
+                doc = self.artifacts.add_input(run_id, which=doc_id, src_path=str(spec_path))
+            else:
+                raise ValueError("Each document must include 'path' or 'doc_hash'")
+            docs.append(doc)
+            doc_ids.append(doc_id)
 
         # 既存のペア成果物（matching, embedding_cache）があればwork_dir/cache_dirにコピー
-        self._copy_pair_artifacts_if_exist(
-            run_id, doc_a.doc_hash, doc_b.doc_hash, run_dir_paths
-        )
+        if len(docs) >= 2:
+            self._copy_pair_artifacts_if_exist(
+                run_id, docs[0].doc_hash, docs[1].doc_hash, run_dir_paths
+            )
+
+        # paramsにrequest/hilを注入（UI/CLI共通）
+        merged_params = dict(params)
+        if request_text is not None and "request_text" not in merged_params:
+            merged_params["request_text"] = request_text
+        if hil_enabled is not None and "hil_enabled" not in merged_params:
+            merged_params["hil_enabled"] = bool(hil_enabled)
 
         rec = RunRecord(
             run_id=run_id,
             status="queued",
             created_at=_utcnow(),
-            doc_a_hash=doc_a.doc_hash,
-            doc_b_hash=doc_b.doc_hash,
-            params=dict(params),
+            params=merged_params,
             workdir=run_dir_paths.get("run_dir"),
         )
         self.repo.create_run(rec)
         self.events.emit(run_id, "run_created", {"ts": _utcnow().isoformat()})
 
-        # ドキュメント情報をイベントとして記録
         self.events.emit(
             run_id,
-            "document_linked",
+            "documents_linked",
             {
                 "ts": _utcnow().isoformat(),
-                "doc_a_hash": doc_a.doc_hash,
-                "doc_a_filename": doc_a.original_filename,
-                "doc_b_hash": doc_b.doc_hash,
-                "doc_b_filename": doc_b.original_filename,
+                "documents": [
+                    {
+                        "doc_id": doc_ids[i] if i < len(doc_ids) else f"d{i+1}",
+                        "doc_hash": d.doc_hash,
+                        "filename": d.original_filename,
+                    }
+                    for i, d in enumerate(docs)
+                ],
             },
         )
+
+        # configにrequest/hilを保存（後続ステップで参照）
+        try:
+            cfg = self.artifacts.get_run_config(run_id)
+            if request_text is not None:
+                cfg["request_text"] = request_text
+            if hil_enabled is not None:
+                cfg["hil_enabled"] = bool(hil_enabled)
+
+            # テンプレートもドキュメントとして永続化（doc_repo）し、Runに紐付ける。
+            # - documents 配列には入れない（分析対象に混ざるため）
+            # - Run配下には input/template.<ext> としてコピーし、pre_analysis の seed として利用する
+            ingest_src = None
+            if template_file_path and str(template_file_path).strip():
+                ingest_src = str(template_file_path).strip()
+
+            if ingest_src:
+                src = Path(str(ingest_src))
+                if not src.exists() or not src.is_file():
+                    raise FileNotFoundError(str(src))
+
+                doc_repo = getattr(self.artifacts, "doc_repo", None)
+                if doc_repo is None:
+                    raise RuntimeError("artifact store has no doc_repo (cannot ingest template)")
+
+                template_doc = doc_repo.add_from_path(str(src), src.name)
+                cfg["template_doc_hash"] = template_doc.doc_hash
+                cfg["template_filename"] = template_doc.original_filename
+
+                # Run入力へコピー（pre_analysis の seed）
+                input_dir = Path(run_dir_paths["input_dir"])
+                ext = Path(template_doc.original_filename or "").suffix or src.suffix or ".md"
+                if ext.lower() not in {".md", ".txt"}:
+                    # テンプレ用途はテキスト前提。未知拡張でも保存はするが .md 扱いに寄せる。
+                    ext = ".md"
+                seed_path = input_dir / f"template_seed{ext}"
+                raw_path = doc_repo.get_raw_path(template_doc.doc_hash)
+                if raw_path and raw_path.exists():
+                    seed_path.write_bytes(raw_path.read_bytes())
+                else:
+                    # 念のためフォールバック（通常ここには来ない）
+                    seed_path.write_bytes(src.read_bytes())
+
+                # Run内で参照できるようにパスも保存（相対）
+                run_dir = Path(run_dir_paths["run_dir"])
+                cfg["template_seed_path"] = seed_path.relative_to(run_dir).as_posix()
+                self.events.emit(
+                    run_id,
+                    "artifact_updated",
+                    {"ts": _utcnow().isoformat(), "kind": "template_seed", "path": cfg["template_seed_path"]},
+                )
+
+            # documentsはadd_inputで更新済みだが、念のため doc_id順に並び替える
+            if isinstance(cfg.get("documents"), list) and doc_ids:
+                order = {doc_id: i for i, doc_id in enumerate(doc_ids)}
+                cfg["documents"].sort(key=lambda d: order.get(str(d.get("doc_id")), 9999))
+            self.artifacts.save_run_config(run_id, cfg)
+        except Exception:
+            # config更新失敗は致命にしない（run自体は作成済み）
+            pass
         return rec
 
     def start(self, run_id: str) -> str:
@@ -252,10 +335,8 @@ class RunExecutor:
         """別runから成果物をコピーする。
 
         コピー対象:
-        - work/ast_a.ast.json, ast_b.ast.json
-        - work/initial_matching.json
-        - work/blueprint_a.json, blueprint_b.json
-        - cache/embedding_cache.json
+        - work/ast_<doc_id>.ast.json
+        - work/blueprint_<doc_id>.json
 
         Returns:
             コピーしたファイルのリスト
@@ -266,27 +347,28 @@ class RunExecutor:
         copied = []
         source_run_dir = Path("data") / "runs" / source_run_id
         target_work = Path(paths["work_dir"])
-        target_cache = Path(paths["cache_dir"])
+        # work配下のファイル（doc_idごと）
+        config_path = source_run_dir / "config.json"
+        doc_ids: list[str] = []
+        if config_path.exists():
+            try:
+                cfg = json.loads(config_path.read_text(encoding="utf-8"))
+                docs = cfg.get("documents")
+                if isinstance(docs, list):
+                    for i, d in enumerate(docs, 1):
+                        if isinstance(d, dict):
+                            doc_id = _normalize_doc_id(d.get("doc_id"), f"d{i}")
+                            doc_ids.append(doc_id)
+            except Exception:
+                doc_ids = []
 
-        # work配下のファイル
-        work_files = [
-            "ast_a.ast.json",
-            "ast_b.ast.json",
-            "initial_matching.json",
-            "blueprint_a.json",
-            "blueprint_b.json",
-        ]
-        for fname in work_files:
-            src = source_run_dir / "work" / fname
-            if src.exists():
-                shutil.copy(src, target_work / fname)
-                copied.append(f"work/{fname}")
-
-        # cache配下のファイル
-        cache_src = source_run_dir / "cache" / "embedding_cache.json"
-        if cache_src.exists():
-            shutil.copy(cache_src, target_cache / "embedding_cache.json")
-            copied.append("cache/embedding_cache.json")
+        for doc_id in doc_ids:
+            for prefix, suffix in [("ast", "ast.json"), ("blueprint", "json")]:
+                fname = f"{prefix}_{doc_id}.{suffix}"
+                src = source_run_dir / "work" / fname
+                if src.exists():
+                    shutil.copy(src, target_work / fname)
+                    copied.append(f"work/{fname}")
 
         return copied
 
@@ -296,12 +378,6 @@ class RunExecutor:
         params = dict(run.params or {})
         if params_override:
             params.update(dict(params_override))
-        
-        # ドキュメントハッシュをparamsに追加（ステップで利用可能にする）
-        if run.doc_a_hash:
-            params["doc_a_hash"] = run.doc_a_hash
-        if run.doc_b_hash:
-            params["doc_b_hash"] = run.doc_b_hash
 
         paths = self.artifacts.ensure_run_dirs(run_id)
 
@@ -341,6 +417,13 @@ class RunExecutor:
             self.repo.update_status(run_id, "cancelled")
             self.events.emit(run_id, "run_status_changed", {"ts": _utcnow().isoformat(), "status": "cancelled"})
             # ログ出力（キャンセルでも残す）
+            self._export_events_jsonl(run_id, paths)
+            self._sync_artifacts_from_fs(run_id, paths)
+            return
+        except WaitingUserError:
+            self.repo.update_status(run_id, "waiting_user")
+            self.events.emit(run_id, "run_status_changed", {"ts": _utcnow().isoformat(), "status": "waiting_user"})
+            # ログ出力（waiting_userでも残す）
             self._export_events_jsonl(run_id, paths)
             self._sync_artifacts_from_fs(run_id, paths)
             return

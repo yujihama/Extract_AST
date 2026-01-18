@@ -127,7 +127,7 @@ class DummyAgentTraceStep:
                 "ts": _utcnow_iso(),
                 "agent_name": "dummy_agent",
                 "tool_name": "read_text_segment",
-                "input": {"path": "input/doc_a.txt", "start": 0, "length": 200},
+                "input": {"path": "input/doc_d1.txt", "start": 0, "length": 200},
                 "invocation_id": parent_inv_id,
                 "parent_invocation_id": None,
                 "parent_agent_name": None,

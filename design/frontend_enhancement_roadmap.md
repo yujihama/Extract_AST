@@ -393,7 +393,7 @@ Alpine.js でドラッグ&ドロップを実装
      :class="{ 'border-primary': dragover }"
      class="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer">
   <p>ファイルをドラッグ&ドロップ、またはクリックして選択</p>
-  <input type="file" name="doc_a" class="hidden" />
+  <input type="file" name="docs" class="hidden" accept=".pdf,.txt" multiple />
 </div>
 ```
 
@@ -404,13 +404,13 @@ Alpine.js でドラッグ&ドロップを実装
 ```html
 <label class="form-control w-full">
   <div class="label">
-    <span class="label-text">doc A (PDF/TXT)</span>
+    <span class="label-text">documents (PDF/TXT, 複数可)</span>
     <span class="label-text-alt text-error">必須</span>
   </div>
-  <input type="file" name="doc_a" required 
+  <input type="file" name="docs" multiple required
          class="file-input file-input-bordered w-full" />
   <div class="label">
-    <span class="label-text-alt text-error hidden" id="doc_a_error">
+    <span class="label-text-alt text-error hidden" id="docs_error">
       ファイルを選択してください
     </span>
   </div>

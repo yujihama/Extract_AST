@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sqlite3
+from pathlib import Path
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Mapping, Optional, Sequence
@@ -42,14 +44,66 @@ def init_db(db_path: str) -> None:
         if int(cur.fetchone()[0]) == 0:
             cur.execute("INSERT INTO schema_version(version) VALUES (1)")
 
+        cur.execute("SELECT version FROM schema_version LIMIT 1")
+        row = cur.fetchone()
+        try:
+            current_version = int(row[0]) if row else 1
+        except Exception:
+            current_version = 1
+
+        if current_version < 2:
+            db_file = Path(db_path)
+            if db_file.exists():
+                try:
+                    backup_path = db_file.parent / f"{db_file.name}.bak"
+                    shutil.copy2(db_file, backup_path)
+                except Exception:
+                    pass
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS runs_new (
+                  run_id TEXT PRIMARY KEY,
+                  status TEXT NOT NULL,
+                  created_at TEXT NOT NULL,
+                  started_at TEXT,
+                  finished_at TEXT,
+                  params_json TEXT,
+                  error_message TEXT,
+                  workdir TEXT
+                )
+                """
+            )
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='runs'")
+            if cur.fetchone():
+                cur.execute("PRAGMA table_info(runs)")
+                cols = [r[1] for r in cur.fetchall()]
+                wanted = [
+                    "run_id",
+                    "status",
+                    "created_at",
+                    "started_at",
+                    "finished_at",
+                    "params_json",
+                    "error_message",
+                    "workdir",
+                ]
+                src_cols = [c for c in wanted if c in cols]
+                if src_cols:
+                    cols_sql = ", ".join(src_cols)
+                    cur.execute(
+                        f"INSERT INTO runs_new({cols_sql}) SELECT {cols_sql} FROM runs"
+                    )
+                cur.execute("DROP TABLE runs")
+            cur.execute("ALTER TABLE runs_new RENAME TO runs")
+            cur.execute("UPDATE schema_version SET version=2")
+
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS runs (
               run_id TEXT PRIMARY KEY,
               status TEXT NOT NULL,
               created_at TEXT NOT NULL,
-              doc_a_hash TEXT,
-              doc_b_hash TEXT,
               started_at TEXT,
               finished_at TEXT,
               params_json TEXT,
@@ -58,15 +112,6 @@ def init_db(db_path: str) -> None:
             )
             """
         )
-        # マイグレーション: 既存テーブルにカラムを追加
-        try:
-            cur.execute("ALTER TABLE runs ADD COLUMN doc_a_hash TEXT")
-        except sqlite3.OperationalError:
-            pass  # カラムが既に存在
-        try:
-            cur.execute("ALTER TABLE runs ADD COLUMN doc_b_hash TEXT")
-        except sqlite3.OperationalError:
-            pass  # カラムが既に存在
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS run_events (
@@ -218,15 +263,13 @@ class SqliteRunRepository:
             cur = con.cursor()
             cur.execute(
                 """
-                INSERT INTO runs(run_id, status, created_at, doc_a_hash, doc_b_hash, started_at, finished_at, params_json, error_message, workdir)
-                VALUES (?,?,?,?,?,?,?,?,?,?)
+                INSERT INTO runs(run_id, status, created_at, started_at, finished_at, params_json, error_message, workdir)
+                VALUES (?,?,?,?,?,?,?,?)
                 """,
                 (
                     run.run_id,
                     run.status,
                     run.created_at.isoformat(),
-                    run.doc_a_hash,
-                    run.doc_b_hash,
                     run.started_at.isoformat() if run.started_at else None,
                     run.finished_at.isoformat() if run.finished_at else None,
                     json.dumps(run.params or {}, ensure_ascii=False) if run.params is not None else None,
@@ -244,7 +287,7 @@ class SqliteRunRepository:
         try:
             cur = con.cursor()
             cur.execute(
-                "SELECT run_id, status, created_at, doc_a_hash, doc_b_hash, started_at, finished_at, params_json, error_message, workdir FROM runs WHERE run_id=?",
+                "SELECT run_id, status, created_at, started_at, finished_at, params_json, error_message, workdir FROM runs WHERE run_id=?",
                 (str(run_id),),
             )
             row = cur.fetchone()
@@ -254,7 +297,7 @@ class SqliteRunRepository:
         if row is None:
             raise KeyError(f"run not found: {run_id}")
 
-        run_id_s, status, created_at, doc_a_hash, doc_b_hash, started_at, finished_at, params_json, error_message, workdir = row
+        run_id_s, status, created_at, started_at, finished_at, params_json, error_message, workdir = row
         params: dict[str, Any] | None
         if params_json:
             try:
@@ -277,8 +320,6 @@ class SqliteRunRepository:
             run_id=str(run_id_s),
             status=str(status),  # type: ignore[assignment]
             created_at=datetime.fromisoformat(created_at),
-            doc_a_hash=doc_a_hash,
-            doc_b_hash=doc_b_hash,
             started_at=_parse_ts(started_at),
             finished_at=_parse_ts(finished_at),
             params=params,
@@ -335,7 +376,7 @@ class SqliteRunRepository:
             cur = con.cursor()
             cur.execute(
                 """
-                SELECT run_id, status, created_at, doc_a_hash, doc_b_hash, started_at, finished_at, params_json, error_message, workdir
+                SELECT run_id, status, created_at, started_at, finished_at, params_json, error_message, workdir
                 FROM runs
                 ORDER BY created_at DESC
                 LIMIT ? OFFSET ?
@@ -348,7 +389,7 @@ class SqliteRunRepository:
 
         out: list[RunRecord] = []
         for row in rows:
-            rid, status, created_at, doc_a_hash, doc_b_hash, started_at, finished_at, params_json, error_message, workdir = row
+            rid, status, created_at, started_at, finished_at, params_json, error_message, workdir = row
             params: dict[str, Any] | None
             if params_json:
                 try:
@@ -372,8 +413,6 @@ class SqliteRunRepository:
                     run_id=str(rid),
                     status=str(status),  # type: ignore[assignment]
                     created_at=datetime.fromisoformat(created_at),
-                    doc_a_hash=doc_a_hash,
-                    doc_b_hash=doc_b_hash,
                     started_at=_parse_ts(started_at),
                     finished_at=_parse_ts(finished_at),
                     params=params,

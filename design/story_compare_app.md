@@ -18,7 +18,7 @@
 ## 1. 仕様の前提（早めに固めたこと）
 
 - **テンプレは静的ファイルを使わない**
-  - Pre-Analysisで「2文書の関係性分析」と同時に「記入用テンプレ（draft）」を生成し、最終成果物は `template_filled.md` とする。
+  - Pre-Analysisで「依頼文＋複数ドキュメント（1件以上）の役割推定／実行計画（execution_plan）」と同時に「記入用テンプレ（draft）」を生成し、最終成果物は `template_filled.md` とする。
 - **UI/CLI共通の入口API**
   - UIだけでなくCLIでも同じ処理を呼べるようにし、回帰テスト/自動化を可能にする。
 - **イベント可視化（deep_agentの過程）**
@@ -69,7 +69,7 @@ realモードのステップ（概略）:
 - （任意）SummarizeAst（LLM）
 - CompareSetup（Embedding/Index）
 - PreAnalysis（関係性分析＋テンプレ生成）
-- CompareAnalysis（テンプレ記入＝最終成果物）
+- ExecuteAnalysis（テンプレ記入＝最終成果物）
 
 狙い:
 - `main.py` の主要フローを “Step” に分解し、UI/CLIで同一実行できる形に置き換える。
@@ -78,7 +78,7 @@ realモードのステップ（概略）:
 
 ## 3. 現状の到達点（何ができるか）
 
-- TXT入力で end-to-end（txt→blueprint→AST→pre/compare analysis→filled）を完走（実測）
+- TXT入力で end-to-end（txt→blueprint→AST→pre/execute analysis→filled）を完走（実測）
 - PDF入力では fast変換を real パイプラインに組み込み（UIで選択可能、実測）
 - deep_agent の tool/subagent イベントをUIで追跡可能（SSE）
 - 成果物はUI/CLI/FSで閲覧可能
@@ -88,7 +88,7 @@ realモードのステップ（概略）:
 ## 4. 残タスク（拡張のための論点）
 
 - **PDF→TXTの LLMモードの実測検証**（コスト/時間/ページ設定）
-- **長時間ステップのキャンセル**（compare_analysis/summarize_ast など step内で協調的キャンセル）
+- **長時間ステップのキャンセル**（execute_analysis/summarize_ast など step内で協調的キャンセル）
 - **COMPARE_STATEの完全分離**（Celery/プロセス分離を見据え、run_id単位の状態管理へ）
 - **artifactsの網羅性**（生成物の登録漏れを潰す、meta拡張）
 - **UIの細部**（フィルタ/検索、イベント詳細表示、進捗メータ、large payload対策）

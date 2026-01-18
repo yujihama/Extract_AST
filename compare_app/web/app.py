@@ -18,6 +18,13 @@ from compare_app.bootstrap import build_default_executor
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+# Jinja2 の tojson フィルタが \uXXXX エスケープで出力しないようにする（UIで日本語が読めるように）
+try:
+    templates.env.policies.setdefault("json.dumps_kwargs", {})
+    templates.env.policies["json.dumps_kwargs"].update({"ensure_ascii": False})
+except Exception:
+    # テンプレ初期化に失敗してもアプリ起動は継続（best effort）
+    pass
 
 
 def create_app() -> FastAPI:
@@ -196,38 +203,56 @@ def create_app() -> FastAPI:
             f.write(text)
         return tmp_path
 
-    @app.post("/api/runs/text")
-    async def api_runs_create_from_text(payload: dict[str, Any] = Body(...)):
-        doc_a_text = payload.get("doc_a_text")
-        doc_b_text = payload.get("doc_b_text")
-        if not isinstance(doc_a_text, str) or not isinstance(doc_b_text, str):
-            raise HTTPException(status_code=400, detail="doc_a_text/doc_b_text must be provided as string")
+    @app.post("/api/runs/multi")
+    async def api_runs_create_multi(payload: dict[str, Any] = Body(...)):
+        documents = payload.get("documents")
+        if not isinstance(documents, list) or len(documents) < 1:
+            raise HTTPException(status_code=400, detail="documents must be a list (len>=1)")
 
         params = payload.get("params") or {}
         if not isinstance(params, dict):
             params = {"params": params}
 
-        # mode をpayload直下でも受ける
         if "mode" in payload and "mode" not in params:
             params["mode"] = payload.get("mode")
-        # デフォルトでAST枝サマリを有効化（明示指定があれば尊重）
         params.setdefault("summarize_ast", True)
 
+        request_text = payload.get("request_text") or ""
+        hil_enabled = bool(payload.get("hil_enabled", False))
         start_now = bool(payload.get("start_now", False))
 
-        tmp_a = _write_text_to_temp(doc_a_text, suffix=".txt")
-        tmp_b = _write_text_to_temp(doc_b_text, suffix=".txt")
+        tmp_paths: list[str] = []
+        docs_for_run: list[dict[str, Any]] = []
+        for i, spec in enumerate(documents, 1):
+            if not isinstance(spec, dict):
+                raise HTTPException(status_code=400, detail="documents must be list of objects")
+            doc_id = str(spec.get("doc_id") or f"d{i}")
+            if spec.get("doc_hash"):
+                docs_for_run.append({"doc_id": doc_id, "doc_hash": str(spec.get("doc_hash"))})
+                continue
+            if spec.get("path"):
+                docs_for_run.append({"doc_id": doc_id, "path": str(spec.get("path"))})
+                continue
+            if spec.get("text"):
+                tmp_path = _write_text_to_temp(str(spec.get("text")), suffix=".txt")
+                tmp_paths.append(tmp_path)
+                docs_for_run.append({"doc_id": doc_id, "path": tmp_path})
+                continue
+            raise HTTPException(status_code=400, detail="each document needs doc_hash, path, or text")
+
         try:
-            run = executor.create_run(doc_a_path=tmp_a, doc_b_path=tmp_b, params=params)
+            run = executor.create_run(
+                documents=docs_for_run,
+                request_text=str(request_text) if request_text is not None else "",
+                hil_enabled=hil_enabled,
+                params=params,
+            )
         finally:
-            try:
-                os.remove(tmp_a)
-            except Exception:
-                pass
-            try:
-                os.remove(tmp_b)
-            except Exception:
-                pass
+            for p in tmp_paths:
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
 
         if start_now:
             executor.start(run.run_id)
@@ -237,70 +262,48 @@ def create_app() -> FastAPI:
     @app.post("/runs")
     async def runs_create(
         request: Request,
-        doc_a: Optional[UploadFile] = File(None),
-        doc_b: Optional[UploadFile] = File(None),
-        doc_a_hash: str = Form(""),
-        doc_b_hash: str = Form(""),
+        docs: Optional[list[UploadFile]] = File(None),
+        doc_hashes: Optional[list[str]] = Form(None),
+        request_text: str = Form(""),
+        template_file: Optional[UploadFile] = File(None),
+        # hidden + checkbox (0/1)
+        hil_enabled: str = Form("0"),
         mode: str = Form("dummy"),
-        comparison_focus: str = Form(""),
-        comparison_focus_file: Optional[UploadFile] = File(None),
-        pdf_mode_a: str = Form("fast"),
-        pdf_mode_b: str = Form("fast"),
+        pdf_mode: str = Form("fast"),
         pdf_start_page: str = Form("1"),
         pdf_end_page: str = Form(""),
         pdf_batch_size: str = Form("5"),
         pdf_use_image: Optional[str] = Form(None),
         # run_new.html 側で hidden(0) + checkbox(1) を送るため、常に値が来る想定
         summarize_ast: str = Form("1"),
-        ast_summary_model: str = Form("gpt-4o-mini"),
+        ast_summary_model: str = Form("gpt-5-mini"),
         llm_complex_model: str = Form(""),
         step_from: str = Form(""),
         step_to: str = Form(""),
         start_now: Optional[str] = Form("on"),
     ):
-        # ドキュメント中心アーキテクチャ: ハッシュ指定または新規アップロード
-        use_doc_a_hash = str(doc_a_hash).strip() if doc_a_hash else None
-        use_doc_b_hash = str(doc_b_hash).strip() if doc_b_hash else None
-        
-        tmp_a = tmp_b = None
-        
-        # ドキュメントA
-        if use_doc_a_hash:
-            # 既存ドキュメントを使用
-            if not doc_repo.exists(use_doc_a_hash):
+        use_doc_hashes = [h.strip() for h in (doc_hashes or []) if str(h).strip()]
+        upload_docs = [d for d in (docs or []) if d and d.filename]
+
+        tmp_files: list[str] = []
+        documents: list[dict[str, Any]] = []
+
+        # 既存ドキュメント
+        for h in use_doc_hashes:
+            if not doc_repo.exists(h):
                 from starlette.responses import HTMLResponse
-                return HTMLResponse(f"ドキュメントA ({use_doc_a_hash}) が見つかりません", status_code=400)
-        elif doc_a and doc_a.filename:
-            # 新規アップロード
-            tmp_a = _save_upload_to_temp(doc_a)
-        else:
+                return HTMLResponse(f"ドキュメント ({h}) が見つかりません", status_code=400)
+            documents.append({"doc_hash": h})
+
+        # 新規アップロード
+        for up in upload_docs:
+            tmp_path = _save_upload_to_temp(up)
+            tmp_files.append(tmp_path)
+            documents.append({"path": tmp_path})
+
+        if len(documents) < 1:
             from starlette.responses import HTMLResponse
-            return HTMLResponse("ドキュメントAが必要です（既存選択またはアップロード）", status_code=400)
-        
-        # ドキュメントB
-        if use_doc_b_hash:
-            # 既存ドキュメントを使用
-            if not doc_repo.exists(use_doc_b_hash):
-                from starlette.responses import HTMLResponse
-                return HTMLResponse(f"ドキュメントB ({use_doc_b_hash}) が見つかりません", status_code=400)
-        elif doc_b and doc_b.filename:
-            # 新規アップロード
-            tmp_b = _save_upload_to_temp(doc_b)
-        else:
-            from starlette.responses import HTMLResponse
-            return HTMLResponse("ドキュメントBが必要です（既存選択またはアップロード）", status_code=400)
-        
-        # 重点比較観点ファイル（任意）
-        focus_bytes: Optional[bytes] = None
-        focus_original_name: Optional[str] = None
-        if comparison_focus_file and comparison_focus_file.filename:
-            fname = str(comparison_focus_file.filename)
-            if not fname.lower().endswith(".txt"):
-                from starlette.responses import HTMLResponse
-                return HTMLResponse("重点比較観点ファイルは .txt のみ対応しています", status_code=400)
-            focus_bytes = await comparison_focus_file.read()
-            if focus_bytes:
-                focus_original_name = fname
+            return HTMLResponse("ドキュメントは1件以上必要です（既存選択またはアップロード）", status_code=400)
         try:
             m = str(mode).lower().strip()
             if m not in {"dummy", "real"}:
@@ -308,12 +311,9 @@ def create_app() -> FastAPI:
             params: dict[str, Any] = {"mode": m}
 
             # PDF→TXT（PDF入力のときだけ使用される）
-            pma = str(pdf_mode_a).lower().strip()
-            pmb = str(pdf_mode_b).lower().strip()
-            if pma in {"fast", "llm"}:
-                params["pdf_mode_a"] = pma
-            if pmb in {"fast", "llm"}:
-                params["pdf_mode_b"] = pmb
+            pm = str(pdf_mode).lower().strip()
+            if pm in {"fast", "llm"}:
+                params["pdf_mode"] = pm
             try:
                 params["pdf_start_page"] = max(1, int(pdf_start_page or "1"))
             except Exception:
@@ -338,30 +338,6 @@ def create_app() -> FastAPI:
             if str(llm_complex_model).strip():
                 params["llm_complex_model"] = str(llm_complex_model).strip()
 
-            # pre_analysis の重点比較観点（任意）
-            # UIでは textarea（複数行）として受け取り、1行=1観点として list[str] にする。
-            # 1件だけなら str としても良いが、後段での取り回しを安定させるため基本はlistに寄せる。
-            raw_focus = str(comparison_focus or "").strip()
-            if raw_focus:
-                # 改行 or カンマ区切りを許容
-                normalized = raw_focus.replace("\r\n", "\n").replace("\r", "\n")
-                if "\n" in normalized:
-                    items = [x.strip() for x in normalized.split("\n") if x.strip()]
-                elif "," in normalized:
-                    items = [x.strip() for x in normalized.split(",") if x.strip()]
-                else:
-                    items = [normalized.strip()]
-                if len(items) == 1:
-                    params["comparison_focus"] = items[0]
-                else:
-                    params["comparison_focus"] = items
-            
-            # 重点比較観点ファイル（任意）
-            if focus_bytes:
-                params["comparison_focus_file"] = "input/comparison_focus.txt"
-                if focus_original_name:
-                    params["comparison_focus_file_name"] = focus_original_name
-
             # ステップ選択（step filtering）
             if str(step_from).strip():
                 params["step_from"] = str(step_from).strip()
@@ -369,44 +345,34 @@ def create_app() -> FastAPI:
                 params["step_to"] = str(step_to).strip()
 
             # Run作成（ドキュメントハッシュまたはパスを指定）
+            hil_flag = str(hil_enabled or "").strip().lower() in {"1", "true", "on", "yes", "y"}
+            template_file_path: Optional[str] = None
+
+            # テンプレートのアップロード（任意 / .md, .txt）
+            if template_file and template_file.filename:
+                fname = str(template_file.filename)
+                ext = Path(fname).suffix.lower()
+                if ext not in {".md", ".txt"}:
+                    from starlette.responses import HTMLResponse
+                    return HTMLResponse("テンプレートは .md / .txt のみ対応しています", status_code=400)
+                tmp_template = _save_upload_to_temp(template_file)
+                tmp_files.append(tmp_template)
+                template_file_path = tmp_template
+
             run = executor.create_run(
-                doc_a_path=tmp_a,
-                doc_b_path=tmp_b,
-                doc_a_hash=use_doc_a_hash,
-                doc_b_hash=use_doc_b_hash,
+                documents=documents,
+                request_text=request_text,
+                hil_enabled=hil_flag,
+                template_file_path=template_file_path,
                 params=params,
             )
         finally:
             # アップロードした一時ファイルを削除
-            if tmp_a:
+            for tmp_path in tmp_files:
                 try:
-                    os.remove(tmp_a)
+                    os.remove(tmp_path)
                 except Exception:
                     pass
-            if tmp_b:
-                try:
-                    os.remove(tmp_b)
-                except Exception:
-                    pass
-        
-        # 重点比較観点ファイルをrun_dirへ保存（best effort）
-        if focus_bytes:
-            try:
-                paths = executor.artifacts.ensure_run_dirs(run.run_id)
-                focus_path = Path(paths["input_dir"]) / "comparison_focus.txt"
-                focus_path.write_bytes(focus_bytes)
-                events.emit(
-                    run.run_id,
-                    "artifact_updated",
-                    {
-                        "ts": datetime.now(timezone.utc).isoformat(),
-                        "kind": "file",
-                        "path": focus_path.relative_to(Path(paths["run_dir"])).as_posix(),
-                    },
-                )
-            except Exception:
-                # 保存失敗は致命にしない（Run自体は作成済み）
-                pass
 
         if start_now:
             executor.start(run.run_id)
@@ -483,6 +449,110 @@ def create_app() -> FastAPI:
     def _get_run_base_dir(run_id: str) -> Path:
         run = repo.get_run(run_id)
         return Path(run.workdir) if run.workdir else (Path("data") / "runs" / run_id)
+
+    @app.get("/runs/{run_id}/partials/hitl", response_class=HTMLResponse)
+    def runs_hitl_partial(request: Request, run_id: str):
+        """HITL（deepagents interrupt）で止まっている場合の質問表示。"""
+        run = repo.get_run(run_id)
+        base_dir = _get_run_base_dir(run_id).resolve()
+        hitl = None
+        try:
+            p = (base_dir / "work" / "hitl_interrupt.json")
+            if p.exists():
+                hitl = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            hitl = None
+        return templates.TemplateResponse(
+            "partials/hitl.html",
+            {"request": request, "run": run, "hitl": hitl},
+        )
+
+    @app.post("/runs/{run_id}/hitl/respond", response_class=HTMLResponse)
+    async def runs_hitl_respond(request: Request, run_id: str, answer: str = Form("")):
+        """HITL質問に回答し、同じrunを再開する（work/hitl_resume.json を書いて start）。"""
+        run = repo.get_run(run_id)
+        base_dir = _get_run_base_dir(run_id).resolve()
+        work_dir = (base_dir / "work")
+        interrupt_path = (work_dir / "hitl_interrupt.json")
+        resume_path = (work_dir / "hitl_resume.json")
+
+        try:
+            hitl = json.loads(interrupt_path.read_text(encoding="utf-8")) if interrupt_path.exists() else None
+        except Exception:
+            hitl = None
+
+        ans = str(answer or "").strip()
+        if not ans:
+            return templates.TemplateResponse(
+                "partials/hitl.html",
+                {
+                    "request": request,
+                    "run": run,
+                    "hitl": hitl if isinstance(hitl, dict) else None,
+                    "flash_message": "回答が空です。回答を入力してください。",
+                },
+            )
+
+        actions = hitl.get("action_requests") if isinstance(hitl, dict) else None
+        if not isinstance(actions, list) or not actions:
+            return templates.TemplateResponse(
+                "partials/hitl.html",
+                {"request": request, "run": run, "hitl": None, "flash_message": "HITLの保留内容が見つかりません。"},
+            )
+        if len(actions) != 1:
+            return templates.TemplateResponse(
+                "partials/hitl.html",
+                {
+                    "request": request,
+                    "run": run,
+                    "hitl": hitl if isinstance(hitl, dict) else None,
+                    "flash_message": f"複数の承認待ち({len(actions)})は未対応です（現状は1件のみ対応）。",
+                },
+            )
+
+        a0 = actions[0] if isinstance(actions[0], dict) else {}
+        name = str(a0.get("name") or "")
+        args = a0.get("args") if isinstance(a0.get("args"), dict) else {}
+
+        if name != "human_input":
+            return templates.TemplateResponse(
+                "partials/hitl.html",
+                {
+                    "request": request,
+                    "run": run,
+                    "hitl": hitl if isinstance(hitl, dict) else None,
+                    "flash_message": f"未対応のHITLツールです: {name}",
+                },
+            )
+
+        edited_args = dict(args or {})
+        edited_args["answer"] = ans
+        # deepagents docs: decisions must match action_requests order
+        decisions = [
+            {
+                "type": "edit",
+                "edited_action": {
+                    "name": name,
+                    "args": edited_args,
+                },
+            }
+        ]
+
+        work_dir.mkdir(parents=True, exist_ok=True)
+        resume_path.write_text(json.dumps({"decisions": decisions}, ensure_ascii=False, indent=2), encoding="utf-8")
+        # いったんinterruptは消す（再停止したらstep側で再生成される）
+        try:
+            if interrupt_path.exists():
+                interrupt_path.unlink()
+        except Exception:
+            pass
+
+        executor.start(run_id)
+        run2 = repo.get_run(run_id)
+        return templates.TemplateResponse(
+            "partials/hitl.html",
+            {"request": request, "run": run2, "hitl": None, "flash_message": "回答を受け付けました。再開しました。"},
+        )
 
     @app.get("/runs/{run_id}/partials/artifacts", response_class=HTMLResponse)
     def runs_artifacts_partial(request: Request, run_id: str):

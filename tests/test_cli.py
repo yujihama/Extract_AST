@@ -22,8 +22,8 @@ class TestCliCreate:
             [
                 sys.executable, "-m", "compare_app.cli",
                 "create",
-                "--doc-a", str(sample_doc_a),
-                "--doc-b", str(sample_doc_b),
+                "--doc", str(sample_doc_a),
+                "--doc", str(sample_doc_b),
                 "--mode", "dummy",
             ],
             capture_output=True,
@@ -45,8 +45,8 @@ class TestCliCreate:
             [
                 sys.executable, "-m", "compare_app.cli",
                 "create",
-                "--doc-a", str(test_small_rules_v1),
-                "--doc-b", str(test_small_rules_v2),
+                "--doc", str(test_small_rules_v1),
+                "--doc", str(test_small_rules_v2),
                 "--mode", "dummy",
             ],
             capture_output=True,
@@ -57,6 +57,63 @@ class TestCliCreate:
         assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
         output = json.loads(result.stdout)
         assert "run_id" in output
+
+    def test_create_run_multi_docs(self, sample_doc_a: Path, sample_doc_b: Path, tmp_path: Path):
+        """複数ドキュメント指定でRunを作成できることを確認する。"""
+        cwd = str(Path(__file__).resolve().parent.parent)
+        extra_doc = tmp_path / "extra_doc.txt"
+        extra_doc.write_text("extra document", encoding="utf-8")
+
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "compare_app.cli",
+                "create",
+                "--doc", str(sample_doc_a),
+                "--doc", str(sample_doc_b),
+                "--doc", str(extra_doc),
+                "--request", "複数文書の関係性を分析してください。",
+                "--mode", "dummy",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+        )
+
+        assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        output = json.loads(result.stdout)
+        run_id = output["run_id"]
+
+        config_path = Path(cwd) / "data" / "runs" / run_id / "config.json"
+        assert config_path.exists()
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        assert config.get("request_text") == "複数文書の関係性を分析してください。"
+        assert isinstance(config.get("documents"), list)
+        assert len(config.get("documents")) == 3
+
+    def test_create_run_single_doc(self, sample_doc_a: Path):
+        """1ドキュメント指定でRunを作成できることを確認する。"""
+        cwd = str(Path(__file__).resolve().parent.parent)
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "compare_app.cli",
+                "create",
+                "--doc", str(sample_doc_a),
+                "--request", "この文書を要約してください。",
+                "--mode", "dummy",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+        )
+
+        assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        output = json.loads(result.stdout)
+        run_id = output["run_id"]
+        config_path = Path(cwd) / "data" / "runs" / run_id / "config.json"
+        assert config_path.exists()
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        assert isinstance(config.get("documents"), list)
+        assert len(config.get("documents")) == 1
 
 
 class TestCliExecute:
@@ -71,8 +128,8 @@ class TestCliExecute:
             [
                 sys.executable, "-m", "compare_app.cli",
                 "create",
-                "--doc-a", str(sample_doc_a),
-                "--doc-b", str(sample_doc_b),
+                "--doc", str(sample_doc_a),
+                "--doc", str(sample_doc_b),
                 "--mode", "dummy",
             ],
             capture_output=True,
@@ -107,8 +164,8 @@ class TestCliExecute:
             [
                 sys.executable, "-m", "compare_app.cli",
                 "create",
-                "--doc-a", str(sample_doc_a),
-                "--doc-b", str(sample_doc_b),
+                "--doc", str(sample_doc_a),
+                "--doc", str(sample_doc_b),
                 "--mode", "dummy",
             ],
             capture_output=True,
@@ -154,8 +211,8 @@ class TestCliList:
             [
                 sys.executable, "-m", "compare_app.cli",
                 "create",
-                "--doc-a", str(sample_doc_a),
-                "--doc-b", str(sample_doc_b),
+                "--doc", str(sample_doc_a),
+                "--doc", str(sample_doc_b),
                 "--mode", "dummy",
             ],
             capture_output=True,
@@ -188,7 +245,7 @@ class TestCliArtifacts:
         create_result = subprocess.run(
             [
                 sys.executable, "-m", "compare_app.cli",
-                "create", "--doc-a", str(sample_doc_a), "--doc-b", str(sample_doc_b), "--mode", "dummy",
+                "create", "--doc", str(sample_doc_a), "--doc", str(sample_doc_b), "--mode", "dummy",
             ],
             capture_output=True, text=True, cwd=cwd,
         )
@@ -222,7 +279,7 @@ class TestCliExport:
         create_result = subprocess.run(
             [
                 sys.executable, "-m", "compare_app.cli",
-                "create", "--doc-a", str(sample_doc_a), "--doc-b", str(sample_doc_b), "--mode", "dummy",
+                "create", "--doc", str(sample_doc_a), "--doc", str(sample_doc_b), "--mode", "dummy",
             ],
             capture_output=True, text=True, cwd=cwd,
         )
@@ -265,8 +322,8 @@ class TestCliEndToEnd:
             [
                 sys.executable, "-m", "compare_app.cli",
                 "create",
-                "--doc-a", str(test_small_rules_v1),
-                "--doc-b", str(test_small_rules_v2),
+                "--doc", str(test_small_rules_v1),
+                "--doc", str(test_small_rules_v2),
                 "--mode", "dummy",
             ],
             capture_output=True, text=True, cwd=cwd,
@@ -340,7 +397,7 @@ class TestCliErrors:
         create_result = subprocess.run(
             [
                 sys.executable, "-m", "compare_app.cli",
-                "create", "--doc-a", str(sample_doc_a), "--doc-b", str(sample_doc_b), "--mode", "dummy",
+                "create", "--doc", str(sample_doc_a), "--doc", str(sample_doc_b), "--mode", "dummy",
             ],
             capture_output=True, text=True, cwd=cwd,
         )

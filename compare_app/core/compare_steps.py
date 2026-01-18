@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
+import re
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -20,125 +20,511 @@ def _have_llm_key() -> bool:
     return bool(os.getenv("OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_API_KEY"))
 
 
-def _restore_compare_state_if_needed(ctx: RunContext) -> bool:
-    """
-    COMPARE_STATEが空、または別のrunのデータで初期化されている場合、
-    現在のrunのデータでcompare_setupを再実行して状態を復元する。
-    
-    compare_setupステップで作成された成果物（ASTファイル、embedding cache）が
-    存在することを前提とする。
-    
-    Returns:
-        True: 復元が必要で成功した / 既に初期化済み
-        False: 復元に失敗（必要なファイルが存在しないなど）
-    """
-    from src.tools import COMPARE_STATE
-    
-    # 既に現在のrunのデータで初期化されている場合は何もしない
-    # （run_idを記録して、異なるrunの場合は再初期化する）
-    current_run_id = COMPARE_STATE.get("_run_id")
-    if current_run_id == ctx.run_id and COMPARE_STATE.get("ast_a") is not None:
-        return True
-    
-    # 別のrunのデータが入っている場合はクリアして再初期化
-    if current_run_id is not None and current_run_id != ctx.run_id:
-        ctx.events.emit(
-            ctx.run_id,
-            "compare_state_restore",
-            {"ts": _utcnow_iso(), "status": "clearing", "message": f"Clearing COMPARE_STATE from different run: {current_run_id}"},
-        )
-        COMPARE_STATE.clear()
-    
-    work_dir = Path(ctx.paths["work_dir"])
-    cache_dir = Path(ctx.paths["cache_dir"])
-    
-    ast_a = work_dir / "ast_a.ast.json"
-    ast_b = work_dir / "ast_b.ast.json"
-    cache_path = cache_dir / "embedding_cache.json"
-    initial_matching_path = work_dir / "initial_matching.json"
-    
-    # 必要なファイルが存在しない場合は復元不可
-    if not ast_a.exists() or not ast_b.exists():
-        ctx.events.emit(
-            ctx.run_id,
-            "compare_state_restore",
-            {"ts": _utcnow_iso(), "success": False, "reason": "AST files not found"},
-        )
-        return False
-    
-    if not _have_llm_key():
-        ctx.events.emit(
-            ctx.run_id,
-            "compare_state_restore",
-            {"ts": _utcnow_iso(), "success": False, "reason": "LLM API key not set"},
-        )
-        return False
-    
-    ctx.events.emit(
-        ctx.run_id,
-        "compare_state_restore",
-        {"ts": _utcnow_iso(), "status": "restoring", "message": "Restoring COMPARE_STATE from previous run..."},
-    )
-    
+def _load_run_config(ctx: RunContext) -> dict[str, Any]:
+    run_dir = Path(ctx.paths["run_dir"])
+    config_path = run_dir / "config.json"
+    if not config_path.exists():
+        return {}
     try:
-        from src.tools import compare_all_chunk_similarity_matching, compare_setup
-        import json
-        
-        # compare_setupを再実行（embedding cacheがあれば高速）
-        doc_a_txt = work_dir / "doc_a.txt"
-        doc_b_txt = work_dir / "doc_b.txt"
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_run_config(ctx: RunContext, config: dict[str, Any]) -> None:
+    run_dir = Path(ctx.paths["run_dir"])
+    config_path = run_dir / "config.json"
+    config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _normalize_doc_id(raw: Any, fallback: str) -> str:
+    text = str(raw).strip() if raw is not None else ""
+    if not text:
+        return fallback
+    safe = re.sub(r"[^A-Za-z0-9_-]+", "_", text)
+    return safe or fallback
+
+
+def _get_documents(ctx: RunContext) -> list[dict[str, Any]]:
+    config = _load_run_config(ctx)
+    docs = config.get("documents")
+    if isinstance(docs, list) and docs:
+        out: list[dict[str, Any]] = []
+        for i, d in enumerate(docs, 1):
+            if not isinstance(d, dict):
+                continue
+            doc_id = _normalize_doc_id(d.get("doc_id"), f"d{i}")
+            out.append({**d, "doc_id": doc_id})
+        return out
+    return []
+
+
+def _get_doc_hash_from_docs(docs: list[dict[str, Any]], doc_id: str) -> Optional[str]:
+    for d in docs:
+        if str(d.get("doc_id")) == doc_id:
+            h = d.get("doc_hash")
+            return str(h) if h else None
+    return None
+
+
+def _resolve_doc_path(
+    doc_id: str,
+    key: str,
+    docs_by_id: dict[str, dict[str, Any]],
+    run_dir: Path,
+    work_dir: Path,
+) -> Optional[Path]:
+    doc = docs_by_id.get(doc_id)
+    if not doc:
+        return None
+    paths = doc.get("paths") or {}
+    raw = paths.get(key)
+    if raw:
+        p = Path(str(raw))
+        return p if p.is_absolute() else (run_dir / p)
+    fallback_map = {
+        "txt": f"doc_{doc_id}.txt",
+        "ast": f"ast_{doc_id}.ast.json",
+        "blueprint": f"blueprint_{doc_id}.json",
+    }
+    fallback = fallback_map.get(key)
+    return work_dir / fallback if fallback else None
+
+
+def _build_pair_compare_setup_tool(
+    ctx: RunContext,
+    docs_by_id: dict[str, dict[str, Any]],
+    run_dir: Path,
+    work_dir: Path,
+):
+    from langchain_core.tools import tool
+
+    @tool
+    def pair_compare_setup(doc_a_id: str, doc_b_id: str, purpose: str = "") -> str:
+        """指定ペアの比較準備（compare_setup＋初期マッチング保存）"""
+        a_id = str(doc_a_id or "").strip()
+        b_id = str(doc_b_id or "").strip()
+        if not a_id or not b_id or a_id == b_id:
+            raise ValueError("doc_a_id and doc_b_id must be different and non-empty")
+        if a_id not in docs_by_id or b_id not in docs_by_id:
+            raise ValueError("unknown doc_id for pair_compare_setup")
+
+        if not _have_llm_key():
+            raise RuntimeError("Embedding/LLM API key not set (OPENAI_API_KEY or AZURE_OPENAI_API_KEY)")
+
+        safe_a = _normalize_doc_id(a_id, a_id)
+        safe_b = _normalize_doc_id(b_id, b_id)
+
+        pairs_dir = work_dir / "pairs" / f"{safe_a}_{safe_b}"
+        pairs_dir.mkdir(parents=True, exist_ok=True)
+
+        # NOTE:
+        # Windows + tool並列実行で work_dir/doc_<doc_id>.txt 等の上書きが WinError 32 を起こしやすい。
+        # ここでは shared な一時ファイルは作らず、元の doc_{id} / ast_{id} を直接 compare_setup に渡す。
+        # キャッシュもペアごとに分離してファイルロック競合を避ける。
+
+        doc_a_txt = _resolve_doc_path(a_id, "txt", docs_by_id, run_dir, work_dir)
+        doc_b_txt = _resolve_doc_path(b_id, "txt", docs_by_id, run_dir, work_dir)
+        ast_a_path = _resolve_doc_path(a_id, "ast", docs_by_id, run_dir, work_dir)
+        ast_b_path = _resolve_doc_path(b_id, "ast", docs_by_id, run_dir, work_dir)
+        if not doc_a_txt or not doc_a_txt.exists():
+            raise FileNotFoundError(str(doc_a_txt) if doc_a_txt else f"doc txt not found: {a_id}")
+        if not doc_b_txt or not doc_b_txt.exists():
+            raise FileNotFoundError(str(doc_b_txt) if doc_b_txt else f"doc txt not found: {b_id}")
+        if not ast_a_path or not ast_a_path.exists():
+            raise FileNotFoundError(str(ast_a_path) if ast_a_path else f"ast not found: {a_id}")
+        if not ast_b_path or not ast_b_path.exists():
+            raise FileNotFoundError(str(ast_b_path) if ast_b_path else f"ast not found: {b_id}")
+
+        cache_path = pairs_dir / "embedding_cache.json"
+
+        from src.tools import COMPARE_STATE, compare_all_chunk_similarity_matching, compare_setup
+
+        try:
+            COMPARE_STATE.clear()
+        except Exception:
+            pass
+
         setup_json = compare_setup.invoke(
             {
-                "docA": str(ast_a),
-                "docB": str(ast_b),
-                "docA_txt": str(doc_a_txt) if doc_a_txt.exists() else None,
-                "docB_txt": str(doc_b_txt) if doc_b_txt.exists() else None,
+                "docA": str(ast_a_path),
+                "docB": str(ast_b_path),
+                "docA_txt": str(doc_a_txt),
+                "docB_txt": str(doc_b_txt),
                 "embedding_model": ctx.params.get("embedding_model"),
                 "cache_path": str(cache_path),
                 "batch_size": int(ctx.params.get("embedding_batch_size", 64)),
             }
         )
-        
-        # initial_matchingが既にファイルとして存在する場合はそれを読み込む
-        if initial_matching_path.exists():
-            try:
-                initial_matching = json.loads(initial_matching_path.read_text(encoding="utf-8"))
-                COMPARE_STATE["initial_matching"] = initial_matching
-            except Exception:
-                pass
-        
-        # initial_matchingがまだ無い場合は再生成
-        if not COMPARE_STATE.get("initial_matching"):
-            initial_matching_json = compare_all_chunk_similarity_matching.invoke(
+
+        initial_matching_json = compare_all_chunk_similarity_matching.invoke(
+            {
+                "top_k": int(ctx.params.get("match_top_k", 3)),
+                "alpha": float(ctx.params.get("match_alpha", 0.3)),
+                "beta": float(ctx.params.get("match_beta", 0.4)),
+                "min_score": float(ctx.params.get("match_min_score", 0.25)),
+            }
+        )
+
+        initial_matching_path = pairs_dir / "initial_matching.json"
+        initial_matching_path.write_text(str(initial_matching_json), encoding="utf-8")
+
+        try:
+            ctx.events.emit(
+                ctx.run_id,
+                "pair_setup_done",
                 {
-                    "top_k": int(ctx.params.get("match_top_k", 3)),
-                    "alpha": float(ctx.params.get("match_alpha", 0.3)),
-                    "beta": float(ctx.params.get("match_beta", 0.4)),
-                    "min_score": float(ctx.params.get("match_min_score", 0.25)),
-                }
+                    "ts": _utcnow_iso(),
+                    "a": a_id,
+                    "b": b_id,
+                    "purpose": str(purpose or ""),
+                    "pair_dir": pairs_dir.relative_to(run_dir).as_posix(),
+                },
             )
+        except Exception:
+            pass
+
+        try:
+            ctx.events.emit(
+                ctx.run_id,
+                "artifact_updated",
+                {"ts": _utcnow_iso(), "kind": "pair_initial_matching", "path": initial_matching_path.relative_to(run_dir).as_posix()},
+            )
+        except Exception:
+            pass
+
+        if cache_path.exists():
             try:
-                COMPARE_STATE["initial_matching"] = json.loads(initial_matching_json)
+                ctx.events.emit(
+                    ctx.run_id,
+                    "artifact_updated",
+                    {"ts": _utcnow_iso(), "kind": "embedding_cache", "path": cache_path.relative_to(run_dir).as_posix()},
+                )
             except Exception:
                 pass
-        
-        # run_idを記録（別のrunを実行した後の復元時に判別するため）
+
+        # ドキュメントペア成果物として永続化（次runで自動再利用できるようにする）
+        doc_a_hash = docs_by_id.get(a_id, {}).get("doc_hash")
+        doc_b_hash = docs_by_id.get(b_id, {}).get("doc_hash")
+        if doc_a_hash and doc_b_hash:
+            try:
+                from compare_app.infra.document_store import DocumentPairRepository
+
+                pair_repo = DocumentPairRepository()
+
+                matching_data = None
+                try:
+                    matching_data = json.loads(initial_matching_json)
+                except Exception:
+                    if isinstance(COMPARE_STATE.get("initial_matching"), dict):
+                        matching_data = COMPARE_STATE.get("initial_matching")
+                if isinstance(matching_data, dict):
+                    pair_repo.save_matching(str(doc_a_hash), str(doc_b_hash), matching_data)
+
+                if cache_path.exists():
+                    try:
+                        cache_data = json.loads(cache_path.read_text(encoding="utf-8"))
+                        if isinstance(cache_data, dict):
+                            pair_repo.save_embedding_cache(str(doc_a_hash), str(doc_b_hash), cache_data)
+                    except Exception:
+                        pass
+            except Exception:
+                # pair_compare_setup 自体は成功しているので、永続化失敗は致命にしない
+                pass
+
+        return json.dumps(
+            {
+                "ok": True,
+                "a": a_id,
+                "b": b_id,
+                "purpose": str(purpose or ""),
+                "pair_dir": pairs_dir.relative_to(run_dir).as_posix(),
+                "initial_matching_path": initial_matching_path.relative_to(run_dir).as_posix(),
+                "cache_path": cache_path.relative_to(run_dir).as_posix() if cache_path.exists() else "",
+                "setup_json_preview": str(setup_json)[:300],
+            },
+            ensure_ascii=False,
+        )
+
+    return pair_compare_setup
+
+
+def _safe_pair_key(a_id: str, b_id: str) -> str:
+    safe_a = _normalize_doc_id(a_id, a_id)
+    safe_b = _normalize_doc_id(b_id, b_id)
+    return f"{safe_a}_{safe_b}"
+
+
+def _ensure_compare_state_for_pair(
+    ctx: RunContext,
+    *,
+    docs_by_id: dict[str, dict[str, Any]],
+    run_dir: Path,
+    work_dir: Path,
+    doc_a_id: str,
+    doc_b_id: str,
+) -> tuple[str, Path]:
+    """
+    指定ペアの比較状態が現在スレッドで初期化されていることを保証する。
+
+    方針（案A）:
+    - ペアは work/pairs/<a>_<b> に一意に解決する（dirを引数で渡さない）
+    - compare_* はグローバル状態（COMPARE_STATE）に依存しているため、
+      必要ならこのスレッドで compare_setup を再実行して復元する。
+    - initial_matching は pair_dir/initial_matching.json を優先して読み込む。
+    """
+    a_id = str(doc_a_id or "").strip()
+    b_id = str(doc_b_id or "").strip()
+    if not a_id or not b_id or a_id == b_id:
+        raise ValueError("doc_a_id and doc_b_id must be different and non-empty")
+    if a_id not in docs_by_id or b_id not in docs_by_id:
+        raise ValueError("unknown doc_id for compare tools")
+
+    pair_dir = work_dir / "pairs" / _safe_pair_key(a_id, b_id)
+    if not pair_dir.exists():
+        # pair_compare_setup が未実行（または失敗）とみなす
+        raise FileNotFoundError(f"pair_dir not found. run pair_compare_setup first: {pair_dir}")
+
+    cache_path = pair_dir / "embedding_cache.json"
+    initial_matching_path = pair_dir / "initial_matching.json"
+
+    ast_a_path = _resolve_doc_path(a_id, "ast", docs_by_id, run_dir, work_dir)
+    ast_b_path = _resolve_doc_path(b_id, "ast", docs_by_id, run_dir, work_dir)
+    doc_a_txt = _resolve_doc_path(a_id, "txt", docs_by_id, run_dir, work_dir)
+    doc_b_txt = _resolve_doc_path(b_id, "txt", docs_by_id, run_dir, work_dir)
+
+    if not ast_a_path or not ast_a_path.exists():
+        raise FileNotFoundError(str(ast_a_path) if ast_a_path else f"ast not found: {a_id}")
+    if not ast_b_path or not ast_b_path.exists():
+        raise FileNotFoundError(str(ast_b_path) if ast_b_path else f"ast not found: {b_id}")
+
+    # compare_* tools は src.tools.COMPARE_STATE（スレッドローカル）に依存する。
+    # tool が別スレッドで実行される場合があるため、各 tool call の中で必ず復元できるようにする。
+    from src.tools import COMPARE_STATE, compare_setup as compare_setup_tool
+
+    wanted_marker = f"{ctx.run_id}:{pair_dir.resolve()}"
+    current_marker = str(COMPARE_STATE.get("_pair_marker") or "")
+
+    if current_marker != wanted_marker or COMPARE_STATE.get("ast_a") is None:
+        # このスレッドで compare_setup を実行して状態を初期化（cacheがあれば高速）
+        # NOTE: compare_setup は内部で COMPARE_STATE.clear() を行う
+        compare_setup_tool.invoke(
+            {
+                "docA": str(ast_a_path),
+                "docB": str(ast_b_path),
+                "docA_txt": str(doc_a_txt) if doc_a_txt and doc_a_txt.exists() else None,
+                "docB_txt": str(doc_b_txt) if doc_b_txt and doc_b_txt.exists() else None,
+                "embedding_model": ctx.params.get("embedding_model"),
+                "cache_path": str(cache_path),
+                "batch_size": int(ctx.params.get("embedding_batch_size", 64)),
+            }
+        )
         COMPARE_STATE["_run_id"] = ctx.run_id
-        
-        ctx.events.emit(
-            ctx.run_id,
-            "compare_state_restore",
-            {"ts": _utcnow_iso(), "success": True, "message": "COMPARE_STATE restored successfully"},
+        COMPARE_STATE["_pair_marker"] = wanted_marker
+
+    # initial_matching をペア成果物から復元（存在すれば）
+    if initial_matching_path.exists():
+        try:
+            initial_text = initial_matching_path.read_text(encoding="utf-8", errors="replace")
+            initial_data = json.loads(initial_text)
+            if isinstance(initial_data, dict):
+                COMPARE_STATE["initial_matching"] = initial_data
+        except Exception:
+            pass
+
+    return wanted_marker, pair_dir
+
+
+def _build_pair_scoped_compare_tools(
+    ctx: RunContext,
+    docs_by_id: dict[str, dict[str, Any]],
+    run_dir: Path,
+    work_dir: Path,
+):
+    """
+    compare_* をペア指定（doc_a_id/doc_b_id）で必ず動くようにするツール群を返す。
+
+    - 呼び出し側は dir を渡さず、doc_id のペアだけ渡す
+    - 内部でペアdirを一意に解決し、必要なら compare_setup を復元する
+    """
+    from langchain_core.tools import tool
+
+    from src.tools import (
+        compare_all_chunk_similarity_matching as _match_all,
+        compare_get_chunk as _get_chunk,
+        compare_get_grouping as _get_grouping,
+        compare_specified_chunks_diff as _specified_diff,
+        compare_specified_chunks_llm as _specified_llm,
+        COMPARE_STATE,
+    )
+
+    def _invoke_tool(tool_func, **kwargs):
+        if hasattr(tool_func, "invoke"):
+            return tool_func.invoke(kwargs)
+        return tool_func(**kwargs)
+
+    @tool
+    def compare_all_chunk_similarity_matching(
+        doc_a_id: str,
+        doc_b_id: str,
+        top_k: int = 3,
+        alpha: float = 0.3,
+        beta: float = 0.4,
+        min_score: float = 0.25,
+    ) -> str:
+        """指定ペアで類似度マッチングを実行（必要なら compare_setup を復元）。"""
+        try:
+            _, pair_dir = _ensure_compare_state_for_pair(
+                ctx,
+                docs_by_id=docs_by_id,
+                run_dir=run_dir,
+                work_dir=work_dir,
+                doc_a_id=doc_a_id,
+                doc_b_id=doc_b_id,
+            )
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False, indent=2)
+        res = _invoke_tool(_match_all, top_k=top_k, alpha=alpha, beta=beta, min_score=min_score)
+        # last_matching をペアdirへ永続化（スレッドをまたいでも参照できるように）
+        try:
+            last = COMPARE_STATE.get("last_matching")
+            if isinstance(last, dict):
+                (pair_dir / "last_matching.json").write_text(
+                    json.dumps(last, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+        except Exception:
+            pass
+        return res
+
+    @tool
+    def compare_get_grouping(
+        doc_a_id: str,
+        doc_b_id: str,
+        which: str,
+        mode: str = "summary",
+        chunk_ids: Optional[list[str]] = None,
+        min_similarity: Optional[float] = None,
+        max_groups: int = 50,
+        max_matches: int = 1,
+    ) -> str:
+        """指定ペアのグルーピング結果を取得（必要なら compare_setup を復元）。"""
+        try:
+            _, pair_dir = _ensure_compare_state_for_pair(
+                ctx,
+                docs_by_id=docs_by_id,
+                run_dir=run_dir,
+                work_dir=work_dir,
+                doc_a_id=doc_a_id,
+                doc_b_id=doc_b_id,
+            )
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False, indent=2)
+        # which=last の場合、まずペアdirの永続化を優先して復元（存在すれば）
+        if str(which).lower().strip() == "last":
+            last_path = pair_dir / "last_matching.json"
+            if last_path.exists():
+                try:
+                    last = json.loads(last_path.read_text(encoding="utf-8", errors="replace"))
+                    if isinstance(last, dict):
+                        COMPARE_STATE["last_matching"] = last
+                except Exception:
+                    pass
+        return _invoke_tool(
+            _get_grouping,
+            which=which,
+            mode=mode,
+            chunk_ids=chunk_ids,
+            min_similarity=min_similarity,
+            max_groups=max_groups,
+            max_matches=max_matches,
         )
-        return True
-        
-    except Exception as e:
-        ctx.events.emit(
-            ctx.run_id,
-            "compare_state_restore",
-            {"ts": _utcnow_iso(), "success": False, "reason": str(e)},
+
+    @tool
+    def compare_get_chunk(doc_a_id: str, doc_b_id: str, which: str, chunk_id: str) -> str:
+        """指定ペアでチャンク内容を取得（必要なら compare_setup を復元）。"""
+        try:
+            _ensure_compare_state_for_pair(
+                ctx,
+                docs_by_id=docs_by_id,
+                run_dir=run_dir,
+                work_dir=work_dir,
+                doc_a_id=doc_a_id,
+                doc_b_id=doc_b_id,
+            )
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False, indent=2)
+        return _invoke_tool(_get_chunk, chunk_ids=[chunk_id], intent="compare_get_chunk", in_doc=which)
+
+    @tool
+    def compare_specified_chunks_diff(
+        doc_a_id: str,
+        doc_b_id: str,
+        chunk_id_a: str,
+        chunk_id_b: str,
+        include_metadata: bool = True,
+    ) -> str:
+        """指定ペアで2チャンクの差分を取得（必要なら compare_setup を復元）。"""
+        try:
+            _ensure_compare_state_for_pair(
+                ctx,
+                docs_by_id=docs_by_id,
+                run_dir=run_dir,
+                work_dir=work_dir,
+                doc_a_id=doc_a_id,
+                doc_b_id=doc_b_id,
+            )
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False, indent=2)
+        return _invoke_tool(
+            _specified_diff,
+            chunk_id_a=chunk_id_a,
+            chunk_id_b=chunk_id_b,
+            include_metadata=include_metadata,
         )
-        return False
+
+    @tool
+    def compare_specified_chunks_llm(
+        doc_a_id: str,
+        doc_b_id: str,
+        chunk_id_a: str,
+        chunk_id_b: str,
+        focus: str = "",
+    ) -> str:
+        """指定ペアで2チャンクをLLMで比較（必要なら compare_setup を復元）。"""
+        try:
+            _ensure_compare_state_for_pair(
+                ctx,
+                docs_by_id=docs_by_id,
+                run_dir=run_dir,
+                work_dir=work_dir,
+                doc_a_id=doc_a_id,
+                doc_b_id=doc_b_id,
+            )
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False, indent=2)
+        return _invoke_tool(_specified_llm, chunk_id_a=chunk_id_a, chunk_id_b=chunk_id_b, focus=focus)
+
+    return [
+        compare_all_chunk_similarity_matching,
+        compare_get_grouping,
+        compare_get_chunk,
+        compare_specified_chunks_diff,
+        compare_specified_chunks_llm,
+    ]
+
+
+def _extract_json_block(text: str) -> dict[str, Any]:
+    try:
+        return json.loads(text)
+    except Exception:
+        pass
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        return json.loads(text[start : end + 1])
+    raise ValueError("Failed to parse JSON from LLM response")
 
 
 def _run_with_cancellation(ctx: RunContext, *, label: str, func) -> Any:
@@ -167,127 +553,53 @@ def _run_with_cancellation(ctx: RunContext, *, label: str, func) -> Any:
     return result.get("value")
 
 
-@dataclass
-class CompareSetupStep:
-    """比較用の状態（COMPARE_STATE）と embedding cache を準備する。"""
+def _extract_last_ai_text(result: Any) -> str:
+    """deepagents/langgraphのstate(dict)から最終AI出力テキストを取り出す。"""
+    if isinstance(result, dict):
+        msgs = result.get("messages") or []
+        for m in reversed(list(msgs)):
+            # langchain_core.messages.AIMessage を想定
+            if hasattr(m, "__class__") and m.__class__.__name__ == "AIMessage":
+                content = getattr(m, "content", None)
+                if content:
+                    return str(content)
+            # dict形式も許容
+            if isinstance(m, dict) and (m.get("role") in {"assistant", "ai"}):
+                c = m.get("content")
+                if c:
+                    return str(c)
+    return ""
 
-    name: str = "compare_setup"
 
-    def run(self, ctx: RunContext) -> None:
-        run_dir = Path(ctx.paths["run_dir"])
-        work_dir = Path(ctx.paths["work_dir"])
-        cache_dir = Path(ctx.paths["cache_dir"])
-        cache_dir.mkdir(parents=True, exist_ok=True)
+def _extract_interrupt_payload(result: Any) -> Optional[dict[str, Any]]:
+    """deepagents(HITL)の割り込みpayloadを抽出する。"""
+    if not isinstance(result, dict):
+        return None
+    intr = result.get("__interrupt__")
+    if not intr:
+        return None
+    try:
+        first = intr[0]
+        if hasattr(first, "value"):
+            val = getattr(first, "value")
+            return val if isinstance(val, dict) else {"value": val}
+        if isinstance(first, dict):
+            return first
+        return {"value": first}
+    except Exception:
+        return None
 
-        ast_a = work_dir / "ast_a.ast.json"
-        ast_b = work_dir / "ast_b.ast.json"
-        if not ast_a.exists():
-            raise FileNotFoundError(str(ast_a))
-        if not ast_b.exists():
-            raise FileNotFoundError(str(ast_b))
 
-        cache_path = cache_dir / "embedding_cache.json"
-        # 既存の共有キャッシュがあればseedして、API呼び出しを抑える（特に再実行/検証時）
-        global_cache = Path("data") / "embedding" / "embedding_cache.json"
-        if global_cache.exists() and (not cache_path.exists()):
-            try:
-                shutil.copy2(global_cache, cache_path)
-            except Exception:
-                pass
-
-        # Embedding/LLMの鍵が無い場合は、このステップは失敗させる（realモードの前提）
-        # ※将来、embedding無しモードを作るならここを条件スキップにする
-        if not _have_llm_key():
-            raise RuntimeError("Embedding/LLM API key not set (OPENAI_API_KEY or AZURE_OPENAI_API_KEY)")
-
-        from src.tools import COMPARE_STATE, compare_all_chunk_similarity_matching, compare_setup
-
-        setup_json = compare_setup.invoke(
-            {
-                "docA": str(ast_a),
-                "docB": str(ast_b),
-                "embedding_model": ctx.params.get("embedding_model"),
-                "cache_path": str(cache_path),
-                "batch_size": int(ctx.params.get("embedding_batch_size", 64)),
-            }
-        )
-
-        # warmup matching（統計用）
-        initial_matching_json = compare_all_chunk_similarity_matching.invoke(
-            {
-                "top_k": int(ctx.params.get("match_top_k", 3)),
-                "alpha": float(ctx.params.get("match_alpha", 0.3)),
-                "beta": float(ctx.params.get("match_beta", 0.4)),
-                "min_score": float(ctx.params.get("match_min_score", 0.25)),
-            }
-        )
-
-        # 永続化（後からUI/APIで参照できるようにする）
-        initial_matching_path = work_dir / "initial_matching.json"
-        try:
-            initial_matching_path.write_text(str(initial_matching_json), encoding="utf-8")
-            ctx.events.emit(
-                ctx.run_id,
-                "artifact_updated",
-                {"ts": _utcnow_iso(), "kind": "initial_matching", "path": initial_matching_path.relative_to(run_dir).as_posix()},
-            )
-        except Exception:
-            pass
-
-        try:
-            COMPARE_STATE["initial_matching"] = json.loads(initial_matching_json)
-        except Exception:
-            COMPARE_STATE["initial_matching"] = None
-
-        # run_idを記録（別のrunを実行した後の復元時に判別するため）
-        COMPARE_STATE["_run_id"] = ctx.run_id
-
-        # ドキュメントペア成果物として永続化（次runで自動再利用できるようにする）
-        # - initial_matching.json
-        # - embedding_cache.json
-        doc_a_hash = ctx.params.get("doc_a_hash")
-        doc_b_hash = ctx.params.get("doc_b_hash")
-        if doc_a_hash and doc_b_hash:
-            try:
-                from compare_app.infra.document_store import DocumentPairRepository
-
-                pair_repo = DocumentPairRepository()
-
-                matching_data = None
-                try:
-                    matching_data = json.loads(initial_matching_json)
-                except Exception:
-                    # 既にパース済みがあればそれを使う
-                    if isinstance(COMPARE_STATE.get("initial_matching"), dict):
-                        matching_data = COMPARE_STATE.get("initial_matching")
-                if isinstance(matching_data, dict):
-                    pair_repo.save_matching(str(doc_a_hash), str(doc_b_hash), matching_data)
-
-                cache_dir = Path(ctx.paths["cache_dir"])
-                cache_path = cache_dir / "embedding_cache.json"
-                if cache_path.exists():
-                    try:
-                        cache_data = json.loads(cache_path.read_text(encoding="utf-8"))
-                        if isinstance(cache_data, dict):
-                            pair_repo.save_embedding_cache(str(doc_a_hash), str(doc_b_hash), cache_data)
-                    except Exception:
-                        pass
-            except Exception:
-                # compare_setup 自体は成功しているので、永続化失敗は致命にしない
-                pass
-
-        ctx.events.emit(
-            ctx.run_id,
-            "compare_setup_done",
-            {"ts": _utcnow_iso(), "setup_ok": True, "cache_path": str(cache_path), "setup_json_preview": str(setup_json)[:300]},
-        )
-        if cache_path.exists():
-            rel = cache_path.relative_to(run_dir).as_posix()
-            ctx.events.emit(
-                ctx.run_id,
-                "artifact_updated",
-                {"ts": _utcnow_iso(), "kind": "embedding_cache", "path": rel},
-            )
+def _vfile_to_text(fd: Any) -> Optional[str]:
+    """deepagentsの files 互換: {path: str} または {path: {"content": ...}} を吸収。"""
+    if fd is None:
+        return None
+    if isinstance(fd, str):
+        return fd
+    if isinstance(fd, dict) and "content" in fd:
+        raw = fd.get("content")
+        return "\n".join(raw) if isinstance(raw, list) else str(raw)
+    return None
 
 
 @dataclass
@@ -302,516 +614,406 @@ class PreAnalysisStep:
         force = bool(ctx.params.get("force", False))
         return force or (not out_draft.exists())
 
-    def run(self, ctx: RunContext) -> None:
+    def _run_ndoc(self, ctx: RunContext) -> None:
         work_dir = Path(ctx.paths["work_dir"])
         out_draft = work_dir / "template_draft.md"
         out_meta = work_dir / "pre_analysis.json"
         run_dir = Path(ctx.paths["run_dir"])
+        config = _load_run_config(ctx)
+        docs = _get_documents(ctx)
+        if len(docs) < 1:
+            raise ValueError("pre_analysis requires at least 1 document")
 
-        ast_a = work_dir / "ast_a.ast.json"
-        ast_b = work_dir / "ast_b.ast.json"
+        request_text = ctx.params.get("request_text") or config.get("request_text")
+        if not request_text or not str(request_text).strip():
+            raise ValueError("request_text is required for pre_analysis")
+        request_text = str(request_text).strip()
 
-        if not ast_a.exists() or not ast_b.exists():
-            raise FileNotFoundError("AST files not found for pre_analysis")
+        hil_enabled = bool(
+            ctx.params.get("hil_enabled")
+            if "hil_enabled" in ctx.params
+            else config.get("hil_enabled", False)
+        )
 
-        # COMPARE_STATEが空の場合は復元（compare_setupステップがスキップされた場合など）
-        _restore_compare_state_if_needed(ctx)
+        # テンプレ seed（Runに紐付いたテンプレート）を優先して使用する。
+        # - Run作成時に input/template_seed.(md|txt) が作られていれば、それを読む
+        template_seed_text: Optional[str] = None
+        template_seed_path_raw = ctx.params.get("template_seed_path") or config.get("template_seed_path")
+        if template_seed_path_raw and not template_seed_text:
+            try:
+                seed_path = Path(str(template_seed_path_raw))
+                seed_abs = seed_path if seed_path.is_absolute() else (run_dir / seed_path)
+                if seed_abs.exists():
+                    template_seed_text = seed_abs.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                template_seed_text = None
 
         if not _have_llm_key():
-            # フォールバック（LLM無しでもパイプラインは進められる）
-            draft = "\n".join(
-                [
-                    "# 比較レポート（テンプレ・フォールバック）",
-                    "",
-                    "> LLMキー未設定のため、Pre-Analysisは実行されていません。",
-                    "",
-                    "## 関係性（relation）",
-                    "- relation: unknown",
-                    "- reason: LLMキー未設定",
-                    "",
-                    "## 分析プラン（plan）",
-                    "- [ ] （未生成）",
-                    "",
-                    "## 差分まとめ",
-                    "",
-                    "(ここに段階的に追記されます)",
-                    "",
-                ]
+            raise RuntimeError("LLM API key not set (OPENAI_API_KEY or AZURE_OPENAI_API_KEY)")
+
+        docs_meta: list[dict[str, Any]] = []
+        for d in docs:
+            did = str(d.get("doc_id"))
+            fname = d.get("filename") or d.get("original_filename") or ""
+            txt_path = work_dir / f"doc_{did}.txt"
+            bp_path = work_dir / f"blueprint_{did}.json"
+            ast_path = work_dir / f"ast_{did}.ast.json"
+            if not txt_path.exists():
+                raise FileNotFoundError(str(txt_path))
+            docs_meta.append(
+                {
+                    "doc_id": did,
+                    "filename": str(fname) if fname else None,
+                    "source": d.get("source"),
+                    "role_guess": d.get("role_guess"),
+                    "role_reason": d.get("role_reason"),
+                    "confidence": d.get("confidence"),
+                    "paths": {
+                        "txt": txt_path.relative_to(run_dir).as_posix() if txt_path.exists() else None,
+                        "blueprint": bp_path.relative_to(run_dir).as_posix() if bp_path.exists() else None,
+                        "ast": ast_path.relative_to(run_dir).as_posix() if ast_path.exists() else None,
+                    },
+                }
             )
-            out_draft.write_text(draft, encoding="utf-8")
-            out_meta.write_text(
-                json.dumps({"relation": "unknown", "reason": "LLMキー未設定", "plan": [], "template_name": None}, ensure_ascii=False, indent=2),
-                encoding="utf-8",
+
+        docs_by_id: dict[str, dict[str, Any]] = {str(d.get("doc_id")): d for d in docs_meta if d.get("doc_id")}
+
+        docs_dir = work_dir / "docs"
+        docs_dir.mkdir(parents=True, exist_ok=True)
+        docs_index_path = docs_dir / "index.json"
+        docs_index_data = {"request_text": request_text, "documents": docs_meta}
+        docs_index_path.write_text(json.dumps(docs_index_data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        request_path = work_dir / "request.txt"
+        request_path.write_text(request_text, encoding="utf-8")
+
+        try:
+            ctx.events.emit(
+                ctx.run_id,
+                "artifact_updated",
+                {"ts": _utcnow_iso(), "kind": "docs_index", "path": docs_index_path.relative_to(run_dir).as_posix()},
             )
             ctx.events.emit(
                 ctx.run_id,
                 "artifact_updated",
-                {"ts": _utcnow_iso(), "kind": "template_draft", "path": out_draft.relative_to(run_dir).as_posix()},
+                {"ts": _utcnow_iso(), "kind": "request_text", "path": request_path.relative_to(run_dir).as_posix()},
             )
-            ctx.events.emit(
-                ctx.run_id,
-                "artifact_updated",
-                {"ts": _utcnow_iso(), "kind": "pre_analysis", "path": out_meta.relative_to(run_dir).as_posix()},
-            )
-            return
+        except Exception:
+            pass
 
         from deepagents import create_deep_agent
         from deepagents.backends.utils import create_file_data
+        from deepagents.backends.utils import create_file_data
+        from deepagents.backends.utils import create_file_data
 
-        from src.prompt import compare_type_analysis_prompt
-        from src.schema import PreAnalysisResult
+        from src.prompt import task_pre_analysis_prompt
+        from src.schema import TaskPreAnalysisResult
         from src.tools import (
-            compare_get_chunk,
-            compare_get_grouping,
-            compare_search_by_keyphrase,
-            compare_specified_chunks_diff,
-            compare_specified_chunks_llm,
             extract_regex_matches,
             get_file_length,
             read_ast,
             read_text_file,
             read_text_segment,
+            search_by_keyphrase,
         )
         from src.utils import build_llm
 
-        from compare_app.agents.middleware import CompareRestoreConfig, EventSinkMiddleware
+        from langgraph.types import Command
+
+        from compare_app.agents.hitl import (
+            get_hitl_paths,
+            human_input,
+            load_json_if_exists,
+            open_checkpointer,
+            remove_if_exists,
+            write_json,
+        )
 
         llm_complex = build_llm(model=str(ctx.params.get("llm_complex_model", "gpt-5-mini")))
 
-        # run入力（data/runs/{run_id}/input）を読む analyze_visual_contents を提供（data/input固定依存を回避）
-        llm_visual = build_llm(
-            model=str(ctx.params.get("llm_visual_model", ctx.params.get("llm_complex_model", "gpt-5-mini")))
-        )
-        from langchain_core.messages import HumanMessage
-        from langchain_core.tools import tool
-        import base64
-        import fitz  # PyMuPDF
+        pair_compare_setup = _build_pair_compare_setup_tool(ctx, docs_by_id, run_dir, work_dir)
 
-        input_dir = Path(ctx.paths["input_dir"])
-
-        def _get_pdf_page_as_image(pdf_path: Path, page_numbers: list[int], dpi: int = 150) -> list[dict]:
-            doc = fitz.open(str(pdf_path))
-            try:
-                out = []
-                for page_number in page_numbers:
-                    if page_number < 1 or page_number > len(doc):
-                        raise ValueError(f"invalid page {page_number} (total {len(doc)})")
-                    page = doc[page_number - 1]
-                    mat = fitz.Matrix(dpi / 72, dpi / 72)
-                    pix = page.get_pixmap(matrix=mat)
-                    img_bytes = pix.tobytes("png")
-                    b64_data = base64.b64encode(img_bytes).decode("utf-8")
-                    out.append({"page_number": page_number, "base64_data": b64_data})
-                return out
-            finally:
-                doc.close()
-
-        @tool
-        def analyze_visual_contents(document_name: str, page_numbers: list[int], prompt: str) -> str:
-            """
-            Run入力のPDF（data/runs/{run_id}/input）を対象に、指定ページを画像として分析して返す。
-            document_name が .txt/.ast.json の場合は .pdf に置換して探索する。
-            """
-            name = str(document_name or "").strip()
-            if name.endswith(".ast.json"):
-                name = name.replace(".ast.json", ".pdf")
-            elif name.endswith(".txt"):
-                name = name.replace(".txt", ".pdf")
-            p = Path(name)
-            if p.is_absolute() and p.exists():
-                pdf_path = p
-            else:
-                cand = input_dir / name
-                if cand.exists():
-                    pdf_path = cand
-                else:
-                    # doc_a.pdf / doc_b.pdf の両方を試す
-                    for fallback_name in ["doc_a.pdf", "doc_b.pdf"]:
-                        fb = input_dir / fallback_name
-                        if fb.exists():
-                            pdf_path = fb
-                            break
-                    else:
-                        return f"[analyze_visual_contents] pdf not found for: {document_name} (run has no PDF inputs)."
-
-            images = _get_pdf_page_as_image(pdf_path, page_numbers)
-            b64_data_list = [
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{item['base64_data']}"}}
-                for item in images
-            ]
-            message = HumanMessage(content=[{"type": "text", "text": prompt}, *b64_data_list])
-            response = llm_visual.invoke([message])
-            return response.content
-
-        tools = [
+        tools: list[Any] = [
             read_ast,
             read_text_file,
             read_text_segment,
             extract_regex_matches,
             get_file_length,
-            compare_get_grouping,
-            compare_search_by_keyphrase,
-            compare_get_chunk,
-            compare_specified_chunks_diff,
-            compare_specified_chunks_llm,
-            analyze_visual_contents,
+            pair_compare_setup,
         ]
 
-        cache_path = Path(ctx.paths["cache_dir"]) / "embedding_cache.json"
-        initial_matching_path = work_dir / "initial_matching.json"
-        restore_cfg = CompareRestoreConfig(
-            ast_a_path=str(ast_a),
-            ast_b_path=str(ast_b),
-            txt_a_path=str(work_dir / "doc_a.txt"),
-            txt_b_path=str(work_dir / "doc_b.txt"),
-            cache_path=str(cache_path),
-            initial_matching_path=str(initial_matching_path) if initial_matching_path.exists() else "",
-            embedding_model=ctx.params.get("embedding_model"),
-            embedding_batch_size=int(ctx.params.get("embedding_batch_size", 64)),
-            warmup_matching=not initial_matching_path.exists(),
-            match_top_k=int(ctx.params.get("match_top_k", 3)),
-            match_alpha=float(ctx.params.get("match_alpha", 0.3)),
-            match_beta=float(ctx.params.get("match_beta", 0.4)),
-            match_min_score=float(ctx.params.get("match_min_score", 0.25)),
-        )
+        interrupt_config = None
+        if hil_enabled:
+            tools.append(human_input)
+            interrupt_config = {"human_input": True}
 
-        agent = create_deep_agent(
-            model=llm_complex,
-            tools=tools,
-            response_format=PreAnalysisResult,
-            system_prompt=compare_type_analysis_prompt,
-            middleware=[
-                EventSinkMiddleware(
-                    run_id=ctx.run_id,
-                    events=ctx.events,
-                    cancellation=ctx.cancellation,
-                    agent_name="pre_analysis_agent",
-                    compare_restore=restore_cfg,
-                )
-            ],
-            debug=False,
-        )
+        recursion_limit = int(ctx.params.get("recursion_limit", 120) or 120)
+        config_lg = {"configurable": {"thread_id": str(ctx.run_id)}, "recursion_limit": recursion_limit}
+        interrupt_path, resume_path = get_hitl_paths(work_dir)
 
-        # deep_agentのfileツールも使えるように、前ステップの成果物を仮想FSに投入
-        input_dir = Path(ctx.paths["input_dir"])
-        cache_text = cache_path.read_text(encoding="utf-8", errors="replace") if cache_path.exists() else "{}"
-
-        files = {
-            # AST
-            "/ast_a.ast.json": create_file_data(ast_a.read_text(encoding="utf-8", errors="replace")),
-            "/ast_b.ast.json": create_file_data(ast_b.read_text(encoding="utf-8", errors="replace")),
-            # キャッシュ
-            "/.embedding_cache.json": create_file_data(cache_text),
+        files: dict[str, Any] = {
+            "/request.txt": create_file_data(str(request_text)),
+            "/docs/index.json": create_file_data(docs_index_path.read_text(encoding="utf-8", errors="replace")),
         }
+        if template_seed_text is not None:
+            files["/template_draft.md"] = create_file_data(str(template_seed_text))
 
-        # initial_matching.json を追加（存在すれば）
-        if initial_matching_path.exists():
-            files["/initial_matching.json"] = create_file_data(
-                initial_matching_path.read_text(encoding="utf-8", errors="replace")
-            )
-
-        # blueprint を追加（存在すれば）
-        for bp_name in ["blueprint_a.json", "blueprint_b.json"]:
-            bp_path = work_dir / bp_name
+        for d in docs:
+            did = str(d.get("doc_id"))
+            txt_path = work_dir / f"doc_{did}.txt"
+            bp_path = work_dir / f"blueprint_{did}.json"
+            ast_path = work_dir / f"ast_{did}.ast.json"
+            if txt_path.exists():
+                files[f"/docs/{did}/doc.txt"] = create_file_data(txt_path.read_text(encoding="utf-8", errors="replace"))
             if bp_path.exists():
-                files[f"/{bp_name}"] = create_file_data(
-                    bp_path.read_text(encoding="utf-8", errors="replace")
-                )
-
-        # 入力テキスト（doc_a.txt, doc_b.txt）を追加（存在すれば）
-        for doc_name in ["doc_a.txt", "doc_b.txt"]:
-            doc_path = work_dir / doc_name
-            if doc_path.exists():
-                files[f"/{doc_name}"] = create_file_data(
-                    doc_path.read_text(encoding="utf-8", errors="replace")
-                )
-            else:
-                input_doc_path = input_dir / doc_name
-                if input_doc_path.exists():
-                    files[f"/{doc_name}"] = create_file_data(
-                        input_doc_path.read_text(encoding="utf-8", errors="replace")
-                    )
-
-        # ユーザー指定の重点比較観点（UI/CLIから注入可能）
-        # params.comparison_focus: str | list[str] | None
-        user_focus = ctx.params.get("comparison_focus")
-        if user_focus:
-            if isinstance(user_focus, list):
-                focus_lines = [f"- {f}" for f in user_focus]
-            else:
-                focus_lines = [f"- {user_focus}"]
-        else:
-            # デフォルトの比較観点
-            focus_lines = ["- 変更箇所とその影響の特定"]
-        
-        # 任意: 重点比較観点ファイル（txtのみ）
-        focus_file_name: Optional[str] = None
-        focus_file_path: Optional[Path] = None
-        focus_param = ctx.params.get("comparison_focus_file")
-        if focus_param:
-            try:
-                focus_param_str = str(focus_param).strip()
-                if focus_param_str:
-                    cand_path = Path(focus_param_str)
-                    if cand_path.is_absolute() and cand_path.exists():
-                        focus_file_path = cand_path
-                    else:
-                        for base in [run_dir, work_dir, input_dir]:
-                            cand = base / focus_param_str
-                            if cand.exists():
-                                focus_file_path = cand
-                                break
-            except Exception:
-                pass
-        if not focus_file_path:
-            for base in [work_dir, input_dir]:
-                cand = base / "comparison_focus.txt"
-                if cand.exists():
-                    focus_file_path = cand
-                    break
-        if focus_file_path and focus_file_path.suffix.lower() == ".txt":
-            try:
-                focus_text = focus_file_path.read_text(encoding="utf-8", errors="replace")
-                if focus_text.strip():
-                    files["/comparison_focus.txt"] = create_file_data(focus_text)
-                    focus_file_name = focus_file_path.name
-            except Exception:
-                pass
-
-        # LLMに軽量判定の材料を提供するための統計情報を収集
-        def _get_doc_stats(ast_path: Path) -> dict:
-            """AST JSONから統計情報を抽出（参考用）"""
-            try:
-                ast_data = json.loads(ast_path.read_text(encoding="utf-8", errors="replace"))
-                root = ast_data.get("root", {})
-                
-                def count_nodes(node, depth=0):
-                    total = 1
-                    max_d = depth
-                    content_chars = len(node.get("content", "") or "")
-                    for child in node.get("children", []):
-                        if isinstance(child, dict):
-                            c, d, chars = count_nodes(child, depth + 1)
-                            total += c
-                            max_d = max(max_d, d)
-                            content_chars += chars
-                    return total, max_d, content_chars
-                
-                sections, max_depth, total_chars = count_nodes(root)
-                return {
-                    "sections": sections,
-                    "max_depth": max_depth,
-                    "total_chars": total_chars,
-                }
-            except Exception:
-                return {"sections": 0, "max_depth": 0, "total_chars": 0}
-
-        def _get_text_stats(text_path: Path) -> dict:
-            """原文TXTから統計情報を抽出（軽量判定の基準）"""
-            try:
-                text = text_path.read_text(encoding="utf-8", errors="replace")
-                lines = text.splitlines()
-                return {
-                    "total_chars": len(text),
-                    "total_lines": len(lines),
-                }
-            except Exception:
-                return {"total_chars": 0, "total_lines": 0}
-
-        stats_a = _get_doc_stats(ast_a)
-        stats_b = _get_doc_stats(ast_b)
-        txt_stats_a = _get_text_stats(work_dir / "doc_a.txt")
-        txt_stats_b = _get_text_stats(work_dir / "doc_b.txt")
-
-        # initial_matchingからマッチング統計を取得
-        initial_matching_path = work_dir / "initial_matching.json"
-        matching_stats = {}
-        if initial_matching_path.exists():
-            try:
-                matching_data = json.loads(initial_matching_path.read_text(encoding="utf-8"))
-                groups = matching_data.get("groups", [])
-                unmatched_b = matching_data.get("unmatched_b", [])
-                
-                all_scores = []
-                for g in groups:
-                    for m in g.get("matches", []):
-                        if isinstance(m, dict):
-                            all_scores.append(m.get("score", 0))
-                
-                matching_stats = {
-                    "total_groups": len(groups),
-                    "unmatched_b_count": len(unmatched_b),
-                    "avg_score": round(sum(all_scores) / len(all_scores), 3) if all_scores else 0,
-                    "high_similarity_count": sum(1 for s in all_scores if s >= 0.8),
-                    "low_similarity_count": sum(1 for s in all_scores if s < 0.5),
-                }
-            except Exception:
-                pass
-
-        # LLM判断用の統計情報をプロンプトに含める
-        stats_lines = [
-            "## ドキュメント統計情報（軽量判定の参考）",
-            "",
-            "**docA:**",
-            f"- 原文文字数: {txt_stats_a['total_chars']:,}",
-            f"- 原文行数: {txt_stats_a['total_lines']:,}",
-            "",
-            "**docB:**",
-            f"- 原文文字数: {txt_stats_b['total_chars']:,}",
-            f"- 原文行数: {txt_stats_b['total_lines']:,}",
-            "",
-        ]
-        
-        if matching_stats:
-            stats_lines.extend([
-                "**マッチング統計（ASTベース/参考）:**",
-                f"- チャンクグループ数: {matching_stats.get('total_groups', 0)}",
-                f"- 未マッチBチャンク: {matching_stats.get('unmatched_b_count', 0)}",
-                f"- 平均類似度スコア: {matching_stats.get('avg_score', 0)}",
-                f"- 高類似度(>=0.8): {matching_stats.get('high_similarity_count', 0)}件",
-                f"- 低類似度(<0.5): {matching_stats.get('low_similarity_count', 0)}件",
-                "",
-            ])
+                files[f"/docs/{did}/blueprint.json"] = create_file_data(bp_path.read_text(encoding="utf-8", errors="replace"))
+            if ast_path.exists():
+                files[f"/docs/{did}/ast.json"] = create_file_data(ast_path.read_text(encoding="utf-8", errors="replace"))
 
         query_lines = [
-            "2つのドキュメントdocAとdocBの関係性を分析してください。",
-            "原文テキスト（doc_a.txt / doc_b.txt）を主な比較対象として扱ってください。",
-            "AST（ast_a.ast.json / ast_b.ast.json）は参考情報であり、階層のズレが起こり得ます。",
-            "",
-            "- docA 原文: doc_a.txt",
-            "- docB 原文: doc_b.txt",
-            "- docA AST: ast_a.ast.json",
-            "- docB AST: ast_b.ast.json",
-            "※ASTのcontentは本文の内容で、content_summaryは分析作業の補助のために事前に付与した要約です。",
-            "",
-            *stats_lines,
-            "**重点比較観点**",
-            *focus_lines,
+            "依頼文とドキュメント一覧を読み、タスク計画とテンプレートを生成してください。",
+            "- 依頼文: /request.txt",
+            "- ドキュメント一覧: /docs/index.json",
+            f"- HIL: {'enabled' if hil_enabled else 'disabled'}",
+            "必要に応じて /docs/<doc_id>/doc.txt /ast.json /blueprint.json を参照してください。",
+            "比較準備が必要な場合は pair_compare_setup(doc_a_id, doc_b_id, purpose) を呼び出してください。",
         ]
-        if focus_file_name:
+        if template_seed_text is not None:
+            query_lines.append("テンプレートは /template_draft.md として提供されています。必要に応じて改稿してください。")
+        if hil_enabled:
             query_lines.extend(
                 [
                     "",
-                    "**重点比較観点ファイル**",
-                    "- /comparison_focus.txt を必要に応じて参照してください。",
-                    f"- 元ファイル名: {focus_file_name}",
+                    "不足情報や判断保留がある場合は human_input(question, answer=\"\") を呼び出して人間に確認してください（HITL）。",
                 ]
             )
-        query_lines.extend(
-            [
-            "",
-            "**前提事項**",
-            "- それぞれのASTファイルは独立して解析し作成されたものです。そのため同じ構成でも階層分けが異なる場合があります。",
-            "- chunk間の類似度は参考程度にしてプランを立ててください。同じcontentでもchunkの分割の違いで類似度が低くなっている場合があります。",
-            "",
-            "# 指示",
-            "",
-            "## Step 1: relation判定",
-            "relation ∈ {Fix, Revision, Derivative, Heterogeneous, Subset}",
-            "",
-            "## Step 2: is_complete判定（論理式）",
-            "",
-            "```",
-            "total_chars = docA.total_chars + docB.total_chars",
-            f"total_chars = {txt_stats_a['total_chars']} + {txt_stats_b['total_chars']} = {txt_stats_a['total_chars'] + txt_stats_b['total_chars']}",
-            "",
-            "is_lightweight = (total_chars <= 10000) OR (relation == 'Fix')",
-            "",
-            "IF is_lightweight:",
-            "    is_complete = true",
-            "    filled_report = <Markdown形式の分析レポート>",
-            "ELSE:",
-            "    is_complete = false",
-            "    filled_report = ''",
-            "```",
-            "",
-            "## Step 3: 出力",
-            "",
-            "is_lightweight == true の場合: filled_reportに完成したレポートを出力",
-            "is_lightweight == false の場合: planに分析手順、templateに空欄テンプレートを出力",
-            ]
-        )
-
         query = "\n".join(query_lines)
 
-        result = _run_with_cancellation(
-            ctx,
-            label="pre_analysis_agent",
-            func=lambda: agent.invoke({"messages": [{"role": "user", "content": query}], "files": files}),
-        )
-        structured = result.get("structured_response")
-        if structured is None:
-            raise RuntimeError("pre_analysis_agent returned no structured_response")
+        with open_checkpointer() as checkpointer:
+            middleware = []
+            try:
+                from compare_app.agents.middleware import EventSinkMiddleware  # type: ignore
 
-        # deep_agentの仮想FSから template_draft.md を取り出す（無ければフォールバック生成）
-        template_text: Optional[str] = None
+                middleware = [
+                    EventSinkMiddleware(
+                        run_id=ctx.run_id,
+                        events=ctx.events,
+                        cancellation=ctx.cancellation,
+                        agent_name="task_pre_analysis_agent",
+                    )
+                ]
+            except Exception:
+                # 環境によっては langchain.agents.middleware が無い等で middleware import が失敗する。
+                # その場合でも実行自体は継続する（UIの詳細ログは出ない）。
+                middleware = []
+
+            agent = create_deep_agent(
+                model=llm_complex,
+                tools=tools,
+                system_prompt=task_pre_analysis_prompt,
+                interrupt_on=interrupt_config,
+                checkpointer=checkpointer,
+                middleware=middleware,
+                debug=False,
+            )
+
+            resume_decisions = load_json_if_exists(resume_path) if hil_enabled else None
+            if isinstance(resume_decisions, dict) and "decisions" in resume_decisions:
+                resume_decisions = resume_decisions.get("decisions")
+
+            if hil_enabled and isinstance(resume_decisions, list) and resume_decisions:
+                input_obj: Any = Command(resume={"decisions": resume_decisions})
+            else:
+                input_obj = {"messages": [{"role": "user", "content": query}], "files": files}
+
+            result = _run_with_cancellation(
+                ctx,
+                label="task_pre_analysis_agent",
+                func=lambda: agent.invoke(input_obj, config=config_lg),
+            )
+
+        # resumeファイルはここで消費（次回の誤再開防止）
+        if hil_enabled:
+            remove_if_exists(resume_path)
+
+        interrupt_payload = _extract_interrupt_payload(result)
+        if hil_enabled and interrupt_payload:
+            # UIが質問を表示できるよう、work配下に保存
+            write_json(interrupt_path, interrupt_payload)
+            try:
+                ctx.events.emit(
+                    ctx.run_id,
+                    "hitl_interrupt",
+                    {
+                        "ts": _utcnow_iso(),
+                        "step": self.name,
+                        "action_requests": interrupt_payload.get("action_requests"),
+                    },
+                )
+            except Exception:
+                pass
+            from compare_app.core.pipeline import WaitingUserError
+
+            raise WaitingUserError("hitl interrupted (pre_analysis)")
+
+        # 正常復帰したら、古いinterruptファイルは消す
+        if hil_enabled:
+            remove_if_exists(interrupt_path)
+
+        last_text = _extract_last_ai_text(result)
+        if not last_text.strip():
+            raise RuntimeError("pre_analysis_agent returned no final AI message")
+        structured_dict = _extract_json_block(last_text)
+        try:
+            structured = TaskPreAnalysisResult(**structured_dict)
+        except Exception as e:
+            raise RuntimeError(f"pre_analysis_agent returned invalid JSON: {e}")
+
+        needs_review = False
+        review_questions: list[str] = []
+
         vfiles = result.get("files") or {}
-        for key in ["/template_draft.md", "template_draft.md", "/out/template_draft.md", "/out/template_draft.md"]:
-            fd = vfiles.get(key)
-            if isinstance(fd, dict) and "content" in fd:
-                c = fd["content"]
-                if isinstance(c, list):
-                    template_text = "\n".join(c)
-                else:
-                    template_text = str(c)
-                break
 
+        if hil_enabled:
+            review_fd = vfiles.get("/needs_review.json") or vfiles.get("needs_review.json")
+            review_text = _vfile_to_text(review_fd)
+            if review_text:
+                try:
+                    review_data = json.loads(review_text)
+                    if isinstance(review_data, dict):
+                        needs_review = bool(review_data.get("needs_review", False))
+                        questions = review_data.get("questions") or []
+                        if isinstance(questions, list):
+                            review_questions = [str(q) for q in questions if str(q).strip()]
+                except Exception:
+                    raise RuntimeError("Invalid /needs_review.json format")
+        else:
+            if "/needs_review.json" in vfiles or "needs_review.json" in vfiles:
+                raise RuntimeError("needs_review.json provided but hil_enabled=false")
+
+        draft_fd = vfiles.get("/template_draft.md") or vfiles.get("template_draft.md")
+        template_text: Optional[str] = None
+        template_text = _vfile_to_text(draft_fd)
+        if not template_text and template_seed_text is not None:
+            template_text = template_seed_text
         if not template_text:
-            # 最低限、structured.plan からテンプレを生成
-            plan_lines = []
-            for i, s in enumerate(getattr(structured, "plan", []) or [], 1):
-                plan_lines.append(f"- [ ] {i}. {s}")
+            # execute が常に template_draft.md を必要とするため、最低限のテンプレを必ず用意する
             template_text = "\n".join(
                 [
-                    "# 比較レポート（テンプレ）",
+                    "# レポート（テンプレ）",
                     "",
-                    "## 関係性（relation）",
-                    f"- relation: {getattr(structured, 'relation', '')}",
-                    f"- reason: {getattr(structured, 'reason', '')}",
-                    "",
-                    "## 分析プラン（plan）",
-                    *(plan_lines or ["- [ ] （プラン未生成）"]),
-                    "",
-                    "## 差分まとめ",
-                    "",
-                    "(ここに段階的に追記されます)",
+                    "## 出力",
+                    "- （ここに結果を記載）",
                     "",
                 ]
             )
 
-        # is_completeフラグを取得（軽量ファイルの場合にpre_analysisで完結）
-        is_complete = getattr(structured, "is_complete", False)
+        is_complete = bool(getattr(structured, "is_complete", False))
         filled_report = getattr(structured, "filled_report", "") or ""
 
-        # is_complete=Trueの場合、filled_reportを最終成果物として保存（Draftは作成しない）
+        if is_complete and not filled_report:
+            filled_fd = vfiles.get("/template_filled.md") or vfiles.get("template_filled.md")
+            filled_report = _vfile_to_text(filled_fd) or filled_report
+
+        if is_complete and not filled_report:
+            raise RuntimeError("is_complete=True but filled_report is empty")
+        # template_text は常に埋まる（seed/agent/フォールバックのいずれか）
+
         if is_complete and filled_report:
-            # 記入済みレポートをtemplate_filled.mdとして保存（compare_analysisをスキップ）
             out_dir = Path(ctx.paths["out_dir"])
             out_dir.mkdir(parents=True, exist_ok=True)
             filled_path = out_dir / "template_filled.md"
             filled_path.write_text(filled_report, encoding="utf-8")
-            ctx.events.emit(
-                ctx.run_id,
-                "artifact_updated",
-                {"ts": _utcnow_iso(), "kind": "template_filled", "path": filled_path.relative_to(run_dir).as_posix()},
-            )
-            # is_complete=Trueの場合はtemplate_draft.mdを作成しない（軽量データでは空欄テンプレートの概念がない）
-        else:
-            out_draft.write_text(template_text, encoding="utf-8")
+
+            try:
+                ctx.events.emit(
+                    ctx.run_id,
+                    "artifact_updated",
+                    {"ts": _utcnow_iso(), "kind": "template_filled", "path": "out/template_filled.md"},
+                )
+            except Exception:
+                pass
+
+        if template_text is not None:
+            out_draft.write_text(template_text or "", encoding="utf-8")
+            try:
+                ctx.events.emit(
+                    ctx.run_id,
+                    "artifact_updated",
+                    {"ts": _utcnow_iso(), "kind": "template_draft", "path": out_draft.relative_to(run_dir).as_posix()},
+                )
+            except Exception:
+                pass
+
+        def _as_dict(obj: Any) -> Optional[dict[str, Any]]:
+            if isinstance(obj, dict):
+                return obj
+            if hasattr(obj, "model_dump"):
+                return obj.model_dump()  # type: ignore[no-any-return]
+            if hasattr(obj, "dict"):
+                return obj.dict()  # type: ignore[no-any-return]
+            return None
+
+        structured_docs = list(getattr(structured, "documents", []) or [])
+        if not structured_docs:
+            raise RuntimeError("documents is required in pre_analysis result")
+
+        meta_by_id = {str(d.get("doc_id")): d for d in docs_meta}
+        structured_by_id: dict[str, Any] = {}
+        for sd in structured_docs:
+            sd_dict = _as_dict(sd)
+            if not sd_dict:
+                continue
+            did = str(sd_dict.get("doc_id") or "")
+            if not did:
+                continue
+            if did not in meta_by_id:
+                raise RuntimeError(f"Unknown doc_id in pre_analysis result: {did}")
+            structured_by_id[did] = sd_dict
+
+        documents_out: list[dict[str, Any]] = []
+        for did, meta in meta_by_id.items():
+            sd = structured_by_id.get(did, {})
+            merged = dict(meta)
+            if sd:
+                merged["role_guess"] = sd.get("role_guess", merged.get("role_guess"))
+                merged["role_reason"] = sd.get("role_reason", merged.get("role_reason"))
+                merged["confidence"] = sd.get("confidence", merged.get("confidence"))
+                merged["filename"] = sd.get("filename") or merged.get("filename")
+            documents_out.append(merged)
+
+        task_type = str(getattr(structured, "task_type", "") or "").strip() or None
+        execution_plan_raw = getattr(structured, "execution_plan", None)
+        execution_plan: list[dict[str, Any]] = []
+        template_name = getattr(structured, "template", None)
+
+        if not execution_plan_raw:
+            raise RuntimeError("execution_plan is required in pre_analysis result")
+        for step in execution_plan_raw:
+            step_dict = _as_dict(step)
+            if not step_dict:
+                raise RuntimeError("invalid execution_plan format in pre_analysis result")
+            execution_plan.append(step_dict)
+        if not template_name:
+            raise RuntimeError("template is required in pre_analysis result")
 
         out_meta.write_text(
             json.dumps(
                 {
-                    "relation": getattr(structured, "relation", None),
-                    "reason": getattr(structured, "reason", None),
-                    "plan": getattr(structured, "plan", None),
-                    "template_name": getattr(structured, "template", None),
+                    "schema_version": "pre_analysis.v2",
+                    "request_text": request_text,
+                    "hil_enabled": hil_enabled,
+                    "documents": documents_out,
+                    "task_type": task_type,
+                    "execution_plan": execution_plan,
+                    "template_name": template_name,
                     "is_complete": is_complete,
-                    # LLM判断用に提供した統計情報
-                    "doc_stats": {
-                        "docA": stats_a,
-                        "docB": stats_b,
-                        "matching": matching_stats,
+                    "filled_report": filled_report if is_complete else None,
+                    "completion": {
+                        "is_complete": is_complete,
+                        "needs_review": needs_review,
+                        "questions": review_questions,
+                        "reason": "pre_analysis_is_complete" if is_complete else "",
                     },
                 },
                 ensure_ascii=False,
@@ -823,122 +1025,98 @@ class PreAnalysisStep:
         ctx.events.emit(
             ctx.run_id,
             "artifact_updated",
-            {"ts": _utcnow_iso(), "kind": "template_draft", "path": out_draft.relative_to(run_dir).as_posix()},
-        )
-        ctx.events.emit(
-            ctx.run_id,
-            "artifact_updated",
             {"ts": _utcnow_iso(), "kind": "pre_analysis", "path": out_meta.relative_to(run_dir).as_posix()},
         )
 
-        # is_complete=Trueの場合、後続のcompare_analysisをスキップするフラグを設定
-        if is_complete:
+        if needs_review and hil_enabled:
             ctx.events.emit(
                 ctx.run_id,
-                "pre_analysis_complete",
-                {"ts": _utcnow_iso(), "is_complete": True, "message": "Pre-analysis completed. Skipping compare_analysis."},
+                "waiting_user_requested",
+                {"ts": _utcnow_iso(), "step": self.name, "questions": review_questions},
             )
-            # skip_compare_analysisフラグをwork_dirに保存（後続ステップが参照）
-            skip_flag_path = work_dir / ".skip_compare_analysis"
-            skip_flag_path.write_text("true", encoding="utf-8")
+            from compare_app.core.pipeline import WaitingUserError
 
+            raise WaitingUserError("pre_analysis requested human review")
+
+    def run(self, ctx: RunContext) -> None:
+        self._run_ndoc(ctx)
+        return
 
 @dataclass
 class CompareAnalysisStep:
     """Pre-Analysisで作ったテンプレを埋めて、out/template_filled.md を作る。"""
 
-    name: str = "compare_analysis"
+    name: str = "execute_analysis"
 
     def should_run(self, ctx: RunContext) -> bool:
         work_dir = Path(ctx.paths["work_dir"])
         out_dir = Path(ctx.paths["out_dir"])
         filled = out_dir / "template_filled.md"
         force = bool(ctx.params.get("force", False))
-
-        # pre_analysisで完結した場合はスキップ
-        skip_flag_path = work_dir / ".skip_compare_analysis"
-        if skip_flag_path.exists():
-            ctx.events.emit(
-                ctx.run_id,
-                "step_skipped_reason",
-                {"ts": _utcnow_iso(), "step": self.name, "reason": "Pre-analysis marked as complete (lightweight documents)"},
-            )
-            return False
-
-        # pre_analysis.jsonからis_completeを確認
-        pre_analysis_path = work_dir / "pre_analysis.json"
-        if pre_analysis_path.exists():
-            try:
-                pre_analysis = json.loads(pre_analysis_path.read_text(encoding="utf-8"))
-                if pre_analysis.get("is_complete", False):
-                    ctx.events.emit(
-                        ctx.run_id,
-                        "step_skipped_reason",
-                        {"ts": _utcnow_iso(), "step": self.name, "reason": "Pre-analysis is_complete=true"},
-                    )
-                    return False
-            except Exception:
-                pass
-
         return force or (not filled.exists())
 
-    def run(self, ctx: RunContext) -> None:
+    def _run_ndoc_execute(self, ctx: RunContext) -> None:
         work_dir = Path(ctx.paths["work_dir"])
         out_dir = Path(ctx.paths["out_dir"])
         out_dir.mkdir(parents=True, exist_ok=True)
         run_dir = Path(ctx.paths["run_dir"])
 
-        draft_path = work_dir / "template_draft.md"
-        filled_path = out_dir / "template_filled.md"
+        pre_analysis_path = work_dir / "pre_analysis.json"
+        if not pre_analysis_path.exists():
+            raise FileNotFoundError(str(pre_analysis_path))
+        try:
+            pre_analysis_data = json.loads(pre_analysis_path.read_text(encoding="utf-8"))
+        except Exception:
+            raise RuntimeError("failed to read pre_analysis.json")
 
-        if not draft_path.exists():
-            raise FileNotFoundError(str(draft_path))
-
-        # COMPARE_STATEが空の場合は復元（compare_setupステップがスキップされた場合など）
-        _restore_compare_state_if_needed(ctx)
-
-        if not _have_llm_key():
-            # フォールバック: そのままコピー＋注記
-            base = draft_path.read_text(encoding="utf-8", errors="replace")
-            filled_path.write_text(base + "\n\n> LLMキー未設定のため、Compare-Analysisは未実行です。\n", encoding="utf-8")
-            ctx.events.emit(
-                ctx.run_id,
-                "artifact_updated",
-                {"ts": _utcnow_iso(), "kind": "template_filled", "path": filled_path.relative_to(run_dir).as_posix()},
-            )
+        # pre_analysis で完結した場合: out/template_filled.md が必須
+        if bool(pre_analysis_data.get("is_complete", False)):
+            filled_path = out_dir / "template_filled.md"
+            if not filled_path.exists():
+                raise RuntimeError("pre_analysis is_complete=true but out/template_filled.md is missing")
             return
+
+        request_text = ctx.params.get("request_text") or pre_analysis_data.get("request_text")
+        if not request_text or not str(request_text).strip():
+            raise ValueError("request_text is required for execute_task")
+        request_text = str(request_text).strip()
+
+        docs_index_path = work_dir / "docs" / "index.json"
+        if not docs_index_path.exists():
+            raise FileNotFoundError(str(docs_index_path))
+
+        template_path = work_dir / "template_draft.md"
+        if not template_path.exists():
+            raise FileNotFoundError(str(template_path))
+
+        documents = pre_analysis_data.get("documents")
+        if not isinstance(documents, list) or not documents:
+            raise RuntimeError("documents is required for execute_task")
+
+        docs_by_id: dict[str, dict[str, Any]] = {}
+        for d in documents:
+            if isinstance(d, dict) and d.get("doc_id"):
+                docs_by_id[str(d.get("doc_id"))] = d
+        if not docs_by_id:
+            raise RuntimeError("no valid documents found for execute_task")
+
+        pair_compare_setup = _build_pair_compare_setup_tool(ctx, docs_by_id, run_dir, work_dir)
+        pair_scoped_compare_tools = _build_pair_scoped_compare_tools(ctx, docs_by_id, run_dir, work_dir)
 
         from deepagents import create_deep_agent
         from deepagents.backends.utils import create_file_data
 
-        from src.prompt import (
-            compare_parent_agent_prompt,
-            compare_sub_agent1,
-            compare_sub_agent2,
-            compare_sub_agent3,
-            compare_sub_agent_general,
-            compare_sub_agent_report,
-        )
         from src.tools import (
-            compare_get_chunk,
-            compare_get_grouping,
-            compare_search_by_keyphrase,
-            compare_specified_chunks_diff,
-            compare_specified_chunks_llm,
             extract_regex_matches,
             get_file_length,
             read_ast,
             read_text_file,
             read_text_segment,
+            search_by_keyphrase,
         )
         from src.utils import build_llm
 
-        from compare_app.agents.middleware import CompareRestoreConfig, EventSinkMiddleware
-
-        llm = build_llm()
         llm_complex = build_llm(model=str(ctx.params.get("llm_complex_model", "gpt-5-mini")))
-
-        # run入力（data/runs/{run_id}/input）を読む analyze_visual_contents を提供（data/input固定依存を回避）
         llm_visual = build_llm(
             model=str(ctx.params.get("llm_visual_model", ctx.params.get("llm_complex_model", "gpt-5-mini")))
         )
@@ -985,274 +1163,142 @@ class CompareAnalysisStep:
                 if cand.exists():
                     pdf_path = cand
                 else:
-                    for fallback_name in ["doc_a.pdf", "doc_b.pdf"]:
-                        fb = input_dir / fallback_name
-                        if fb.exists():
-                            pdf_path = fb
-                            break
+                    pdf_candidates = sorted(input_dir.glob("*.pdf"))
+                    if pdf_candidates:
+                        pdf_path = pdf_candidates[0]
                     else:
-                        return f"[analyze_visual_contents] pdf not found for: {document_name} (run has no PDF inputs)."
+                        raise FileNotFoundError(f"pdf not found: {name}")
 
-            images = _get_pdf_page_as_image(pdf_path, page_numbers)
-            b64_data_list = [
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{item['base64_data']}"}}
-                for item in images
+            pages = _get_pdf_page_as_image(pdf_path, page_numbers, dpi=150)
+            if not pages:
+                raise RuntimeError("failed to render pdf pages")
+
+            prompt_lines = [
+                prompt or "PDFの視覚情報を分析し、表や図の内容を説明してください。",
             ]
-            message = HumanMessage(content=[{"type": "text", "text": prompt}, *b64_data_list])
-            response = llm_visual.invoke([message])
-            return response.content
+            messages = [HumanMessage(content="\n".join(prompt_lines))]
+            for page in pages:
+                messages.append(
+                    HumanMessage(
+                        content=[
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/png;base64,{page['base64_data']}"
+                                },
+                            },
+                            {
+                                "type": "text",
+                                "text": f"page {page['page_number']}",
+                            },
+                        ]
+                    )
+                )
 
-        tools_compare = [
+            resp = llm_visual.invoke(messages)
+            return getattr(resp, "content", None) or str(resp)
+
+        tools = [
             read_ast,
             read_text_file,
             read_text_segment,
             extract_regex_matches,
             get_file_length,
-            compare_get_grouping,
-            compare_search_by_keyphrase,
-            compare_get_chunk,
-            compare_specified_chunks_diff,
-            compare_specified_chunks_llm,
+            search_by_keyphrase,
+            *pair_scoped_compare_tools,
             analyze_visual_contents,
+            pair_compare_setup,
         ]
 
-        # ThreadLocal な COMPARE_STATE 対策:
-        # subagent/tool 実行が別スレッドになっても、compare_* 呼び出し直前に復元できるように設定を渡す
-        ast_a_path = work_dir / "ast_a.ast.json"
-        ast_b_path = work_dir / "ast_b.ast.json"
-        cache_path = Path(ctx.paths["cache_dir"]) / "embedding_cache.json"
-        initial_matching_path = work_dir / "initial_matching.json"
-        restore_cfg = CompareRestoreConfig(
-            ast_a_path=str(ast_a_path),
-            ast_b_path=str(ast_b_path),
-            txt_a_path=str(work_dir / "doc_a.txt"),
-            txt_b_path=str(work_dir / "doc_b.txt"),
-            cache_path=str(cache_path),
-            initial_matching_path=str(initial_matching_path) if initial_matching_path.exists() else "",
-            embedding_model=ctx.params.get("embedding_model"),
-            embedding_batch_size=int(ctx.params.get("embedding_batch_size", 64)),
-            warmup_matching=not initial_matching_path.exists(),
-            match_top_k=int(ctx.params.get("match_top_k", 3)),
-            match_alpha=float(ctx.params.get("match_alpha", 0.3)),
-            match_beta=float(ctx.params.get("match_beta", 0.4)),
-            match_min_score=float(ctx.params.get("match_min_score", 0.25)),
-        )
-
-        parent_mw = EventSinkMiddleware(
-            run_id=ctx.run_id,
-            events=ctx.events,
-            cancellation=ctx.cancellation,
-            agent_name="compare_parent",
-            compare_restore=restore_cfg,
-        )
-
-        agent = create_deep_agent(
-            model=llm_complex,
-            system_prompt=compare_parent_agent_prompt,
-            middleware=[parent_mw],
-            subagents=[
-                {
-                    "name": "compare_general_purpose_agent",
-                    "description": "ドキュメント比較に必要な準備作業や事前確認を汎用的に行うサブエージェントです。",
-                    "system_prompt": compare_sub_agent_general,
-                    "tools": tools_compare,
-                    "middleware": [
-                        EventSinkMiddleware(
-                            run_id=ctx.run_id,
-                            events=ctx.events,
-                            cancellation=ctx.cancellation,
-                            agent_name="compare_general",
-                            is_subagent=True,
-                            forced_parent_invocation_id=parent_mw.invocation_id,
-                            forced_parent_agent_name=parent_mw.agent_name,
-                            compare_restore=restore_cfg,
-                        )
-                    ],
-                    "model": llm,
-                },
-                {
-                    "name": "compare_agent",
-                    "description": "与えられた特定の観点でドキュメント間の比較を行います。",
-                    "system_prompt": compare_sub_agent1,
-                    "tools": tools_compare,
-                    "middleware": [
-                        EventSinkMiddleware(
-                            run_id=ctx.run_id,
-                            events=ctx.events,
-                            cancellation=ctx.cancellation,
-                            agent_name="compare_agent",
-                            is_subagent=True,
-                            forced_parent_invocation_id=parent_mw.invocation_id,
-                            forced_parent_agent_name=parent_mw.agent_name,
-                            compare_restore=restore_cfg,
-                        )
-                    ],
-                    "model": llm,
-                },
-                {
-                    "name": "deep_research_agent",
-                    "description": "compare_agentの結果に対して、より具体的な分析観点や論点について深掘りを行うサブエージェントです。",
-                    "system_prompt": compare_sub_agent2,
-                    "tools": tools_compare,
-                    "middleware": [
-                        EventSinkMiddleware(
-                            run_id=ctx.run_id,
-                            events=ctx.events,
-                            cancellation=ctx.cancellation,
-                            agent_name="deep_research_agent",
-                            is_subagent=True,
-                            forced_parent_invocation_id=parent_mw.invocation_id,
-                            forced_parent_agent_name=parent_mw.agent_name,
-                            compare_restore=restore_cfg,
-                        )
-                    ],
-                    "model": llm,
-                },
-                {
-                    "name": "validate_agent",
-                    "description": "分析結果の妥当性を検証するサブエージェントです。",
-                    "system_prompt": compare_sub_agent3,
-                    "tools": tools_compare,
-                    "middleware": [
-                        EventSinkMiddleware(
-                            run_id=ctx.run_id,
-                            events=ctx.events,
-                            cancellation=ctx.cancellation,
-                            agent_name="validate_agent",
-                            is_subagent=True,
-                            forced_parent_invocation_id=parent_mw.invocation_id,
-                            forced_parent_agent_name=parent_mw.agent_name,
-                            compare_restore=restore_cfg,
-                        )
-                    ],
-                    "model": llm,
-                },
-                {
-                    "name": "report_agent",
-                    "description": "分析結果をまとめて報告するサブエージェントです。",
-                    "system_prompt": compare_sub_agent_report,
-                    "model": llm,
-                    "middleware": [
-                        EventSinkMiddleware(
-                            run_id=ctx.run_id,
-                            events=ctx.events,
-                            cancellation=ctx.cancellation,
-                            agent_name="report_agent",
-                            is_subagent=True,
-                            forced_parent_invocation_id=parent_mw.invocation_id,
-                            forced_parent_agent_name=parent_mw.agent_name,
-                            compare_restore=restore_cfg,
-                        )
-                    ],
-                },
-            ],
-            debug=False,
-        )
-
-        # 仮想FSへ投入（前のステップで作成された成果物を全てマッピング）
-        ast_a_text = (work_dir / "ast_a.ast.json").read_text(encoding="utf-8", errors="replace")
-        ast_b_text = (work_dir / "ast_b.ast.json").read_text(encoding="utf-8", errors="replace")
-        cache_path = Path(ctx.paths["cache_dir"]) / "embedding_cache.json"
-        cache_text = cache_path.read_text(encoding="utf-8", errors="replace") if cache_path.exists() else "{}"
-        template_text = draft_path.read_text(encoding="utf-8", errors="replace")
-
-        files = {
-            # AST
-            "/ast_a.ast.json": create_file_data(ast_a_text),
-            "/ast_b.ast.json": create_file_data(ast_b_text),
-            # キャッシュ
-            "/.embedding_cache.json": create_file_data(cache_text),
-            # テンプレート
-            "/template_draft.md": create_file_data(template_text),
-        }
-
-        # pre_analysis.json を追加（存在すれば）
-        pre_analysis_path = work_dir / "pre_analysis.json"
-        if pre_analysis_path.exists():
-            files["/pre_analysis.json"] = create_file_data(
-                pre_analysis_path.read_text(encoding="utf-8", errors="replace")
-            )
-
-        # initial_matching.json を追加（存在すれば）
-        initial_matching_path = work_dir / "initial_matching.json"
-        if initial_matching_path.exists():
-            files["/initial_matching.json"] = create_file_data(
-                initial_matching_path.read_text(encoding="utf-8", errors="replace")
-            )
-
-        # blueprint を追加（存在すれば）
-        for bp_name in ["blueprint_a.json", "blueprint_b.json"]:
-            bp_path = work_dir / bp_name
-            if bp_path.exists():
-                files[f"/{bp_name}"] = create_file_data(
-                    bp_path.read_text(encoding="utf-8", errors="replace")
-                )
-
-        # 入力テキスト（doc_a.txt, doc_b.txt）を追加（存在すれば）
-        for doc_name in ["doc_a.txt", "doc_b.txt"]:
-            # work_dirにコピーされている場合
-            doc_path = work_dir / doc_name
-            if doc_path.exists():
-                files[f"/{doc_name}"] = create_file_data(
-                    doc_path.read_text(encoding="utf-8", errors="replace")
-                )
-            else:
-                # input_dirにある場合
-                input_doc_path = input_dir / doc_name
-                if input_doc_path.exists():
-                    files[f"/{doc_name}"] = create_file_data(
-                        input_doc_path.read_text(encoding="utf-8", errors="replace")
-                    )
-
-        query = "\n".join(
+        executor_prompt = "\n".join(
             [
-                "次の2つの文書（原文テキスト）について分析し、日本語で報告してください。",
-                "- docA: doc_a.txt（原文）",
-                "- docB: doc_b.txt（原文）",
+                "あなたはタスク実行エージェントです。/pre_analysis.json の execution_plan に従って実行してください。",
+                "- 必要な比較準備は pair_compare_setup(doc_a_id, doc_b_id, purpose) を呼び出すこと",
+                "- compare_* ツールは doc_a_id/doc_b_id のペア指定が必須です（dirは指定しません）",
+                "- compare_* ツールを使う前に、対象ペアの pair_compare_setup を必ず実行すること（未実行の場合は失敗します）",
+                "- 最終成果物は /template_filled.md として出力すること",
                 "",
-                "補助情報として ast_a.ast.json / ast_b.ast.json を参照できますが、",
-                "ASTは各ドキュメントを独立に構造化した参考情報であり、",
-                "同一構成でも階層のズレが起こり得ます。ASTは補助として扱い、",
-                "根拠は原文テキスト（doc_a.txt / doc_b.txt）を優先してください。",
-                "",
-                "# 分析観点",
-                "以下に記載されているテンプレートファイル `template_draft.md` を埋めてください。",
-                "テンプレートは最後に一括で更新せず、段階的に編集してください。",
-                "最後にチェックリストもあるので漏れなく確認して埋めてください。",
-                "チェックがつけられない場合は、なぜチェックできないか根拠を記載したうえで、代替となる観点でチェックを行ってください。",
-                "",
-                "最終成果物は `template_filled.md` として出力してください。",
+                "利用可能なファイル:",
+                "- /template_draft.md (テンプレート)",
+                "- /pre_analysis.json (計画)",
+                "- /docs/index.json (ドキュメント一覧)",
+                "- /docs/<doc_id>/doc.txt (原文)",
+                "- /docs/<doc_id>/ast.json (AST, 任意)",
+                "- /docs/<doc_id>/blueprint.json (Blueprint, 任意)",
+                "- /request.txt (依頼文)",
             ]
         )
 
-        result = _run_with_cancellation(
-            ctx,
-            label="compare_analysis_agent",
-            func=lambda: agent.invoke({"messages": [{"role": "user", "content": query}], "files": files}),
+        middleware = []
+        try:
+            from compare_app.agents.middleware import EventSinkMiddleware  # type: ignore
+
+            middleware = [
+                EventSinkMiddleware(
+                    run_id=ctx.run_id,
+                    events=ctx.events,
+                    cancellation=ctx.cancellation,
+                    agent_name="task_executor_agent",
+                )
+            ]
+        except Exception:
+            middleware = []
+
+        agent = create_deep_agent(
+            model=llm_complex,
+            tools=tools,
+            system_prompt=executor_prompt,
+            middleware=middleware,
+            debug=False,
         )
 
-        # 仮想FSから filled を抽出（無ければ draft を採用）
+        files: dict[str, Any] = {
+            "/template_draft.md": create_file_data(template_path.read_text(encoding="utf-8", errors="replace")),
+            "/pre_analysis.json": create_file_data(pre_analysis_path.read_text(encoding="utf-8", errors="replace")),
+            "/docs/index.json": create_file_data(docs_index_path.read_text(encoding="utf-8", errors="replace")),
+            "/request.txt": create_file_data(str(request_text)),
+        }
+
+        for doc_id, meta in docs_by_id.items():
+            txt_path = _resolve_doc_path(doc_id, "txt", docs_by_id, run_dir, work_dir)
+            bp_path = _resolve_doc_path(doc_id, "blueprint", docs_by_id, run_dir, work_dir)
+            ast_path = _resolve_doc_path(doc_id, "ast", docs_by_id, run_dir, work_dir)
+            if txt_path and txt_path.exists():
+                files[f"/docs/{doc_id}/doc.txt"] = create_file_data(txt_path.read_text(encoding="utf-8", errors="replace"))
+            if bp_path and bp_path.exists():
+                files[f"/docs/{doc_id}/blueprint.json"] = create_file_data(bp_path.read_text(encoding="utf-8", errors="replace"))
+            if ast_path and ast_path.exists():
+                files[f"/docs/{doc_id}/ast.json"] = create_file_data(ast_path.read_text(encoding="utf-8", errors="replace"))
+
+        recursion_limit = int(ctx.params.get("recursion_limit", 120) or 120)
+        config_lg = {"configurable": {"thread_id": str(ctx.run_id)}, "recursion_limit": recursion_limit}
+
+        result = _run_with_cancellation(
+            ctx,
+            label="task_executor_agent",
+            func=lambda: agent.invoke({"messages": [{"role": "user", "content": "execute"}], "files": files}, config=config_lg),
+        )
+
         vfiles = result.get("files") or {}
         content: Optional[str] = None
         for key in ["/template_filled.md", "template_filled.md", "/out/template_filled.md"]:
             fd = vfiles.get(key)
-            if isinstance(fd, dict) and "content" in fd:
-                c = fd["content"]
-                content = "\n".join(c) if isinstance(c, list) else str(c)
+            text = _vfile_to_text(fd)
+            if text:
+                content = text
                 break
-        if content is None:
-            fd = vfiles.get("/template_draft.md")
-            if isinstance(fd, dict) and "content" in fd:
-                c = fd["content"]
-                content = "\n".join(c) if isinstance(c, list) else str(c)
-
         if not content:
-            # 最低限フォールバック
-            content = template_text + "\n\n> Compare-Analysisの出力を取得できませんでした。\n"
+            raise RuntimeError("template_filled.md not produced by executor")
 
+        filled_path = out_dir / "template_filled.md"
         filled_path.write_text(content, encoding="utf-8")
         ctx.events.emit(
             ctx.run_id,
             "artifact_updated",
-            {"ts": _utcnow_iso(), "kind": "template_filled", "path": filled_path.relative_to(run_dir).as_posix()},
+            {"ts": _utcnow_iso(), "kind": "template_filled", "path": "out/template_filled.md"},
         )
+        return
+
+    def run(self, ctx: RunContext) -> None:
+        self._run_ndoc_execute(ctx)
+        return

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -20,11 +21,91 @@ def _safe_read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def _extract_last_ai_text(result: Any) -> str:
+    """deepagents/langgraphのstate(dict)から最終AI出力テキストを取り出す。"""
+    if isinstance(result, dict):
+        msgs = result.get("messages") or []
+        for m in reversed(list(msgs)):
+            if hasattr(m, "__class__") and m.__class__.__name__ == "AIMessage":
+                content = getattr(m, "content", None)
+                if content:
+                    return str(content)
+            if isinstance(m, dict) and (m.get("role") in {"assistant", "ai"}):
+                c = m.get("content")
+                if c:
+                    return str(c)
+    return ""
+
+
+def _extract_json_from_text(text: str) -> dict:
+    """LLM出力からJSON部分を抽出してdictにする（前後に説明が混ざっても許容）。"""
+    try:
+        return json.loads(text)
+    except Exception:
+        pass
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        return json.loads(text[start : end + 1])
+    raise ValueError("Failed to parse JSON from LLM response")
+
+
+def _load_run_config(ctx: RunContext) -> dict[str, Any]:
+    run_dir = Path(ctx.paths["run_dir"])
+    config_path = run_dir / "config.json"
+    if not config_path.exists():
+        return {}
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _normalize_doc_id(raw: Any, fallback: str) -> str:
+    text = str(raw).strip() if raw is not None else ""
+    if not text:
+        return fallback
+    # ファイル名として安全な範囲に限定
+    safe = re.sub(r"[^A-Za-z0-9_-]+", "_", text)
+    return safe or fallback
+
+
+def _get_documents(ctx: RunContext) -> list[dict[str, Any]]:
+    config = _load_run_config(ctx)
+    docs = config.get("documents")
+    if isinstance(docs, list) and docs:
+        out: list[dict[str, Any]] = []
+        for i, d in enumerate(docs, 1):
+            if not isinstance(d, dict):
+                continue
+            doc_id = _normalize_doc_id(d.get("doc_id"), f"d{i}")
+            item = {**d, "doc_id": doc_id}
+            out.append(item)
+        return out
+    return []
+
+
+def _get_doc_hash(ctx: RunContext, doc_id: str) -> Optional[str]:
+    config = _load_run_config(ctx)
+    docs = config.get("documents")
+    if isinstance(docs, list):
+        for d in docs:
+            if isinstance(d, dict) and str(d.get("doc_id")) == doc_id:
+                h = d.get("doc_hash")
+                return str(h) if h else None
+    # fallback: params
+    key = f"doc_{doc_id}_hash"
+    if ctx.params.get(key):
+        return str(ctx.params.get(key))
+    return None
+
+
 @dataclass
 class EnsureTextStep:
-    """docA/docB の入力を txt に正規化して work_dir に配置する。
+    """ドキュメント入力を txt に正規化して work_dir に配置する。
 
-    - 入力がTXT: work/doc_{a|b}.txt にコピー
+    - 入力がTXT: work/doc_{doc_id}.txt にコピー
     - 入力がPDF: paramsで指定された方式でPDF→TXTし、workへ配置
     """
 
@@ -59,7 +140,13 @@ class EnsureTextStep:
         if not src_pdf.exists():
             raise FileNotFoundError(f"input not found for doc_{which}: {src_txt} / {src_pdf}")
 
-        pdf_mode = str(ctx.params.get(f"pdf_mode_{which}") or ctx.params.get("pdf_mode") or "fast").lower()
+        def _get_param(base_key: str, default: Any = None) -> Any:
+            key = f"{base_key}_{which}"
+            if key in ctx.params:
+                return ctx.params.get(key)
+            return ctx.params.get(base_key, default)
+
+        pdf_mode = str(_get_param("pdf_mode", "fast")).lower()
         if pdf_mode not in {"fast", "llm"}:
             pdf_mode = "fast"
 
@@ -84,15 +171,14 @@ class EnsureTextStep:
         # LLMモード
         from src.pdf_to_text_llm import convert_pdf_with_llm
 
-        start_page = int(ctx.params.get(f"pdf_{which}_start_page") or ctx.params.get("pdf_start_page") or 1)
-        end_page = ctx.params.get(f"pdf_{which}_end_page") or ctx.params.get("pdf_end_page")
+        start_page = int(_get_param("pdf_start_page", 1) or 1)
+        end_page = _get_param("pdf_end_page")
         end_page_i: Optional[int] = int(end_page) if end_page not in (None, "", 0) else None
-        batch_size = int(ctx.params.get(f"pdf_{which}_batch_size") or ctx.params.get("pdf_batch_size") or 5)
-        use_image = bool(ctx.params.get(f"pdf_{which}_use_image") or ctx.params.get("pdf_use_image") or False)
+        batch_size = int(_get_param("pdf_batch_size", 5) or 5)
+        use_image = bool(_get_param("pdf_use_image", False) or False)
 
         model = str(
-            ctx.params.get(f"pdf_llm_model_{which}")
-            or ctx.params.get("pdf_llm_model")
+            _get_param("pdf_llm_model")
             or ctx.params.get("llm_complex_model")
             or "gpt-5-mini"
         )
@@ -120,8 +206,36 @@ class EnsureTextStep:
 
 
 @dataclass
+class EnsureTextAllDocsStep:
+    """全ドキュメントの入力を txt に正規化する。"""
+
+    name: str = "ensure_text_all"
+
+    def should_run(self, ctx: RunContext) -> bool:
+        force = bool(ctx.params.get("force", False))
+        if force:
+            return True
+        work_dir = Path(ctx.paths["work_dir"])
+        for d in _get_documents(ctx):
+            doc_id = _normalize_doc_id(d.get("doc_id"), "d1")
+            out_txt = work_dir / f"doc_{doc_id}.txt"
+            if not out_txt.exists():
+                return True
+        return False
+
+    def run(self, ctx: RunContext) -> None:
+        docs = _get_documents(ctx)
+        if not docs:
+            raise ValueError("No documents found in run config")
+        for d in docs:
+            doc_id = _normalize_doc_id(d.get("doc_id"), "d1")
+            step = EnsureTextStep(name=f"ensure_text_{doc_id}", which=doc_id)
+            if step.should_run(ctx):
+                step.run(ctx)
+
+@dataclass
 class BuildBlueprintStep:
-    """doc_{a|b}.txt から blueprint_{a|b}.json を生成する（LLM）。"""
+    """doc_{doc_id}.txt から blueprint_{doc_id}.json を生成する（LLM）。"""
 
     name: str
     which: str  # "a" or "b"
@@ -161,8 +275,11 @@ class BuildBlueprintStep:
         )
         from src.utils import build_llm
 
-        # アプリ側イベントミドルウェア
-        from compare_app.agents.middleware import EventSinkMiddleware
+        # UI向けイベント（tool_call/agentログ）
+        try:
+            from compare_app.agents.middleware import EventSinkMiddleware  # type: ignore
+        except Exception:
+            EventSinkMiddleware = None  # type: ignore
 
         llm = build_llm()
         llm_complex = build_llm(model=str(ctx.params.get("llm_complex_model", "gpt-5-mini")))
@@ -237,35 +354,39 @@ class BuildBlueprintStep:
             analyze_visual_contents,
         ]
 
-        parent_mw = EventSinkMiddleware(
-            run_id=ctx.run_id,
-            events=ctx.events,
-            cancellation=ctx.cancellation,
-            agent_name=f"blueprint_builder_{which}",
-        )
-        validate_mw = EventSinkMiddleware(
-            run_id=ctx.run_id,
-            events=ctx.events,
-            cancellation=ctx.cancellation,
-            agent_name=f"validate_blueprint_agent_{which}",
-            is_subagent=True,
-            forced_parent_invocation_id=parent_mw.invocation_id,
-            forced_parent_agent_name=parent_mw.agent_name,
-        )
+        middleware = []
+        validate_mw = None
+        if EventSinkMiddleware is not None:
+            parent_mw = EventSinkMiddleware(
+                run_id=ctx.run_id,
+                events=ctx.events,
+                cancellation=ctx.cancellation,
+                agent_name=f"blueprint_builder_{which}",
+            )
+            middleware = [parent_mw]
+            # subagent側も親子関係を保ってログできるようにする
+            validate_mw = EventSinkMiddleware(
+                run_id=ctx.run_id,
+                events=ctx.events,
+                cancellation=ctx.cancellation,
+                agent_name=f"validate_blueprint_agent_{which}",
+                is_subagent=True,
+                forced_parent_invocation_id=parent_mw.invocation_id,
+                forced_parent_agent_name=parent_mw.agent_name,
+            )
 
         agent = create_deep_agent(
             model=llm_complex,
             tools=tools_blueprint_builder,
             system_prompt=blueprint_ast_builder_prompt,
-            response_format=DocumentStructureBlueprint,
-            middleware=[parent_mw],
+            middleware=middleware,
             subagents=[
                 {
                     "name": "validate_blueprint_agent",
                     "description": "blueprintを複数の観点で検証して必要に応じて修正します。blueprintのパスを指示してください。",
                     "system_prompt": blueprint_validate_prompt,
                     "tools": tools_blueprint_validator,
-                    "middleware": [validate_mw],
+                    **({"middleware": [validate_mw]} if validate_mw is not None else {}),
                     "model": llm,
                 }
             ],
@@ -275,10 +396,17 @@ class BuildBlueprintStep:
         txt_name = f"doc_{which}.txt"
         files = {f"/{txt_name}": create_file_data(_safe_read_text(txt_path))}
         query = f"ファイル '{txt_name}' を解析してください。文書内のすべての見出しパターンを自律的に検出して、抽出するためのblueprintを生成してください。"
-        result = agent.invoke({"messages": [{"role": "user", "content": query}], "files": files})
-        blueprint = result.get("structured_response")
-        if blueprint is None:
-            raise RuntimeError("blueprint agent returned no structured_response")
+        recursion_limit = int(ctx.params.get("recursion_limit", 120) or 120)
+        config_lg = {"configurable": {"thread_id": f"{ctx.run_id}:{which}:blueprint"}, "recursion_limit": recursion_limit}
+        result = agent.invoke({"messages": [{"role": "user", "content": query}], "files": files}, config=config_lg)
+        last_text = _extract_last_ai_text(result)
+        if not last_text.strip():
+            raise RuntimeError("blueprint agent returned no final AI message")
+        blueprint_dict = _extract_json_from_text(last_text)
+        try:
+            blueprint = DocumentStructureBlueprint(**blueprint_dict)
+        except Exception as e:
+            raise RuntimeError(f"blueprint agent returned invalid JSON: {e}")
 
         # 永続化（Runのworkディレクトリ）
         blueprint_data = blueprint.model_dump()
@@ -289,7 +417,7 @@ class BuildBlueprintStep:
         ctx.events.emit(ctx.run_id, "artifact_updated", {"ts": _utcnow_iso(), "kind": f"blueprint_{which}", "path": rel})
         
         # ドキュメントリポジトリにも保存（has_blueprintフラグを更新）
-        doc_hash = ctx.params.get(f"doc_{which}_hash")
+        doc_hash = ctx.params.get(f"doc_{which}_hash") or _get_doc_hash(ctx, which)
         if doc_hash:
             from compare_app.infra.document_store import DocumentRepository
             doc_repo = DocumentRepository()
@@ -297,8 +425,36 @@ class BuildBlueprintStep:
 
 
 @dataclass
+class BuildBlueprintAllDocsStep:
+    """全ドキュメントから blueprint を生成する（LLM）。"""
+
+    name: str = "build_blueprint_all"
+
+    def should_run(self, ctx: RunContext) -> bool:
+        force = bool(ctx.params.get("force", False))
+        if force:
+            return True
+        work_dir = Path(ctx.paths["work_dir"])
+        for d in _get_documents(ctx):
+            doc_id = _normalize_doc_id(d.get("doc_id"), "d1")
+            out_path = work_dir / f"blueprint_{doc_id}.json"
+            if not out_path.exists():
+                return True
+        return False
+
+    def run(self, ctx: RunContext) -> None:
+        docs = _get_documents(ctx)
+        if not docs:
+            raise ValueError("No documents found in run config")
+        for d in docs:
+            doc_id = _normalize_doc_id(d.get("doc_id"), "d1")
+            step = BuildBlueprintStep(name=f"build_blueprint_{doc_id}", which=doc_id)
+            if step.should_run(ctx):
+                step.run(ctx)
+
+@dataclass
 class BuildAstStep:
-    """blueprint_{a|b}.json と doc_{a|b}.txt から AST を生成する（非LLM）。"""
+    """blueprint_{doc_id}.json と doc_{doc_id}.txt から AST を生成する（非LLM）。"""
 
     name: str
     which: str  # "a" or "b"
@@ -336,13 +492,41 @@ class BuildAstStep:
         ctx.events.emit(ctx.run_id, "artifact_updated", {"ts": _utcnow_iso(), "kind": f"ast_{which}", "path": rel})
         
         # ドキュメントリポジトリにも保存（has_astフラグを更新）
-        doc_hash = ctx.params.get(f"doc_{which}_hash")
+        doc_hash = ctx.params.get(f"doc_{which}_hash") or _get_doc_hash(ctx, which)
         if doc_hash:
             from compare_app.infra.document_store import DocumentRepository
             ast_data = json.loads(out_ast.read_text(encoding="utf-8"))
             doc_repo = DocumentRepository()
             doc_repo.save_ast(doc_hash, ast_data)
 
+
+@dataclass
+class BuildAstAllDocsStep:
+    """全ドキュメントの AST を生成する（非LLM）。"""
+
+    name: str = "build_ast_all"
+
+    def should_run(self, ctx: RunContext) -> bool:
+        force = bool(ctx.params.get("force", False))
+        if force:
+            return True
+        work_dir = Path(ctx.paths["work_dir"])
+        for d in _get_documents(ctx):
+            doc_id = _normalize_doc_id(d.get("doc_id"), "d1")
+            out_ast = work_dir / f"ast_{doc_id}.ast.json"
+            if not out_ast.exists():
+                return True
+        return False
+
+    def run(self, ctx: RunContext) -> None:
+        docs = _get_documents(ctx)
+        if not docs:
+            raise ValueError("No documents found in run config")
+        for d in docs:
+            doc_id = _normalize_doc_id(d.get("doc_id"), "d1")
+            step = BuildAstStep(name=f"build_ast_{doc_id}", which=doc_id)
+            if step.should_run(ctx):
+                step.run(ctx)
 
 @dataclass
 class SummarizeAstStep:
@@ -380,7 +564,7 @@ class SummarizeAstStep:
             raise CancelledError("cancelled during ast summarization")
 
         # ドキュメントリポジトリにも保存（次のrunで要約済みASTを再利用できるようにする）
-        doc_hash = ctx.params.get(f"doc_{which}_hash")
+        doc_hash = ctx.params.get(f"doc_{which}_hash") or _get_doc_hash(ctx, which)
         if doc_hash:
             try:
                 from compare_app.infra.document_store import DocumentRepository
@@ -394,4 +578,25 @@ class SummarizeAstStep:
         rel = ast_path.relative_to(run_dir).as_posix()
         ctx.events.emit(ctx.run_id, "artifact_updated", {"ts": _utcnow_iso(), "kind": f"ast_{which}", "path": rel})
         ctx.events.emit(ctx.run_id, "ast_summarized", {"ts": _utcnow_iso(), "which": which, "model": model})
+
+
+@dataclass
+class SummarizeAstAllDocsStep:
+    """全ドキュメントの AST 要約を実行する（LLM）。"""
+
+    name: str = "summarize_ast_all"
+
+    def should_run(self, ctx: RunContext) -> bool:
+        return bool(ctx.params.get("summarize_ast", False))
+
+    def run(self, ctx: RunContext) -> None:
+        if not bool(ctx.params.get("summarize_ast", False)):
+            return
+        docs = _get_documents(ctx)
+        if not docs:
+            raise ValueError("No documents found in run config")
+        for d in docs:
+            doc_id = _normalize_doc_id(d.get("doc_id"), "d1")
+            step = SummarizeAstStep(name=f"summarize_ast_{doc_id}", which=doc_id)
+            step.run(ctx)
 

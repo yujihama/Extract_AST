@@ -8,20 +8,7 @@ from typing import Any, Literal, Optional
 RunStatus = Literal["queued", "running", "succeeded", "failed", "cancelled", "waiting_user"]
 
 
-ArtifactKind = Literal[
-    "input_doc_a",
-    "input_doc_b",
-    "txt_a",
-    "txt_b",
-    "blueprint_a",
-    "blueprint_b",
-    "ast_a",
-    "ast_b",
-    "template_draft",
-    "template_filled",
-    "log_jsonl",
-    "events_log_jsonl",
-]
+ArtifactKind = str
 
 
 @dataclass(frozen=True)
@@ -29,8 +16,6 @@ class RunRecord:
     run_id: str
     status: RunStatus
     created_at: datetime
-    doc_a_hash: Optional[str] = None  # ドキュメントAのハッシュ
-    doc_b_hash: Optional[str] = None  # ドキュメントBのハッシュ
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     params: dict[str, Any] | None = None

@@ -10,15 +10,15 @@
 - **フェーズ3（CLI）**: 完了（`python -m compare_app.cli create/start/execute/cancel/tail/list/artifacts/export`）
 - **フェーズ4（PDF/TXT→blueprint→AST）**: 完了（TXT入力実測、PDFはfast/llm変換の両方を実装）
 - **フェーズ5/6（Pre-Analysis→Compare-Analysis）**: 完了（`compare_app/core/compare_steps.py`）
-  - compare_setup は embedding/LLMキー必須
-  - pre_analysis/compare_analysis はキー未設定時フォールバックあり
-  - compare_analysis は協調的キャンセルの途中介入に対応
+  - 比較準備（`pair_compare_setup`）は embedding/LLMキー必須
+  - pre_analysis/execute_analysis はキー未設定時フォールバックあり
+  - execute_analysis は協調的キャンセルの途中介入に対応
 
 ### 次に埋める（優先度高）
 
 - 現時点で優先度高の未完了項目なし
   - PDF→TXT（LLM）: UI/CLIパラメータ対応 + 変換イベント出力まで実装済み
-  - 長時間stepの途中キャンセル: `compare_analysis` / `summarize_ast` 対応済み
+  - 長時間stepの途中キャンセル: `execute_analysis` / `summarize_ast` 対応済み
   - artifacts登録の網羅性: DB優先 + FS補完 + 自動同期でDBを最新化
 
 ### 目的
@@ -149,7 +149,7 @@
 
 ### 達成基準（受け入れ条件）
 
-- 2本のPDF（またはTXT）から、Run内に `*.txt`, `*_blueprint.json`, `*.ast.json` が生成される
+- 1件以上のPDF/TXTから、Run内に `doc_<doc_id>.txt`, `blueprint_<doc_id>.json`, `ast_<doc_id>.ast.json` が生成される
 - UIの成果物一覧に、上記artifactが **種類付き**で表示され、プレビューできる
 - 失敗時は `failed` になり、どのstepで落ちたかがイベント/ログで追える
 
@@ -163,13 +163,13 @@
 
 ### 実装項目
 
-- Pre-Analysis deep_agent の実行（docA/docB ASTを投入）
+- Pre-Analysis deep_agent の実行（依頼文＋documents＋各ドキュメントのtxt/AST等を投入）
 - 生成テンプレ（`template_draft.md` 相当）を artifact として保存
 
 ### 達成基準（受け入れ条件）
 
 - Run内に「生成テンプレ」が保存され、UI/CLIで閲覧できる
-- Pre-Analysisの出力（relation/reason/plan）がRunメタに保存される（DBのparams_json等でも可）
+- Pre-Analysisの出力（execution_plan/テンプレ/ドキュメントメタ等）がRun成果物として保存される（例: `work/pre_analysis.json`）
 
 ---
 
@@ -181,8 +181,8 @@
 
 ### 実装項目
 
-- compare_setup / embedding / matching をRunに接続（キャッシュは既存JSONを使用）
-- compare_analysis deep_agent の実行（テンプレを段階編集）
+- pair_compare_setup / embedding / matching をRunに接続（キャッシュは既存JSONを使用）
+- execute_analysis deep_agent の実行（テンプレを段階編集）
 - `template_filled.md` を更新し続ける（必要なら版管理）
 
 ### 達成基準（受け入れ条件）

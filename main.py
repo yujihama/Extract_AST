@@ -40,7 +40,7 @@ importlib.reload(ast_llm_summarizer)
 importlib.reload(pdf_to_text_llm)
 
 from src.utils import build_llm, convert_pdf_to_txt, print_message_logs, extract_message_logs, DebugLoggingMiddleware, show_all_chunks_by_level
-from src.tools import extract_regex_matches, read_text_segment, get_file_length, read_text_file, compare_setup, compare_all_chunk_similarity_matching, compare_get_grouping, compare_search_by_keyphrase, compare_get_chunk, compare_specified_chunks_diff, compare_specified_chunks_llm, read_ast, COMPARE_STATE, analyze_visual_contents, preview_blueprint_headings, validate_blueprint
+from src.tools import extract_regex_matches, read_text_segment, get_file_length, read_text_file, compare_setup, compare_all_chunk_similarity_matching, compare_get_grouping, search_by_keyphrase, compare_get_chunk, compare_specified_chunks_diff, compare_specified_chunks_llm, read_ast, COMPARE_STATE, analyze_visual_contents, preview_blueprint_headings, validate_blueprint
 from src.schema import DocumentAST,AgentResult,DocumentStructureBlueprint, PreAnalysisResult
 from src.prompt import blueprint_ast_builder_prompt, blueprint_validate_prompt, compare_type_analysis_prompt, compare_parent_agent_prompt, compare_sub_agent_general, compare_sub_agent1, compare_sub_agent2, compare_sub_agent3, compare_sub_agent_report
 from src.agent_log_analyzer import analyze_agent_log
@@ -184,7 +184,7 @@ print(f"ASTを {ast_path} に出力しました。")
 
 # %% #比較種別判定の準備
 ## ツールの定義
-tools_compare_type_analysis = [read_ast, compare_get_grouping, compare_search_by_keyphrase, compare_get_chunk, compare_specified_chunks_diff, compare_specified_chunks_llm, analyze_visual_contents]
+tools_compare_type_analysis = [read_ast, compare_get_grouping, search_by_keyphrase, compare_get_chunk, compare_specified_chunks_diff, compare_specified_chunks_llm, analyze_visual_contents]
 
 ## ミドルウェアの定義
 middleware = [
@@ -319,7 +319,7 @@ print(report_compare_type_analysis)
 
 # %% #比較分析の準備
 ## ツールの定義
-tools_compare_analysis = [read_ast, compare_get_grouping, compare_search_by_keyphrase, compare_get_chunk, compare_specified_chunks_diff, compare_specified_chunks_llm, analyze_visual_contents]
+tools_compare_analysis = [read_ast, compare_get_grouping, search_by_keyphrase, compare_get_chunk, compare_specified_chunks_diff, compare_specified_chunks_llm, analyze_visual_contents]
 
 ## ミドルウェアの設定
 middleware_compare_analysis = [

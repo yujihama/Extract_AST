@@ -59,6 +59,10 @@ class CancelledError(RuntimeError):
     pass
 
 
+class WaitingUserError(RuntimeError):
+    pass
+
+
 class Pipeline:
     """step列を順に実行し、必ず step_* イベントをemitする。"""
 
@@ -170,6 +174,13 @@ class Pipeline:
                     ctx.run_id,
                     "run_cancelled",
                     {"ts": _utcnow().isoformat(), "where": "in_step", "step": step.name},
+                )
+                raise
+            except WaitingUserError:
+                ctx.events.emit(
+                    ctx.run_id,
+                    "step_waiting_user",
+                    {"ts": _utcnow().isoformat(), "step": step.name},
                 )
                 raise
             except Exception as e:

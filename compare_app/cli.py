@@ -18,8 +18,10 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_create = sub.add_parser("create", help="Runを作成する")
-    p_create.add_argument("--doc-a", required=True, help="docAのパス（PDF/TXT）")
-    p_create.add_argument("--doc-b", required=True, help="docBのパス（PDF/TXT）")
+    p_create.add_argument("--doc", action="append", default=[], help="ドキュメントのパス（複数指定可）")
+    p_create.add_argument("--doc-hash", action="append", default=[], help="既存ドキュメントのhash（複数指定可）")
+    p_create.add_argument("--request", default="", help="依頼文（pre_analysisで使用）")
+    p_create.add_argument("--hil", action="store_true", help="Human-in-the-loopを有効化（必要時のみ停止）")
     p_create.add_argument("--mode", choices=["dummy", "real"], default="dummy", help="パイプラインモード")
     p_create.add_argument("--params", default="{}", help="params JSON（例: '{\"mode\":\"dummy\"}'）")
 
@@ -61,7 +63,20 @@ def main(argv: list[str] | None = None) -> int:
         # デフォルトで AST 枝サマリを有効化（run跨ぎで要約済みASTを確実に再利用するため）
         # ※ dummy モードでは SummarizeAstStep 自体が実行されないので安全
         params.setdefault("summarize_ast", True)
-        run = executor.create_run(doc_a_path=args.doc_a, doc_b_path=args.doc_b, params=params)
+        documents: list[dict[str, str]] = []
+        for p in args.doc:
+            documents.append({"path": str(p)})
+        for h in args.doc_hash:
+            documents.append({"doc_hash": str(h)})
+        if len(documents) < 1:
+            _print_json({"ok": False, "error": "documents must be >= 1 (use --doc/--doc-hash)"})
+            return 2
+        run = executor.create_run(
+            documents=documents,
+            request_text=str(args.request or ""),
+            hil_enabled=bool(args.hil),
+            params=params,
+        )
         _print_json({"run_id": run.run_id, "status": run.status, "created_at": run.created_at.isoformat()})
         return 0
 

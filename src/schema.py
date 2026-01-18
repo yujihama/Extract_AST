@@ -1,4 +1,4 @@
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 from pydantic import BaseModel, Field, field_validator
 import re
 
@@ -250,7 +250,7 @@ class PreAnalysisResult(BaseModel):
     - reason: 上記判断に至った理由（内容や構成の分析結果）
     - plan: [手順1, 手順2, ...] ※doc比較の具体的な分析手順
     - template: <Markdown> ※doc比較結果記載用テンプレート（マークダウン形式）
-    - is_complete: True の場合、pre_analysisで分析が完結（後続のcompare_analysisをスキップ）
+    - is_complete: True の場合、pre_analysisで分析が完結（後続のexecute_analysisをスキップ）
     - filled_report: is_complete=True の場合、記入済みの分析結果（Markdown形式）
     """
     relation: str = Field(description="本doc間の関係タイプ（Fix/Revision/Derivative/Heterogeneous/Subset）")
@@ -259,9 +259,52 @@ class PreAnalysisResult(BaseModel):
     template: str = Field(description="分析結果記載用テンプレートのファイル名")
     is_complete: bool = Field(
         default=False, 
-        description="True の場合、このpre_analysisで分析が完結しており、後続のcompare_analysisをスキップする"
+        description="True の場合、このpre_analysisで分析が完結しており、後続のexecute_analysisをスキップする"
     )
     filled_report: Optional[str] = Field(
         default=None,
         description="is_complete=True の場合、記入済みの分析レポート（Markdown形式）。軽量なドキュメントの場合に使用。"
+    )
+
+
+class TaskDocumentRef(BaseModel):
+    doc_id: str = Field(description="ドキュメント識別子")
+    filename: Optional[str] = Field(default=None, description="元ファイル名")
+    role_guess: Optional[str] = Field(default=None, description="推定ロール（criteria/target/reference/evidence等）")
+    role_reason: Optional[str] = Field(default=None, description="推定理由")
+    confidence: Optional[float] = Field(default=None, description="推定信頼度（0-1）")
+    paths: Optional[Dict[str, Optional[str]]] = Field(
+        default=None,
+        description="関連パス（txt/blueprint/ast など）",
+    )
+
+
+class TaskPairSpec(BaseModel):
+    a: str = Field(description="ペアのdoc_id（A側）")
+    b: str = Field(description="ペアのdoc_id（B側）")
+    purpose: Optional[str] = Field(default=None, description="比較目的/観点の補足")
+
+
+class TaskPreAnalysisResult(BaseModel):
+    """
+    N文書＋依頼文に対するタスク計画/テンプレ生成の結果。
+    """
+    request_text: str = Field(description="ユーザー依頼文")
+    hil_enabled: bool = Field(description="Human-in-the-loop有効化フラグ")
+    documents: List[TaskDocumentRef] = Field(description="入力ドキュメント一覧")
+    task_type: Optional[str] = Field(
+        default=None,
+        description="任意のタスク種別（実行分岐には使用しないメタ情報）",
+    )
+    execution_plan: List[Dict[str, Any]] = Field(
+        description="実行計画（機械可読）。必要なら pair_setup 等の具体ステップを含める。"
+    )
+    template: str = Field(description="生成テンプレートのファイル名")
+    is_complete: bool = Field(
+        default=False,
+        description="True の場合、pre_analysisで分析が完結しており、後続のexecute_taskをスキップする",
+    )
+    filled_report: Optional[str] = Field(
+        default=None,
+        description="is_complete=True の場合、記入済みの分析レポート（Markdown形式）。",
     )

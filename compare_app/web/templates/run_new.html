@@ -12,7 +12,7 @@
         </a>
         <h1 class="card-title text-2xl">Run作成</h1>
       </div>
-      <p class="text-base-content/60 text-sm">2つのドキュメントを選択またはアップロードして比較を開始します。</p>
+      <p class="text-base-content/60 text-sm">複数のドキュメントを選択またはアップロードしてタスクを開始します。</p>
     </div>
   </div>
 
@@ -25,85 +25,45 @@
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          入力ドキュメント
+          入力ドキュメント（複数）
         </h2>
-        
+
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-          <!-- Document A -->
-          <div class="space-y-4">
-            <h3 class="font-medium text-sm text-base-content/70 flex items-center gap-2">
-              <span class="badge badge-primary badge-sm">A</span>
-              Document A（比較元）
-            </h3>
-            
-            <!-- 既存ドキュメントから選択 -->
-            <div class="form-control w-full">
-              <label class="label">
-                <span class="label-text">既存ドキュメントから選択</span>
-              </label>
-              <select name="doc_a_hash" id="doc_a_hash" class="select select-bordered w-full"
-                      onchange="toggleDocAUpload()">
-                <option value="">新規アップロード</option>
-                {% for doc in documents %}
-                <option value="{{ doc.doc_hash }}">
-                  {{ doc.original_filename }} ({{ "{:,}".format(doc.char_count) }}文字)
-                  {% if doc.has_ast %} ✓AST{% endif %}
-                  {% if doc.has_blueprint %} ✓BP{% endif %}
-                </option>
-                {% endfor %}
-              </select>
-            </div>
-            
-            <!-- または新規アップロード -->
-            <div id="doc_a_upload" class="form-control w-full">
-              <label class="label">
-                <span class="label-text">または新規アップロード</span>
-                <span class="label-text-alt text-error" id="doc_a_required"></span>
-              </label>
-              <input type="file" name="doc_a" id="doc_a_input"
-                     class="file-input file-input-bordered file-input-primary w-full" 
-                     accept=".pdf,.txt" />
-            </div>
+          <div class="form-control w-full">
+            <label class="label">
+              <span class="label-text">既存ドキュメントから選択（複数可）</span>
+            </label>
+            <select name="doc_hashes" multiple class="select select-bordered w-full h-72 md:h-96">
+              {% for doc in documents %}
+              <option value="{{ doc.doc_hash }}">
+                {{ doc.original_filename }} ({{ "{:,}".format(doc.char_count) }}文字)
+                {% if doc.has_ast %} ✓AST{% endif %}
+                {% if doc.has_blueprint %} ✓BP{% endif %}
+              </option>
+              {% endfor %}
+            </select>
+            <label class="label">
+              <span class="label-text-alt text-base-content/50">Ctrl/Shiftで複数選択できます。</span>
+            </label>
           </div>
-          
-          <!-- Document B -->
-          <div class="space-y-4">
-            <h3 class="font-medium text-sm text-base-content/70 flex items-center gap-2">
-              <span class="badge badge-secondary badge-sm">B</span>
-              Document B（比較先）
-            </h3>
-            
-            <!-- 既存ドキュメントから選択 -->
-            <div class="form-control w-full">
-              <label class="label">
-                <span class="label-text">既存ドキュメントから選択</span>
-              </label>
-              <select name="doc_b_hash" id="doc_b_hash" class="select select-bordered w-full"
-                      onchange="toggleDocBUpload()">
-                <option value="">新規アップロード</option>
-                {% for doc in documents %}
-                <option value="{{ doc.doc_hash }}">
-                  {{ doc.original_filename }} ({{ "{:,}".format(doc.char_count) }}文字)
-                  {% if doc.has_ast %} ✓AST{% endif %}
-                  {% if doc.has_blueprint %} ✓BP{% endif %}
-                </option>
-                {% endfor %}
-              </select>
-            </div>
-            
-            <!-- または新規アップロード -->
-            <div id="doc_b_upload" class="form-control w-full">
-              <label class="label">
-                <span class="label-text">または新規アップロード</span>
-                <span class="label-text-alt text-error" id="doc_b_required"></span>
-              </label>
-              <input type="file" name="doc_b" id="doc_b_input"
-                     class="file-input file-input-bordered file-input-primary w-full"
-                     accept=".pdf,.txt" />
-            </div>
+
+          <div class="form-control w-full">
+            <label class="label">
+              <span class="label-text">または新規アップロード（複数可）</span>
+            </label>
+            <input
+              type="file"
+              name="docs"
+              class="file-input file-input-bordered file-input-primary w-full"
+              accept=".pdf,.txt"
+              multiple
+            />
+            <label class="label">
+              <span class="label-text-alt text-base-content/50">合計1件以上のドキュメントが必要です。</span>
+            </label>
           </div>
         </div>
-        
+
         {% if documents %}
         <div class="alert alert-info mt-4">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -115,46 +75,6 @@
         {% endif %}
       </div>
     </div>
-    
-    <script>
-    function toggleDocAUpload() {
-      const select = document.getElementById('doc_a_hash');
-      const upload = document.getElementById('doc_a_upload');
-      const input = document.getElementById('doc_a_input');
-      const req = document.getElementById('doc_a_required');
-      
-      if (select.value) {
-        upload.style.opacity = '0.5';
-        input.value = '';
-        req.textContent = '';
-      } else {
-        upload.style.opacity = '1';
-        req.textContent = '必須';
-      }
-    }
-    
-    function toggleDocBUpload() {
-      const select = document.getElementById('doc_b_hash');
-      const upload = document.getElementById('doc_b_upload');
-      const input = document.getElementById('doc_b_input');
-      const req = document.getElementById('doc_b_required');
-      
-      if (select.value) {
-        upload.style.opacity = '0.5';
-        input.value = '';
-        req.textContent = '';
-      } else {
-        upload.style.opacity = '1';
-        req.textContent = '必須';
-      }
-    }
-    
-    // 初期状態設定
-    document.addEventListener('DOMContentLoaded', function() {
-      toggleDocAUpload();
-      toggleDocBUpload();
-    });
-    </script>
 
     <!-- 基本設定 -->
     <div class="card bg-base-100 shadow-xl">
@@ -189,33 +109,39 @@
 
         <div class="divider"></div>
 
-        <!-- Pre-Analysis: 重点比較観点 -->
         <div class="form-control w-full">
           <label class="label">
-            <span class="label-text font-medium">重点比較観点（Pre-Analysis）</span>
+            <span class="label-text font-medium">依頼文</span>
           </label>
           <textarea
-            name="comparison_focus"
+            name="request_text"
             class="textarea textarea-bordered w-full"
             rows="4"
-            placeholder="例）&#10;免責・責任範囲の変更&#10;料金・支払条件の差分&#10;セキュリティ要件の変更&#10;&#10;※1行=1観点（空欄ならデフォルト観点）"
+            placeholder="例）A.txtに書かれた基準とXXX.txtの規定が整合するか評価して"
           ></textarea>
           <label class="label">
-            <span class="label-text-alt text-base-content/50">ここで指定した観点が pre_analysis のプロンプトに挿入されます。</span>
+            <span class="label-text-alt text-base-content/50">ロール推定・プラン作成に使用します。</span>
           </label>
         </div>
+
         <div class="form-control w-full">
           <label class="label">
-            <span class="label-text font-medium">重点比較観点ファイル（任意 / .txt）</span>
+            <span class="label-text font-medium">テンプレート（任意 / アップロード）</span>
           </label>
-          <input
-            type="file"
-            name="comparison_focus_file"
-            class="file-input file-input-bordered w-full"
-            accept=".txt"
-          />
+          <input type="file" name="template_file" class="file-input file-input-bordered w-full" accept=".md,.txt" />
           <label class="label">
-            <span class="label-text-alt text-base-content/50">テキスト欄と併用可。ファイル内容はプロンプトへ直挿入せず、必要に応じて参照します。</span>
+            <span class="label-text-alt text-base-content/50">アップロードしたテンプレはRunに紐付き、Pre-Analysisのseedとして使用されます。</span>
+          </label>
+        </div>
+
+        <div class="form-control">
+          <label class="label cursor-pointer justify-start gap-4">
+            <input type="hidden" name="hil_enabled" value="0" />
+            <input type="checkbox" name="hil_enabled" value="1" class="checkbox checkbox-primary" />
+            <div>
+              <span class="label-text font-medium">Human-in-the-loop（必要時のみ停止）</span>
+              <p class="text-xs text-base-content/50">エージェントが要確認と判断した場合のみ停止します</p>
+            </div>
           </label>
         </div>
       </div>
@@ -231,31 +157,14 @@
         PDF→TXT変換設定
       </div>
       <div class="collapse-content">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
-          <div class="space-y-4">
-            <h3 class="font-medium text-sm text-base-content/70">Document A</h3>
-            <div class="form-control w-full">
-              <label class="label">
-                <span class="label-text">変換モード</span>
-              </label>
-              <select name="pdf_mode_a" class="select select-bordered select-sm w-full">
-                <option value="fast" selected>fast（高速）</option>
-                <option value="llm">llm（高精度）</option>
-              </select>
-            </div>
-          </div>
-          <div class="space-y-4">
-            <h3 class="font-medium text-sm text-base-content/70">Document B</h3>
-            <div class="form-control w-full">
-              <label class="label">
-                <span class="label-text">変換モード</span>
-              </label>
-              <select name="pdf_mode_b" class="select select-bordered select-sm w-full">
-                <option value="fast" selected>fast（高速）</option>
-                <option value="llm">llm（高精度）</option>
-              </select>
-            </div>
-          </div>
+        <div class="form-control w-full pt-4">
+          <label class="label">
+            <span class="label-text">変換モード（全ドキュメント共通）</span>
+          </label>
+          <select name="pdf_mode" class="select select-bordered select-sm w-full">
+            <option value="fast" selected>fast（高速）</option>
+            <option value="llm">llm（高精度）</option>
+          </select>
         </div>
         <div class="divider"></div>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -313,7 +222,7 @@
             <label class="label">
               <span class="label-text">サマリ用モデル</span>
             </label>
-            <input type="text" name="ast_summary_model" value="gpt-4o-mini" class="input input-bordered input-sm w-full" />
+            <input type="text" name="ast_summary_model" value="gpt-5-mini" class="input input-bordered input-sm w-full" />
           </div>
         </div>
         <div class="divider"></div>
@@ -321,7 +230,7 @@
           <label class="label">
             <span class="label-text">複雑処理用LLMモデル（任意）</span>
           </label>
-          <input type="text" name="llm_complex_model" placeholder="例: gpt-4o-mini" class="input input-bordered input-sm w-full" />
+          <input type="text" name="llm_complex_model" placeholder="例: gpt-5-mini" class="input input-bordered input-sm w-full" />
           <label class="label">
             <span class="label-text-alt text-base-content/50">空欄の場合はデフォルトを使用</span>
           </label>
@@ -348,17 +257,12 @@
             <select name="step_from" class="select select-bordered select-sm w-full">
               <option value="">（最初から）</option>
               <optgroup label="realモード">
-                <option value="ensure_text_a">ensure_text_a</option>
-                <option value="ensure_text_b">ensure_text_b</option>
-                <option value="build_blueprint_a">build_blueprint_a</option>
-                <option value="build_blueprint_b">build_blueprint_b</option>
-                <option value="build_ast_a">build_ast_a</option>
-                <option value="build_ast_b">build_ast_b</option>
-                <option value="summarize_ast_a">summarize_ast_a</option>
-                <option value="summarize_ast_b">summarize_ast_b</option>
-                <option value="compare_setup">compare_setup</option>
+                <option value="ensure_text_all">ensure_text_all</option>
+                <option value="build_blueprint_all">build_blueprint_all</option>
+                <option value="build_ast_all">build_ast_all</option>
+                <option value="summarize_ast_all">summarize_ast_all</option>
                 <option value="pre_analysis">pre_analysis</option>
-                <option value="compare_analysis">compare_analysis</option>
+                <option value="execute_analysis">execute_analysis</option>
               </optgroup>
               <optgroup label="dummyモード">
                 <option value="dummy_prepare">dummy_prepare</option>
@@ -376,17 +280,12 @@
             <select name="step_to" class="select select-bordered select-sm w-full">
               <option value="">（最後まで）</option>
               <optgroup label="realモード">
-                <option value="ensure_text_a">ensure_text_a</option>
-                <option value="ensure_text_b">ensure_text_b</option>
-                <option value="build_blueprint_a">build_blueprint_a</option>
-                <option value="build_blueprint_b">build_blueprint_b</option>
-                <option value="build_ast_a">build_ast_a</option>
-                <option value="build_ast_b">build_ast_b</option>
-                <option value="summarize_ast_a">summarize_ast_a</option>
-                <option value="summarize_ast_b">summarize_ast_b</option>
-                <option value="compare_setup">compare_setup</option>
+                <option value="ensure_text_all">ensure_text_all</option>
+                <option value="build_blueprint_all">build_blueprint_all</option>
+                <option value="build_ast_all">build_ast_all</option>
+                <option value="summarize_ast_all">summarize_ast_all</option>
                 <option value="pre_analysis">pre_analysis</option>
-                <option value="compare_analysis">compare_analysis</option>
+                <option value="execute_analysis">execute_analysis</option>
               </optgroup>
               <optgroup label="dummyモード">
                 <option value="dummy_prepare">dummy_prepare</option>

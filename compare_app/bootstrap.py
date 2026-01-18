@@ -6,8 +6,13 @@ from typing import Any, Mapping, Tuple
 
 from compare_app.core.dummy_steps import DummyAgentTraceStep, DummyFillTemplateStep, DummySleepStep, DummyWriteTemplateDraftStep
 from compare_app.core.pipeline import ConditionalStep, Pipeline
-from compare_app.core.compare_steps import CompareAnalysisStep, CompareSetupStep, PreAnalysisStep
-from compare_app.core.real_steps import BuildAstStep, BuildBlueprintStep, EnsureTextStep, SummarizeAstStep
+from compare_app.core.compare_steps import CompareAnalysisStep, PreAnalysisStep
+from compare_app.core.real_steps import (
+    BuildAstAllDocsStep,
+    BuildBlueprintAllDocsStep,
+    EnsureTextAllDocsStep,
+    SummarizeAstAllDocsStep,
+)
 from compare_app.core.run_executor import RunExecutor
 from compare_app.compat.patch_src_tools import patch_src_tools_compare_state
 from compare_app.infra.fs_artifacts import FileArtifactStore
@@ -96,17 +101,12 @@ def build_default_executor() -> Tuple[RunExecutor, SqliteRunRepository, SqliteEv
             ConditionalStep(DummySleepStep(name="dummy_analyze", seconds=0.8, tick=0.2), when=_is_dummy),
             ConditionalStep(DummyFillTemplateStep(), when=_is_dummy),
             # real（フェーズ4: 入力→txt→blueprint→AST）
-            ConditionalStep(EnsureTextStep(name="ensure_text_a", which="a"), when=_is_real),
-            ConditionalStep(EnsureTextStep(name="ensure_text_b", which="b"), when=_is_real),
-            ConditionalStep(BuildBlueprintStep(name="build_blueprint_a", which="a"), when=_is_real),
-            ConditionalStep(BuildBlueprintStep(name="build_blueprint_b", which="b"), when=_is_real),
-            ConditionalStep(BuildAstStep(name="build_ast_a", which="a"), when=_is_real),
-            ConditionalStep(BuildAstStep(name="build_ast_b", which="b"), when=_is_real),
+            ConditionalStep(EnsureTextAllDocsStep(), when=_is_real),
+            ConditionalStep(BuildBlueprintAllDocsStep(), when=_is_real),
+            ConditionalStep(BuildAstAllDocsStep(), when=_is_real),
             # AST枝サマリ（任意: params.summarize_ast=true のとき）
-            ConditionalStep(SummarizeAstStep(name="summarize_ast_a", which="a"), when=_is_real),
-            ConditionalStep(SummarizeAstStep(name="summarize_ast_b", which="b"), when=_is_real),
+            ConditionalStep(SummarizeAstAllDocsStep(), when=_is_real),
             # フェーズ5/6: Pre-Analysis → Compare-Analysis（テンプレ生成→段階更新→filled）
-            ConditionalStep(CompareSetupStep(), when=_is_real),
             ConditionalStep(PreAnalysisStep(), when=_is_real),
             ConditionalStep(CompareAnalysisStep(), when=_is_real),
         ]

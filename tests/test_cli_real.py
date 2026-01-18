@@ -50,9 +50,8 @@ class TestCliRealMode:
         - txt入力（PDF変換なし）
         - blueprint生成（LLM）
         - AST生成（非LLM）
-        - compare_setup（embedding）
         - pre_analysis（関係性分析+テンプレ生成）
-        - compare_analysis（テンプレ記入）
+        - execute_analysis（テンプレ記入）
         """
         cwd = str(Path(__file__).resolve().parent.parent)
         
@@ -62,8 +61,9 @@ class TestCliRealMode:
             [
                 sys.executable, "-m", "compare_app.cli",
                 "create",
-                "--doc-a", str(test_small_rules_v1),
-                "--doc-b", str(test_small_rules_v2),
+                "--doc", str(test_small_rules_v1),
+                "--doc", str(test_small_rules_v2),
+                "--request", "2文書の関係性を分析し、主要な差分と影響を報告してください。",
                 "--mode", "real",
             ],
             capture_output=True,
@@ -114,8 +114,8 @@ class TestCliRealMode:
         print(f"[Real Test] Artifact kinds: {kinds}")
         
         # realモードでは以下の成果物が期待される
-        # - blueprint_a, blueprint_b
-        # - ast_a, ast_b
+        # - blueprint_*
+        # - ast_*
         # - template_draft, template_filled
         
         # blueprintが生成されているか確認
@@ -167,6 +167,128 @@ class TestCliRealMode:
         
         print("[Real Test] ✅ All checks passed!")
 
+    def test_real_mode_multi_docs(self, test_small_rules_v1: Path, test_small_rules_v2: Path, sample_doc_a: Path):
+        """複数ドキュメント入力でrealモードが完走することを確認する。"""
+        cwd = str(Path(__file__).resolve().parent.parent)
+
+        params = json.dumps({
+            "mode": "real",
+            "summarize_ast": False,
+            "llm_complex_model": "gpt-5-mini",
+        })
+
+        create_result = subprocess.run(
+            [
+                sys.executable, "-m", "compare_app.cli",
+                "create",
+                "--doc", str(test_small_rules_v1),
+                "--doc", str(test_small_rules_v2),
+                "--doc", str(sample_doc_a),
+                "--request", "複数文書を参照して主要な差分と影響を報告してください。",
+                "--mode", "real",
+                "--params", params,
+            ],
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+        )
+
+        assert create_result.returncode == 0, f"Create failed:\nstdout: {create_result.stdout}\nstderr: {create_result.stderr}"
+        run_id = json.loads(create_result.stdout)["run_id"]
+
+        execute_result = subprocess.run(
+            [sys.executable, "-m", "compare_app.cli", "execute", run_id],
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            timeout=600,
+        )
+        assert execute_result.returncode == 0, f"Execute failed:\nstdout: {execute_result.stdout}\nstderr: {execute_result.stderr}"
+
+        run_dir = Path(cwd) / "data" / "runs" / run_id
+        filled_path = run_dir / "out" / "template_filled.md"
+        assert filled_path.exists(), "template_filled.md not found for multi-doc run"
+
+    def test_real_mode_single_doc(self, test_small_rules_v1: Path):
+        """1ドキュメントの要約タスクが完走することを確認する。"""
+        cwd = str(Path(__file__).resolve().parent.parent)
+
+        create_result = subprocess.run(
+            [
+                sys.executable, "-m", "compare_app.cli",
+                "create",
+                "--doc", str(test_small_rules_v1),
+                "--request", "この文書を簡潔に要約してください。",
+                "--mode", "real",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+        )
+
+        assert create_result.returncode == 0, f"Create failed:\nstdout: {create_result.stdout}\nstderr: {create_result.stderr}"
+        run_id = json.loads(create_result.stdout)["run_id"]
+
+        execute_result = subprocess.run(
+            [sys.executable, "-m", "compare_app.cli", "execute", run_id],
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            timeout=600,
+        )
+
+        assert execute_result.returncode == 0, f"Execute failed:\nstdout: {execute_result.stdout}\nstderr: {execute_result.stderr}"
+        output = json.loads(execute_result.stdout)
+        assert output["ok"] is True
+
+        filled_path = Path(cwd) / "data" / "runs" / run_id / "out" / "template_filled.md"
+        assert filled_path.exists(), "template_filled.md not found"
+        content = filled_path.read_text(encoding="utf-8", errors="replace")
+        assert len(content) > 50
+
+    def test_real_mode_all_pairs(self, test_small_rules_v1: Path, test_small_rules_v2: Path, sample_doc_a: Path):
+        """3文書のall-pairs差分が生成されることを確認する。"""
+        cwd = str(Path(__file__).resolve().parent.parent)
+
+        create_result = subprocess.run(
+            [
+                sys.executable, "-m", "compare_app.cli",
+                "create",
+                "--doc", str(test_small_rules_v1),
+                "--doc", str(test_small_rules_v2),
+                "--doc", str(sample_doc_a),
+                "--request", "全ての文書の差分を抽出して報告してください。",
+                "--mode", "real",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+        )
+
+        assert create_result.returncode == 0, f"Create failed:\nstdout: {create_result.stdout}\nstderr: {create_result.stderr}"
+        run_id = json.loads(create_result.stdout)["run_id"]
+
+        execute_result = subprocess.run(
+            [sys.executable, "-m", "compare_app.cli", "execute", run_id],
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            timeout=900,
+        )
+
+        assert execute_result.returncode == 0, f"Execute failed:\nstdout: {execute_result.stdout}\nstderr: {execute_result.stderr}"
+        output = json.loads(execute_result.stdout)
+        assert output["ok"] is True
+
+        run_dir = Path(cwd) / "data" / "runs" / run_id
+        pairs_dir = run_dir / "work" / "pairs"
+        assert pairs_dir.exists(), "pairs directory not found"
+        matching_files = list(pairs_dir.rglob("initial_matching.json"))
+        assert matching_files, "initial_matching.json not found under work/pairs"
+
+        filled_path = run_dir / "out" / "template_filled.md"
+        assert filled_path.exists(), "template_filled.md not found"
+
 
 class TestCliRealModeSteps:
     """realモードの個別ステップテスト。"""
@@ -174,14 +296,14 @@ class TestCliRealModeSteps:
     def test_real_mode_step_filtering(self, test_small_rules_v1: Path, test_small_rules_v2: Path):
         """ステップ選択パラメータが機能することを確認する。
         
-        build_blueprint_a のみを実行してスキップされるステップがあることを確認。
+        build_blueprint_all のみを実行してスキップされるステップがあることを確認。
         """
         cwd = str(Path(__file__).resolve().parent.parent)
         
         # Run作成（realモード、特定ステップのみ）
         params = json.dumps({
             "mode": "real",
-            "steps_include": ["ensure_text_a", "ensure_text_b", "build_blueprint_a"]
+            "steps_include": ["ensure_text_all", "build_blueprint_all"]
         })
         
         print("\n[Real Test] Creating run with step filtering...")
@@ -189,8 +311,9 @@ class TestCliRealModeSteps:
             [
                 sys.executable, "-m", "compare_app.cli",
                 "create",
-                "--doc-a", str(test_small_rules_v1),
-                "--doc-b", str(test_small_rules_v2),
+                "--doc", str(test_small_rules_v1),
+                "--doc", str(test_small_rules_v2),
+                "--request", "blueprint生成のみ実行",
                 "--mode", "real",
                 "--params", params,
             ],
@@ -220,19 +343,19 @@ class TestCliRealModeSteps:
         
         # blueprintが生成されているか確認
         run_dir = Path(cwd) / "data" / "runs" / run_id
-        blueprint_path = run_dir / "work" / "blueprint_a.json"
+        blueprint_path = run_dir / "work" / "blueprint_d1.json"
         
         print(f"[Real Test] Checking blueprint at: {blueprint_path}")
         
-        # ensure_text_a, ensure_text_b, build_blueprint_a が実行されていれば
-        # blueprint_a.json が生成されているはず
+        # ensure_text_d1, ensure_text_d2, build_blueprint_d1 が実行されていれば
+        # blueprint_d1.json が生成されているはず
         if blueprint_path.exists():
             content = blueprint_path.read_text(encoding="utf-8")
-            print(f"[Real Test] blueprint_a.json exists, length: {len(content)} chars")
-            assert len(content) > 10, "blueprint_a.json is too short"
+            print(f"[Real Test] blueprint_d1.json exists, length: {len(content)} chars")
+            assert len(content) > 10, "blueprint_d1.json is too short"
             print("[Real Test] ✅ Step filtering test passed!")
         else:
             # ファイルがなくても実行自体が成功していればOK
             # (ステップがスキップされた可能性)
-            print("[Real Test] blueprint_a.json not found, but execution completed")
+            print("[Real Test] blueprint_d1.json not found, but execution completed")
             assert execute_result.returncode == 0, "Execution failed"

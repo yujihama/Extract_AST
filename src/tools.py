@@ -1107,39 +1107,100 @@ def compare_get_grouping(
 
 
 @tool
-def compare_search_by_keyphrase(phrase: str, intent: str, in_doc: str = "B", top_k: int = 5, alpha: float = 0.7, min_score: Optional[float] = None) -> str:
+def search_by_keyphrase(
+    file_path: str,
+    phrase: str,
+    intent: str,
+    top_k: int = 5,
+    alpha: float = 0.7,
+    min_score: Optional[float] = None,
+    embedding_model: Optional[str] = None,
+    cache_path: str = "data/embedding/embedding_cache.json",
+    batch_size: int = 128,
+    state: Annotated[dict, InjectedState] = None,
+) -> str:
     """
-    キーフレーズ（複数の単語/文章）でチャンクを検索し、関連度順に返します。
+    単一ドキュメント（AST）を対象にキーフレーズ検索し、関連度順に返します。
 
     使いどころ:
     - "勘定科目" など特定トピックがどこに書かれているか当たりを付けたい
-    - 全体マッチング結果（compare_all_chunk_similarity_matching）に加えて、ピンポイント探索したい
+    - ペア比較ではなく、単一文書内の類似箇所を探索したい
 
     検索対象:
-    - in_doc="A" なら docA のチャンク集合
-    - in_doc="B" なら docB のチャンク集合
+    - file_path で指定した AST JSON（/docs/<doc_id>/ast.json など）
 
     スコア:
     - score = alpha * cosine_similarity(embedding) + (1-alpha) * keyword_match
 
     引数:
-    - phrase: str = Field(..., description="検索クエリ（キーフレーズ）※複数のフレーズを指定する場合はスペース区切りで設定")
+    - file_path: str = Field(..., description="検索対象の AST JSON パス")
+    - phrase: str = Field(..., description="検索クエリ（キーフレーズ）※複数のフレーズはスペース区切り")
     - intent: str = Field(..., description="ツール実行の目的")
-    - in_doc: str = Field("B", description="検索対象: 'A' or 'B'")
     - top_k: int = Field(5, description="返す件数")
     - alpha: float = Field(0.7, description="score = alpha*cosine + (1-alpha)*keyword")
     - min_score: Optional[float] = Field(None, description="下限スコア（省略可）")
+    - embedding_model: Optional[str] = Field(None, description="Embeddingモデル/Deployment名")
+    - cache_path: str = Field("data/embedding/embedding_cache.json", description="埋め込みキャッシュの保存先")
+    - batch_size: int = Field(128, description="埋め込み取得のバッチサイズ")
 
     出力(JSON文字列):
     - ok: bool
     - results: [{chunk_id, score, cosine, keyword, title_path, preview}, ...]
-
     """
-    if not COMPARE_STATE:
-        return json.dumps({"ok": False, "error": "先に compare_setup を実行してください。"}, ensure_ascii=False, indent=2)
+    if not file_path or not str(file_path).strip():
+        return json.dumps({"ok": False, "error": "file_path is required"}, ensure_ascii=False, indent=2)
+    if not phrase or not str(phrase).strip():
+        return json.dumps({"ok": False, "error": "phrase is required"}, ensure_ascii=False, indent=2)
 
-    idx = COMPARE_STATE["index_b"] if str(in_doc).upper() == "B" else COMPARE_STATE["index_a"]
+    clean_path = str(file_path).lstrip("/")
+    # 仮想FSの内容を優先して読み込み
+    ast_text = _get_file_content_from_state(state, clean_path)
+
+    if ast_text is not None:
+        try:
+            ast = json.loads(ast_text)
+            root = ast.get("root")
+            if not isinstance(root, dict):
+                raise ValueError("Invalid AST: root must be an object")
+        except Exception as e:
+            return json.dumps({"ok": False, "error": f"Invalid AST JSON: {str(e)}"}, ensure_ascii=False, indent=2)
+    else:
+        try:
+            ast = load_ast(clean_path)
+        except Exception as e:
+            return json.dumps({"ok": False, "error": f"AST file not found or invalid: {str(e)}"}, ensure_ascii=False, indent=2)
+
+    # doc_id を推定（/docs/<doc_id>/ast.json 形式を優先）
+    norm_path = clean_path.replace("\\", "/")
+    parts = [p for p in norm_path.split("/") if p]
+    doc_id = ""
+    for i, p in enumerate(parts):
+        if p == "docs" and i + 1 < len(parts):
+            doc_id = parts[i + 1]
+            break
+    if not doc_id:
+        file_name = ast.get("file_name")
+        if isinstance(file_name, str) and file_name.strip():
+            doc_id = file_name.strip()
+        else:
+            doc_id = os.path.basename(norm_path)
+
+    chunks = extract_chunks(
+        ast=ast,
+        doc_id=doc_id,
+        strategy="level",
+        target_level=2,
+        min_chars_for_split=3000,
+    )
+
+    idx = HybridChunkIndex(
+        chunks=chunks,
+        embedding_model=embedding_model,
+        cache_path=cache_path,
+        batch_size=batch_size,
+    )
     hits = idx.search(query=str(phrase), top_k=int(top_k), alpha=float(alpha), min_score=min_score)
+
     out = [
         {
             "chunk_id": h.chunk.chunk_id,
@@ -1161,7 +1222,7 @@ def compare_get_chunk(chunk_ids: List[str], intent: str, in_doc: str = "A") -> s
     最大5チャンクまで一度に指定できます。
 
     使いどころ:
-    - `compare_all_chunk_similarity_matching` / `compare_search_by_keyphrase` で得た chunk_id の中身確認
+    - `compare_all_chunk_similarity_matching` / `search_by_keyphrase` で得た chunk_id の中身確認
     - LLM差分抽出（compare_specified_chunks_llm）の前に、どの文章を比較するか人間が確認
 
     引数:

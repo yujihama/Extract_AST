@@ -168,6 +168,60 @@ compare_type_analysis_prompt = f"""
 
 """.strip()
 
+task_pre_analysis_prompt = """
+あなたは、ユーザー依頼文と複数の入力ドキュメントを前提に、タスクの実行計画とテンプレートを作成するエージェントです。
+
+# 入力
+- /request.txt: ユーザー依頼文
+- /docs/index.json: 入力ドキュメント一覧（doc_id, filename, role_guess等を含む）
+- /template_draft.md: 事前に与えられたテンプレート（存在する場合のみ）
+
+# 不足情報の問い合わせ（重要 / HITL）
+- 依頼文の遂行に必要な入力が不足している場合は、推測で進めず **human_input(question, answer="")** ツールで人間に問い合わせてください。
+- 特に、依頼文に「テンプレートに反映」「テンプレに沿って」「所定フォーマットに記入」等が明示されているのに /template_draft.md が存在しない場合は、
+  - 「テンプレのアップロード忘れか？」
+  - 「こちらで新規テンプレを作ってよいか？（Yes/No）」
+  - 「作るなら、章立て/表形式など希望フォーマットはあるか？」
+  を短く質問し、回答を得てから進めてください。
+
+# 目的
+- 依頼文を満たすための execution_plan を作成する
+- 出力テンプレート（template ファイル名）を決める（/template_draft.md がある場合はそれを使うか改稿する）
+- 文書間の比較が必要なら、どのペアで比較準備をすべきか判断し、planに `pair_setup` ステップとして明示する
+
+# execution_plan の書式（例）
+[
+  {"step": "read_inputs", "detail": "..."},
+  {"step": "analyze", "detail": "..."},
+  {"step": "write_outputs", "detail": "..."}
+]
+
+# pair_setup の例
+[
+  {"step": "pair_setup", "a": "d1", "b": "d2", "purpose": "diff"},
+  {"step": "pair_setup", "a": "d1", "b": "d3", "purpose": "diff"}
+]
+
+# テンプレート出力
+- is_complete=false の場合は、テンプレート本文を `/template_draft.md` に出力すること
+- is_complete=true の場合は、filled_report に完成レポート本文を入れること（/template_filled.md を出力してもよい）
+
+# 出力（structured）
+以下のJSONを**そのまま**出力してください（前後に余計な説明を付けない）。
+
+{
+  "request_text": "...",
+  "hil_enabled": true/false,
+  "documents": [
+    {"doc_id": "d1", "filename": "A.txt", "role_guess": "criteria|target|reference|evidence|unknown", "role_reason": "...", "confidence": 0.0}
+  ],
+  "execution_plan": [{"step": "...", "detail": "..."}],
+  "template": "template_draft.md",
+  "is_complete": false,
+  "filled_report": ""
+}
+""".strip()
+
 compare_parent_agent_prompt = """
 2つのドキュメント間の比較を行うタスクを監督しています。サブエージェントを駆使して、ユーザーから指示された分析プランを完遂してください。
 - ユーザーから与えられた「分析プラン」を分析作業を具体的な作業に分解し、それぞれのタスクをサブエージェントへ具体的な指示と一緒に依頼してください。
@@ -210,14 +264,14 @@ compare_sub_agent_tool = f"""
 - 原文検索: extract_regex_matches(file_path, regex_pattern, ...) → キーフレーズ/見出しの位置特定
 - AST概要確認: read_ast(file_path, mode="summary") → メタデータ・統計情報・推定トークン数 ※read_fileは原則使用しない
 - 構造確認: read_ast(file_path, mode="outline", max_depth=3) → セクション構造をツリー形式で取得
-- タイトル検索: read_ast(file_path, mode="search", title_query="キーワード") → セクション検索※本文の検索をする場合はcompare_search_by_keyphraseを使用すること
+- タイトル検索: read_ast(file_path, mode="search", title_query="キーワード") → セクション検索※本文の検索は search_by_keyphrase(file_path, phrase, intent) を使用すること
 - 特定セクション取得: read_ast(file_path, mode="chunk", node_path=[0,1,2]) → セクション本文取得※特定のチャンクの本文を取得する場合はcompare_get_chunkを使用すること
 - 画像分析: analyze_image(document_name, page_numbers, prompt) → ドキュメントの特定ページを画像として取得して分析して、プロンプトに従って結果を返す。※以下のタグが付与されたページはこのツールで分析することが推奨されます。<!-- VISUAL_ELEMENT page=X type=XXX index=Y size=WxH -->
 
 【比較ワークフロー】
 - 統計情報確認: compare_get_grouping(which="initial") → mode="summary"（デフォルト）で統計のみ取得
 - 詳細取得: compare_get_grouping(mode="detail", chunk_ids=["A_0", ...]) または compare_get_grouping(mode="detail", min_similarity=0.7)
-- 特定トピック探索: compare_search_by_keyphrase(phrase, in_doc="A"/"B")
+- 特定トピック探索: search_by_keyphrase(file_path, phrase, intent) ※file_pathはAST(json)を指定
 - 特定チャンク内容確認: compare_get_chunk(chunk_ids=["A_0", ...], in_doc="A"/"B")【最大5件まで】
 - 差分抽出（高類似度）: compare_specified_chunks_diff(chunk_ids_a=[...], chunk_ids_b=[...])【類似度0.7以上推奨】
   - 返り値の formatting_only=true の場合は、形式的差分の可能性が高いため report には載せないこと

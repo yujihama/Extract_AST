@@ -1,0 +1,50 @@
+{# HITL（human_input等）の質問表示・回答フォーム #}
+{% if run.status == "waiting_user" and hitl and hitl.get("action_requests") %}
+  {% set actions = hitl.get("action_requests") %}
+  {% set first = actions[0] %}
+  <div class="alert alert-warning shadow-sm">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+    </svg>
+    <div class="flex-1 min-w-0">
+      <div class="font-bold">要確認（Human-in-the-loop）</div>
+      <div class="text-sm mt-1">
+        {% if first.get("name") == "human_input" %}
+          <div class="whitespace-pre-wrap break-words">{{ (first.get("args") or {}).get("question") }}</div>
+        {% else %}
+          <div class="font-mono text-xs">tool: {{ first.get("name") }}</div>
+          <pre class="text-xs bg-base-200 p-2 rounded mt-2 whitespace-pre-wrap break-all">{{ (first.get("args") or {}) | tojson(indent=2) }}</pre>
+        {% endif %}
+      </div>
+
+      {% if actions|length > 1 %}
+        <div class="text-xs text-base-content/70 mt-2">
+          注意: 現状のUIは最初の1件のみ回答対応です（pending={{ actions|length }}）。
+        </div>
+      {% endif %}
+
+      <form class="mt-3" hx-post="/runs/{{ run.run_id }}/hitl/respond" hx-target="#hitl-panel" hx-swap="innerHTML">
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text text-sm">回答</span>
+          </label>
+          <textarea name="answer" class="textarea textarea-bordered textarea-sm w-full" rows="3" placeholder="ここに回答を入力してください"></textarea>
+        </div>
+        <div class="mt-3 flex gap-2">
+          <button type="submit" class="btn btn-sm btn-primary">回答して再開</button>
+          <button type="button" class="btn btn-sm btn-outline" hx-post="/runs/{{ run.run_id }}/start" hx-target="#status-panel" hx-swap="innerHTML">再開のみ（回答なし）</button>
+        </div>
+      </form>
+    </div>
+  </div>
+{% elif flash_message %}
+  <div class="alert alert-info shadow-sm">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M12 18a9 9 0 110-18 9 9 0 010 18z" />
+    </svg>
+    <div class="text-sm">{{ flash_message }}</div>
+  </div>
+{% else %}
+  {# waiting_user 以外は何も表示しない（スペース節約） #}
+{% endif %}
+

@@ -34,12 +34,12 @@
   - `GET /runs/{run_id}/template/{draft|filled}`（テンプレプレビュー）
 - **JSON API（UI未実装でも使えるI/F）**: `compare_app/web/app.py`
   - `GET /api/runs`, `GET /api/runs/{run_id}`
-  - `POST /api/runs/text`（テキスト入力でRun作成）
+  - `POST /api/runs/multi`（テキスト/ファイル指定でRun作成）
   - `GET /api/runs/{run_id}/events`（JSONイベント一覧）
-  - `GET /api/runs/{run_id}/blueprint/{a|b}` / `PUT /api/runs/{run_id}/blueprint/{a|b}`
-  - `GET /api/runs/{run_id}/blueprint/{a|b}/preview`
-  - `GET /api/runs/{run_id}/blueprint/{a|b}/validate`
-  - `GET /api/runs/{run_id}/ast/{a|b}`
+  - `GET /api/runs/{run_id}/blueprint/{doc_id}` / `PUT /api/runs/{run_id}/blueprint/{doc_id}`
+- `GET /api/runs/{run_id}/blueprint/{doc_id}/preview`
+- `GET /api/runs/{run_id}/blueprint/{doc_id}/validate`
+- `GET /api/runs/{run_id}/ast/{doc_id}`
   - `GET /api/runs/{run_id}/compare/initial_matching`
 - **CLI（テスト自動化の入口）**: `compare_app/cli.py`
   - `create/start/execute/cancel/tail/list/artifacts/export`
@@ -54,40 +54,30 @@
 
 - `PDF/TXT → txt → blueprint（LLM） → AST（非LLM）` までのステップを追加（`compare_app/core/real_steps.py`）
   - blueprint生成にはLLMキーが必要（未設定時はエラー）
-- `compare_setup → pre_analysis → compare_analysis` のステップを追加（`compare_app/core/compare_steps.py`）
-  - `compare_setup` は embedding/LLMキー必須（未設定時は失敗）
-  - `pre_analysis` / `compare_analysis` はキー未設定時フォールバックでテンプレ生成は可能（内容は簡易）
+- `pre_analysis → execute_analysis` のステップを追加（`compare_app/core/compare_steps.py`）
+  - 比較準備（`pair_compare_setup`）は embedding/LLMキー必須（未設定時は失敗）
+  - `pre_analysis` / `execute_analysis` はキー未設定時フォールバックでテンプレ生成は可能（内容は簡易）
 
 ### 検証済み（real本番接続）
 
-- TXT入力で end-to-end（txt→blueprint→AST→compare_setup→pre/compare analysis→filled）が `succeeded` まで完走することを確認済み
+- TXT入力で end-to-end（txt→blueprint→AST→pre_analysis→execute_analysis→filled）が `succeeded` まで完走することを確認済み
 - PDF入力は fast変換で end-to-end が `succeeded` まで完走することを確認済み（llm変換は未検証）
 
 ### 実装済み（軽量モード / Lightweight Mode）
 
-軽量なドキュメントペアの場合、`pre_analysis`ステップで分析を完結し、後続の`compare_analysis`をスキップする機能。
+入力規模やタスク内容が軽量な場合、`pre_analysis` ステップだけで最終成果物まで作り、後続の `execute_analysis` は **実質no-op** になる機能。
 
-- **軽量判定**: LLMが以下の論理式で判断
-  ```
-  is_lightweight = (total_chars <= 10000) OR (relation == 'Fix')
-  ```
-  - `total_chars`: docA + docB の総文字数
-  - `relation`: 関係タイプ（Fix/Revision/Derivative/Heterogeneous/Subset）
-  - Fixは軽微な修正のため、文字数に関係なく軽量扱い
+- **判定**: `work/pre_analysis.json` の `is_complete`（bool）
 - **動作**:
-  - `is_complete=True`の場合、`filled_report`に記入済みレポートを出力
-  - `template_filled.md`を`out/`に保存（`compare_analysis`の出力と同等）
-  - `template_draft.md`は作成しない（UIでは「-」表示）
-  - `.skip_compare_analysis`フラグファイルを作成し、後続ステップをスキップ
-- **パラメータ**:
-  - `comparison_focus`: 重点比較観点のリスト（将来のUI入力を見据えて注入可能）
-    - 例: `["ルールの追加・削除", "条件式の変更"]`
-- **スキーマ**: `PreAnalysisResult`に`is_complete`（必須bool）と`filled_report`（必須str）を追加
+  - `is_complete=True` の場合、`pre_analysis` が `out/template_filled.md` を直接出力する
+  - `execute_analysis` は `pre_analysis.json` を参照し、`is_complete=True` のときは `out/template_filled.md` の存在を検証して終了する
+- **備考**:
+  - `request_text` と `documents`（doc_id/paths など）を前提に、LLMが実行計画と出力粒度を判断する
 
 ### 残課題（MVP後の優先度高）
 
 - PDF→TXT（LLM）の実測検証（ページ範囲/コスト/品質、UIパラメータ調整）
-- 長時間stepの途中キャンセル（`compare_analysis` / `summarize_ast` など）
+- 長時間stepの途中キャンセル（`execute_analysis` / `summarize_ast` など）
 - artifacts登録の網羅性（log/cacheなどの登録漏れ解消、kind体系の整理）
 
 ---
@@ -96,10 +86,10 @@
 
 ### 0.1 MVPで「必ず」できること
 
-- PDF/TXTを2本アップロードしてRunを作成
+- PDF/TXTを **1件以上** アップロード/選択してRunを作成
 - 必要に応じてPDF→TXT変換（高速/LLM）
 - blueprint生成（LLM）→検証→（任意で手動編集）→AST生成
-- 比較種別判定（Pre-Analysis）で **relation推定＋テンプレ生成**
+- Pre-Analysisで **タスク計画（execution_plan）＋テンプレ生成**
 - 比較分析で **テンプレを段階的に更新して埋める**
 - 実行過程（subagent/tool呼び出し）を **UIで追跡**（タイムライン＋詳細）
 - filled template をUIで閲覧/ダウンロード
@@ -162,7 +152,7 @@ MVPでは簡略化しても良いが、**最初に前提として決めておく
   - 操作: 新規作成、詳細へ
 
 - **Run作成（ウィザードでも単ページでも可）**: `GET /runs/new`
-  - docA/docB アップロード（PDF/TXT）
+  - ドキュメントを複数選択またはアップロード（PDF/TXT、合計1件以上）
   - PDFの場合の変換設定
   - 実行開始ボタン（Run作成＋startを一括 or まず作成して後でstart）
 
@@ -206,7 +196,7 @@ Run詳細は「常時更新される領域」と「手動で開く領域」を�
 ### 2.3 コマンド（POST）
 
 - `POST /runs`  
-  - フォーム送信: docA/docBアップロード＋変換設定を受けてrun作成
+  - フォーム送信: ドキュメント（複数）＋変換設定を受けてrun作成
   - レスポンス: `303 See Other` で `/runs/{run_id}` へ
 
 - `POST /runs/{run_id}/start`  
@@ -233,12 +223,13 @@ Run詳細は「常時更新される領域」と「手動で開く領域」を�
 UIで未実装の機能（例: AST検索/blueprint検証/テキスト貼り付け入力）も、先にAPIだけ提供しておく。
 
 - `GET /api/runs` / `GET /api/runs/{run_id}`
-- `POST /api/runs/text`（docA/docBをテキストで投入してRun作成）
+- `POST /api/runs/multi`（テキスト/ファイル指定でRun作成）
+- `POST /api/runs/multi`（documentsで複数入力してRun作成）
 - `GET /api/runs/{run_id}/events`（SSEの代替: JSON取得）
-- `GET /api/runs/{run_id}/blueprint/{a|b}` / `PUT /api/runs/{run_id}/blueprint/{a|b}`
-- `GET /api/runs/{run_id}/blueprint/{a|b}/preview`
-- `GET /api/runs/{run_id}/blueprint/{a|b}/validate`
-- `GET /api/runs/{run_id}/ast/{a|b}`（mode=summary|outline|chunk|search）
+- `GET /api/runs/{run_id}/blueprint/{doc_id}` / `PUT /api/runs/{run_id}/blueprint/{doc_id}`
+- `GET /api/runs/{run_id}/blueprint/{doc_id}/preview`
+- `GET /api/runs/{run_id}/blueprint/{doc_id}/validate`
+- `GET /api/runs/{run_id}/ast/{doc_id}`（mode=summary|outline|chunk|search）
 - `GET /api/runs/{run_id}/compare/initial_matching`
 
 ---
@@ -247,12 +238,11 @@ UIで未実装の機能（例: AST検索/blueprint検証/テキスト貼り付�
 
 ### 3.1 必須
 
-- docA: file（PDF or TXT）
-- docB: file（PDF or TXT）
+- documents: file（PDF or TXT）または既存ドキュメント選択（**合計1件以上**）
 
-### 3.2 PDF変換設定（docごと）
+### 3.2 PDF変換設定
 
-- mode: `fast`（従来） / `llm`（docA/docBで個別に指定可能）
+- mode: `fast`（従来） / `llm`（現行UIは **全ドキュメント共通**）
 - start_page / end_page（任意）
 - batch_size（llm時）
 - use_image（llm時）
@@ -276,20 +266,19 @@ UIで未実装の機能（例: AST検索/blueprint検証/テキスト貼り付�
 
 - `reuse_artifacts_from`: 既存RunのID（任意）
   - 指定すると、以下の成果物をコピーして再利用:
-    - `work/ast_a.ast.json`, `ast_b.ast.json`
-    - `work/initial_matching.json`
-    - `work/blueprint_a.json`, `blueprint_b.json`
-    - `cache/embedding_cache.json`
+    - `work/ast_<doc_id>.ast.json`
+    - `work/blueprint_<doc_id>.json`
   - ユースケース: AST作成済みのRunを流用して、`pre_analysis`のみ再実行
-  - UI: Run作成画面で「成果物流用」セクションから選択可能（succeededのRunのみ表示）
+  - UI: （将来）Run作成画面で「成果物流用」セクションから選択可能（succeededのRunのみ表示）
   - イベント: `artifacts_reused`または`artifacts_reuse_failed`がemitされる
 
 ### 3.6 入力ファイル流用（use_files_from_run）
 
 - `use_files_from_run`: 既存RunのID（任意）
-  - 指定すると、そのRunの入力ファイル（`in/doc_a.*`, `in/doc_b.*`）を再利用
+  - 指定すると、そのRunの入力ファイルを再利用
   - 新規ファイルアップロードが不要になる
-  - UI: Run作成画面で「過去のRunから入力ファイルを選択」ドロップダウン
+  - 状況: 現状の実装では **未対応**（将来要件）
+  - UI: （将来）Run作成画面で「過去のRunから入力ファイルを選択」ドロップダウン
     - 各Runのファイル名も表示: `run_id... | ファイルA / ファイルB (日時)`
   - ユースケース: 同じドキュメントで異なるパラメータで再実行
 
@@ -299,7 +288,7 @@ UIで未実装の機能（例: AST検索/blueprint検証/テキスト貼り付�
 - `step_to`: 終了ステップ名（空欄で最後まで）
 - **UI対応済み**: Run作成画面のドロップダウンで選択可能
 - 利用可能なステップ名:
-  - **realモード**: `ensure_text_a`, `ensure_text_b`, `build_blueprint_a`, `build_blueprint_b`, `build_ast_a`, `build_ast_b`, `summarize_ast_a`, `summarize_ast_b`, `compare_setup`, `pre_analysis`, `compare_analysis`
+  - **realモード**: `ensure_text_all`, `build_blueprint_all`, `build_ast_all`, `summarize_ast_all`, `pre_analysis`, `execute_analysis`
   - **dummyモード**: `dummy_prepare`, `dummy_agent_trace`, `dummy_write_template_draft`, `dummy_analyze`, `dummy_fill_template`
 
 ---
@@ -318,29 +307,29 @@ MVPは `InProcessJobQueue` で実装し、Celery導入時は `CeleryJobQueue` �
 
 Runの処理は「止めやすく、可視化しやすい」粒度で分割する。
 
-1. **ingest_input**
-   - アップロード保存（FS）
-2. **convert_docA / convert_docB（必要な場合）**
-   - PDF→txt（fast/llm）
-3. **build_blueprint_docA / build_blueprint_docB**
-   - deep_agent（blueprint builder）実行
-4. **validate_blueprint_docA / validate_blueprint_docB（任意/自動）**
-5. **build_ast_docA / build_ast_docB**
-6. **compare_setup**
-   - embedding作成/キャッシュ読み書き
-7. **match_all_chunks（任意）**
-8. **pre_analysis（重要）**
-   - 関係性分析＋テンプレ生成（成果物: template_draft.md等）
-9. **compare_analysis（重要）**
-   - テンプレ段階更新（成果物: template_filled.md等）
-10. **finalize**
-   - ログ解析（agent_log_analyzer）＋成果物の確定
+1. **ensure_text_all**
+   - 全ドキュメントのPDF→TXT（必要な場合）と正規化
+2. **build_blueprint_all**
+   - 各ドキュメントの blueprint 生成（LLM）
+3. **build_ast_all**
+   - 各ドキュメントの AST 生成（非LLM）
+4. **summarize_ast_all（任意）**
+   - AST枝サマリ（LLM、`summarize_ast=true` のとき）
+5. **pre_analysis（重要）**
+   - 依頼文＋documentsから、実行計画（execution_plan）とテンプレ（template_draft）を生成
+6. **execute_analysis（重要）**
+   - pre_analysis の計画に従い、必要ペアは `pair_compare_setup` で準備しつつテンプレを埋めて `template_filled.md` を作る
+
+補足:
+- 比較準備は `pair_compare_setup` に統一する
+- `compare_*` 系ツールは `doc_a_id/doc_b_id` を必須とし、ペアごとに状態を復元して動作する
+- 本文検索は `search_by_keyphrase(file_path, phrase, intent)` で **単一AST** を対象に実行する（ペア非依存）
 
 ### 4.3 ステップ選択パラメータ（step filtering）
 
 `params` で以下を指定すると、実行するステップを絞り込める（部分再実行やデバッグに有用）:
 
-- `steps_include`: 実行するステップ名のリスト（例: `["build_blueprint_a", "compare_analysis"]`）
+- `steps_include`: 実行するステップ名のリスト（例: `["build_blueprint_all", "execute_analysis"]`）
 - `step_from` / `step_to`: 範囲指定（開始〜終了ステップ名）
 
 未指定なら全ステップを対象とする。詳細は `design/run_executor_pipeline_api.md` を参照。
@@ -408,6 +397,6 @@ compare_app側で「run入力（data/runs/{run_id}/input）を読む同名ツー
 1. FS上の `run_id` フォルダ作成 + Run一覧/詳細の最低限表示
 2. アップロード→Run作成→start（バックグラウンドでダミージョブ）
 3. SSEでイベントタイムライン表示（まずはrun_status/stepイベントだけ）
-4. 実ジョブを順に接続（PDF変換→blueprint→AST→pre_analysis→compare_analysis）
+4. 実ジョブを順に接続（PDF変換→blueprint→AST→pre_analysis→execute_analysis）
 5. Debugログ/ツールイベントをUIへ（案A or B）
 6. 成果物（テンプレ/filled）プレビューとダウンロード

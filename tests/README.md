@@ -210,7 +210,7 @@ def test_real_mode(sample_doc_a, sample_doc_b):
     # --mode real を指定
     result = subprocess.run([
         sys.executable, "-m", "compare_app.cli",
-        "create", "--doc-a", str(sample_doc_a), "--doc-b", str(sample_doc_b),
+        "create", "--doc", str(sample_doc_a), "--doc", str(sample_doc_b),
         "--mode", "real",
     ], ...)
 ```
