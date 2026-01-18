@@ -247,7 +247,7 @@ agent_compare_type_analysis = create_deep_agent(
 # except Exception:
 #     _setup_obj = {"ok": False}
 
-# print("compare agent ready. tools:", [t.name for t in tools_compare_type_analysis])
+# print("document_process_agent ready. tools:", [t.name for t in tools_compare_type_analysis])
 # print(
 #     "warmup done:",
 #     {
@@ -363,7 +363,7 @@ agent_compare_analysis = create_deep_agent(
             "model": llm,
         },
         {
-            "name": "compare_agent",
+            "name": "document_process_agent",
             "description": "与えられた特定の観点でドキュメント間の比較を行います。ASTファイルの読み込みもできます。抽象的な依頼は時間がかかる傾向があるため、ステップバイステップで依頼をしてください。", 
             "system_prompt": compare_sub_agent1,
             "tools": tools_compare_analysis,
@@ -383,7 +383,7 @@ agent_compare_analysis = create_deep_agent(
         },
         {
             "name": "deep_research_agent",
-            "description": "compare_agentの結果に対して、より具体的な分析観点や論点について深掘りを行うサブエージェントです。", 
+            "description": "document_process_agentの結果に対して、より具体的な分析観点や論点について深掘りを行うサブエージェントです。", 
             "system_prompt": compare_sub_agent2,
             "tools": tools_compare_analysis,
             "middleware": [
@@ -402,7 +402,7 @@ agent_compare_analysis = create_deep_agent(
         },
         {
             "name": "validate_agent",
-            "description": "compare_agentやdeep_research_agentの結果に対して、特定の分析結果の妥当性を検証するサブエージェントです。", 
+            "description": "document_process_agentやdeep_research_agentの結果に対して、特定の分析結果の妥当性を検証するサブエージェントです。", 
             "system_prompt": compare_sub_agent3,
             "tools": tools_compare_analysis,
             "middleware": [

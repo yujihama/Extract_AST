@@ -1,15 +1,15 @@
-## compare_agent アプリ化ロードマップ（FastAPI + HTMX + CLI）
+## document_process_agent アプリ化ロードマップ（FastAPI + HTMX + CLI）
 
 ### 現在地（最新）
 
-現時点の実装は以下まで到達しています（詳細は `compare_app/` 配下）。
+現時点の実装は以下まで到達しています（詳細は `document_process_app/` 配下）。
 
 - **フェーズ0（アプリ土台）**: 完了（SQLite: `runs/run_events/artifacts`）
 - **フェーズ1（入口API/ジョブ）**: 完了（`RunExecutor` / `Pipeline` / `InProcessJobQueue` / 協調的キャンセル）
 - **フェーズ2（最小UI + SSE）**: 完了（Run一覧/作成/詳細、SSE、テンプレプレビュー、成果物一覧/閲覧/DL）
-- **フェーズ3（CLI）**: 完了（`python -m compare_app.cli create/start/execute/cancel/tail/list/artifacts/export`）
+- **フェーズ3（CLI）**: 完了（`python -m document_process_app.cli create/start/execute/cancel/tail/list/artifacts/export`）
 - **フェーズ4（PDF/TXT→blueprint→AST）**: 完了（TXT入力実測、PDFはfast/llm変換の両方を実装）
-- **フェーズ5/6（Pre-Analysis→Compare-Analysis）**: 完了（`compare_app/core/compare_steps.py`）
+- **フェーズ5/6（Pre-Analysis→Compare-Analysis）**: 完了（`document_process_app/core/compare_steps.py`）
   - 比較準備（`pair_compare_setup`）は embedding/LLMキー必須
   - pre_analysis/execute_analysis はキー未設定時フォールバックあり
   - execute_analysis は協調的キャンセルの途中介入に対応
@@ -32,10 +32,10 @@
 ## 前提（設計方針）
 
 - **Single source of truth**: UI/CLIは “同一のコア処理” を呼ぶだけにする。
-  - `compare_app/core`（ドメイン/パイプライン）
-  - `compare_app/infra`（FS/SQLite/EventSink）
-  - `compare_app/web`（FastAPI+HTMX）
-  - `compare_app/cli`（CLI）
+  - `document_process_app/core`（ドメイン/パイプライン）
+  - `document_process_app/infra`（FS/SQLite/EventSink）
+  - `document_process_app/web`（FastAPI+HTMX）
+  - `document_process_app/cli`（CLI）
 - **run_id中心**: すべての入出力・イベント・状態は `run_id` に紐づく。
 - **イベントは案A**: `DebugLoggingMiddleware` 等から `EventSink.emit()` でSQLiteへ保存し、UIはSSEで購読。
 - **MVPは同時1 Run**: 排他で開始してOK。ただしrun_id分離は前提。
@@ -50,7 +50,7 @@
 
 ### 実装項目
 
-- `src/` とは別にアプリ層（例: `app/` か `compare_app/`）を新設
+- `src/` とは別にアプリ層（例: `app/` か `document_process_app/`）を新設
 - FSのRunディレクトリ規約（`data/runs/{run_id}/...`）を作り、生成/参照APIを用意
 - SQLiteの最小スキーマ作成（`runs`, `run_events`, `artifacts`）
 - `EventSink`（SQLite実装）と `RunRepository`（SQLite実装）
@@ -60,7 +60,7 @@
 - `run_id` を作成すると `data/runs/{run_id}/` が作られ、SQLiteに `runs` 行が追加される
 - `EventSink.emit(run_id, ...)` が `run_events` に保存でき、Run詳細画面で取得可能な形になる
 - “アプリ層”が **既存PoCコードに依存せず** import可能（循環参照なし）
-  - 現状: `compare_app/` は `src/` に依存しない土台として稼働（realモードの一部で `src/` を利用）
+  - 現状: `document_process_app/` は `src/` に依存しない土台として稼働（realモードの一部で `src/` を利用）
 
 ---
 
@@ -120,8 +120,8 @@
 ### 実装項目
 
 - CLIコマンド（例）
-  - 現状は `python -m compare_app.cli create/start/execute/cancel/tail/list/artifacts/export`
-  - 将来は `compare-agent run ...` のようなI/Fに整理しても良い（互換レイヤで吸収）
+  - 現状は `python -m document_process_app.cli create/start/execute/cancel/tail/list/artifacts/export`
+  - 将来は `document_process_agent run ...` のようなI/Fに整理しても良い（互換レイヤで吸収）
 - CLIは **FastAPIを経由しない**（同一 `RunExecutor` を直接呼ぶ）
   - これにより「UI無しの回帰テスト」が可能になる
 
@@ -129,7 +129,7 @@
 
 - CLIで Run を作成→開始→完了まで待機でき、終了コードが `0`（成功）/`!=0`（失敗）で分かれる
 - CLI実行でも `runs/run_events/artifacts` が一貫して記録される（UIと同じ）
-- `compare-agent run tail` で tool/agentイベントが追える（後続フェーズで詳細化）
+- `document_process_agent run tail` で tool/agentイベントが追える（後続フェーズで詳細化）
 
 ---
 

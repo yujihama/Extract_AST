@@ -16,15 +16,15 @@
 
 ### 実装済み（MVP土台）
 
-- **共通入口（UI/CLI）**: `compare_app/core/run_executor.py`, `compare_app/core/pipeline.py`
+- **共通入口（UI/CLI）**: `document_process_app/core/run_executor.py`, `document_process_app/core/pipeline.py`
   - `RunExecutor.create_run/start/execute/request_cancel`
   - `Pipeline` は `step_started/finished/failed` に加え、条件により `step_skipped` をemit
   - `mode=dummy|real` で経路分岐（UI/CLIから選択可能）
-- **非Celery実行**: `compare_app/infra/inmemory.py`
+- **非Celery実行**: `document_process_app/infra/inmemory.py`
   - `InProcessJobQueue`（別スレッド）で `run_pipeline` を起動
-- **SQLiteイベント/Run保存**: `compare_app/infra/sqlite_store.py`
-  - DB: `data/compare_app.db`（`schema_version`, `runs`, `run_events`, `artifacts`）
-- **Web UI（FastAPI + HTMX）**: `compare_app/web/app.py`
+- **SQLiteイベント/Run保存**: `document_process_app/infra/sqlite_store.py`
+  - DB: `data/document_process_app.db`（`schema_version`, `runs`, `run_events`, `artifacts`）
+- **Web UI（FastAPI + HTMX）**: `document_process_app/web/app.py`
   - `GET /`（Run一覧）
   - `GET /runs/new`（Run作成）
   - `POST /runs`（upload→Run作成、任意でstart）
@@ -32,7 +32,7 @@
   - `POST /runs/{run_id}/start`, `POST /runs/{run_id}/cancel`
   - `GET /runs/{run_id}/events`（SSE）
   - `GET /runs/{run_id}/template/{draft|filled}`（テンプレプレビュー）
-- **JSON API（UI未実装でも使えるI/F）**: `compare_app/web/app.py`
+- **JSON API（UI未実装でも使えるI/F）**: `document_process_app/web/app.py`
   - `GET /api/runs`, `GET /api/runs/{run_id}`
   - `POST /api/runs/multi`（テキスト/ファイル指定でRun作成）
   - `GET /api/runs/{run_id}/events`（JSONイベント一覧）
@@ -41,10 +41,10 @@
 - `GET /api/runs/{run_id}/blueprint/{doc_id}/validate`
 - `GET /api/runs/{run_id}/ast/{doc_id}`
   - `GET /api/runs/{run_id}/compare/initial_matching`
-- **CLI（テスト自動化の入口）**: `compare_app/cli.py`
+- **CLI（テスト自動化の入口）**: `document_process_app/cli.py`
   - `create/start/execute/cancel/tail/list/artifacts/export`
 - **エージェント可視化（案A）**:
-  - `compare_app/agents/middleware.py` の `EventSinkMiddleware` が `agent_*` / `tool_call_*` を `EventSink` にemit
+  - `document_process_app/agents/middleware.py` の `EventSinkMiddleware` が `agent_*` / `tool_call_*` を `EventSink` にemit
 
 ### 実装済み（dummyモード）
 
@@ -52,9 +52,9 @@
 
 ### 一部実装（realモードの骨格）
 
-- `PDF/TXT → txt → blueprint（LLM） → AST（非LLM）` までのステップを追加（`compare_app/core/real_steps.py`）
+- `PDF/TXT → txt → blueprint（LLM） → AST（非LLM）` までのステップを追加（`document_process_app/core/real_steps.py`）
   - blueprint生成にはLLMキーが必要（未設定時はエラー）
-- `pre_analysis → execute_analysis` のステップを追加（`compare_app/core/compare_steps.py`）
+- `pre_analysis → execute_analysis` のステップを追加（`document_process_app/core/compare_steps.py`）
   - 比較準備（`pair_compare_setup`）は embedding/LLMキー必須（未設定時は失敗）
   - `pre_analysis` / `execute_analysis` はキー未設定時フォールバックでテンプレ生成は可能（内容は簡易）
 
@@ -354,7 +354,7 @@ MVPで現実的な案は2つ:
 
 #### 案A: エージェント実行を middleware で EventSink に流す（採用）
 
-- 現状は `compare_app/agents/middleware.py` の `EventSinkMiddleware` を deep_agent/subagent に付与し、
+- 現状は `document_process_app/agents/middleware.py` の `EventSinkMiddleware` を deep_agent/subagent に付与し、
   `agent_start/end` および `tool_call_*` を `EventSink.emit(...)` する。
 - 利点: リアルタイム、構造化、tail不要
 
@@ -379,7 +379,7 @@ MVPでは案Bでも良いが、Celery移行・リアルタイム性の観点で�
 - `data/runs/{run_id}/cache/`  : run専用キャッシュ（任意）
 
 ※ `src.tools.analyze_visual_contents` は `data/input` 固定参照だが、現状は
-compare_app側で「run入力（data/runs/{run_id}/input）を読む同名ツール」を注入して回避している。
+document_process_app側で「run入力（data/runs/{run_id}/input）を読む同名ツール」を注入して回避している。
 将来の並列実行を考えると、残る“PoC由来のグローバル/固定参照”も段階的に解消する。
 
 ### 6.2 SQLite（履歴/イベント/メタ）

@@ -8,7 +8,7 @@ from typing import Any, Callable, Optional, Dict
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 # NOTE:
-# compare_app 側の実行では DebugLoggingMiddleware は必須ではない一方、
+# document_process_app 側の実行では DebugLoggingMiddleware は必須ではない一方、
 # langchain のバージョン差分により `langchain.agents.middleware` が存在しない環境がある。
 # その場合でも build_llm 等を使えるよう、middleware系importはbest-effortにする。
 try:

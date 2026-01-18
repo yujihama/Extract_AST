@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Mapping, Optional, Sequence
 
-from compare_app.contracts import EventSink, RunEvent
-from compare_app.models import RunRecord, RunStatus
+from document_process_app.contracts import EventSink, RunEvent
+from document_process_app.models import RunRecord, RunStatus
 
 
 def _utcnow() -> datetime:

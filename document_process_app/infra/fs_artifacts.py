@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from compare_app.infra.document_store import (
+from document_process_app.infra.document_store import (
     Document,
     DocumentPair,
     DocumentPairRepository,

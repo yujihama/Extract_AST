@@ -9,13 +9,13 @@
 
 ## 実装状況（最新）
 
-- 実装本体は `compare_app/` 配下（UI/CLI共通）
-- `Pipeline`: `compare_app/core/pipeline.py`
-- `RunExecutor`: `compare_app/core/run_executor.py`
-- `InProcessJobQueue`: `compare_app/infra/inmemory.py`
-- `SqliteRunRepository` / `SqliteEventSink`: `compare_app/infra/sqlite_store.py`
-- `SqliteArtifactRepository`: `compare_app/infra/sqlite_store.py`（artifactsはイベント経由で更新、読み取り専用）
-- `src.tools.COMPARE_STATE` は `compare_app/compat/patch_src_tools.py` によりスレッドローカルへ差し替え
+- 実装本体は `document_process_app/` 配下（UI/CLI共通）
+- `Pipeline`: `document_process_app/core/pipeline.py`
+- `RunExecutor`: `document_process_app/core/run_executor.py`
+- `InProcessJobQueue`: `document_process_app/infra/inmemory.py`
+- `SqliteRunRepository` / `SqliteEventSink`: `document_process_app/infra/sqlite_store.py`
+- `SqliteArtifactRepository`: `document_process_app/infra/sqlite_store.py`（artifactsはイベント経由で更新、読み取り専用）
+- `src.tools.COMPARE_STATE` は `document_process_app/compat/patch_src_tools.py` によりスレッドローカルへ差し替え
 - `Pipeline` は条件付きstep（`ConditionalStep`）により `step_skipped` をemit可能
 - キャンセルは `CancellationRegistry` による協調的キャンセル（`request_cancel(run_id)`）
 - `RunExecutor` は完了時に `log/events.jsonl` をエクスポートし、FSスキャンで不足artifactを補完する

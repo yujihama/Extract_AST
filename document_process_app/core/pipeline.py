@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Iterable, Protocol, Sequence
 
-from compare_app.contracts import CancellationToken, EventSink
+from document_process_app.contracts import CancellationToken, EventSink
 
 
 def _utcnow() -> datetime:

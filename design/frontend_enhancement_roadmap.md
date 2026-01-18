@@ -66,7 +66,7 @@ FastAPI + htmx のアーキテクチャを維持しつつ、Tailwind CSS + Daisy
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ title or "compare_agent" }}</title>
+  <title>{{ title or "document_process_agent" }}</title>
   <!-- Tailwind CSS + DaisyUI (CDN) -->
   <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
@@ -78,7 +78,7 @@ FastAPI + htmx のアーキテクチャを維持しつつ、Tailwind CSS + Daisy
   <!-- ナビゲーション -->
   <div class="navbar bg-base-100 shadow-lg">
     <div class="flex-1">
-      <a href="/" class="btn btn-ghost text-xl">compare_agent</a>
+      <a href="/" class="btn btn-ghost text-xl">document_process_agent</a>
     </div>
     <div class="flex-none">
       <a href="/runs/new" class="btn btn-primary btn-sm">新規Run</a>
@@ -534,7 +534,7 @@ Tailwindのレスポンシブクラスを活用
 ## ファイル構成（変更後）
 
 ```
-compare_app/web/
+document_process_app/web/
 ├── app.py                      # FastAPIアプリ（変更なし）
 ├── templates/
 │   ├── base.html               # ★ Tailwind/DaisyUI導入

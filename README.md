@@ -1,6 +1,6 @@
-## compare_agent
+## document_process_agent
 
-`compare_app/` は **FastAPI+HTMX の Web UI** と **CLI** を備えた、ドキュメント処理（PDF/TXT→構造化→タスク実行）用のMVPです。
+`document_process_app/` は **FastAPI+HTMX の Web UI** と **CLI** を備えた、ドキュメント処理（PDF/TXT→構造化→タスク実行）用のMVPです。
 
 - **入力**: `documents`（1件以上）
 - **成果物**: `data/runs/{run_id}/...` として保存（テンプレ、ログ、イベント等）
@@ -19,7 +19,7 @@ python -m pip install -U pip
 
 ### 2) 依存関係（例）
 
-基本は `requirements.txt` を使ってインストールしてください（`compare_app/` とテストも含めた想定）。
+基本は `requirements.txt` を使ってインストールしてください（`document_process_app/` とテストも含めた想定）。
 
 ```powershell
 pip install -r requirements.txt
@@ -66,7 +66,7 @@ OpenAI利用時に `RateLimitError: 429 (insufficient_quota)` が出る場合、
 
 ## Web UI / CLI
 
-`compare_app/` は **FastAPI+HTMX UI** と **CLI** の土台です。
+`document_process_app/` は **FastAPI+HTMX UI** と **CLI** の土台です。
 
 - dummyモード: 「Run作成→実行→イベント追跡→テンプレ生成（ダミー）」まで動作
 - realモード: 「txt→blueprint→AST→pre_analysis→execute_analysis→filled（最終成果物）」まで接続
@@ -79,33 +79,33 @@ OpenAI利用時に `RateLimitError: 429 (insufficient_quota)` が出る場合、
 pip install -r requirements.txt
 ```
 
-※ `compare_app/` は起動時に `.env` を自動で読み込みます（UI/CLI共通）。
+※ `document_process_app/` は起動時に `.env` を自動で読み込みます（UI/CLI共通）。
 
 ### CLI（同期実行・テスト向け）
 
 ```powershell
 # Run作成（推奨: documents を複数指定。合計1件以上）
-python -m compare_app.cli create --doc .\data\input\test_small_rules_v1.txt --doc .\data\input\test_small_rules_v2.txt --request "差分を要約して" --mode real
+python -m document_process_app.cli create --doc .\data\input\test_small_rules_v1.txt --doc .\data\input\test_small_rules_v2.txt --request "差分を要約して" --mode real
 
 # Run実行（run_idを指定）
-python -m compare_app.cli execute <run_id>
+python -m document_process_app.cli execute <run_id>
 
 # イベント追跡
-python -m compare_app.cli tail <run_id>
+python -m document_process_app.cli tail <run_id>
 ```
 
 realモード（本番処理）:
 
 ```powershell
-python -m compare_app.cli create --doc .\data\input\仕訳定義書.txt --doc .\data\input\仕訳定義書_文体変更版.txt --mode real
-python -m compare_app.cli execute <run_id>
+python -m document_process_app.cli create --doc .\data\input\仕訳定義書.txt --doc .\data\input\仕訳定義書_文体変更版.txt --mode real
+python -m document_process_app.cli execute <run_id>
 ```
 
 コスト節約のスモーク（小規模テスト文書 + gpt-5-mini）:
 
 ```powershell
-python -m compare_app.cli create --doc .\data\input\test_small_rules_v1.txt --doc .\data\input\test_small_rules_v2.txt --mode real --params '{\"llm_complex_model\":\"gpt-5-mini\",\"summarize_ast\":false}'
-python -m compare_app.cli execute <run_id>
+python -m document_process_app.cli create --doc .\data\input\test_small_rules_v1.txt --doc .\data\input\test_small_rules_v2.txt --mode real --params '{\"llm_complex_model\":\"gpt-5-mini\",\"summarize_ast\":false}'
+python -m document_process_app.cli execute <run_id>
 ```
 
 #### ステップの実行範囲を絞る（UI/CLI共通）
@@ -116,27 +116,27 @@ python -m compare_app.cli execute <run_id>
 - `step_from`: 開始ステップ名（例: `build_blueprint_all`）
 - `step_to`: 終了ステップ名（例: `execute_analysis`）
 
-範囲指定は `compare_app/bootstrap.py` に並んだステップ順が基準です。`steps_include` と `step_from`/`step_to` は併用でき、両方の条件に合致したステップのみ実行されます。
+範囲指定は `document_process_app/bootstrap.py` に並んだステップ順が基準です。`steps_include` と `step_from`/`step_to` は併用でき、両方の条件に合致したステップのみ実行されます。
 
 ```powershell
 # 例: AST生成以降だけ実行
-python -m compare_app.cli create --doc .\data\input\仕訳定義書.txt --doc .\data\input\仕訳定義書_文体変更版.txt --mode real --params '{\"step_from\":\"build_ast_all\",\"step_to\":\"execute_analysis\"}'
-python -m compare_app.cli execute <run_id>
+python -m document_process_app.cli create --doc .\data\input\仕訳定義書.txt --doc .\data\input\仕訳定義書_文体変更版.txt --mode real --params '{\"step_from\":\"build_ast_all\",\"step_to\":\"execute_analysis\"}'
+python -m document_process_app.cli execute <run_id>
 ```
 
 ### 成果物（Artifacts）の確認方法
 
 - **Web UI**: Run詳細（`/runs/{run_id}`）の「成果物」から `view` / `download`
 - **CLI**:
-  - 一覧: `python -m compare_app.cli artifacts <run_id>`
-  - 取得: `python -m compare_app.cli export <run_id> --kind template_filled --out .\\template_filled.md`
-  - 取得（documentsの例）: `python -m compare_app.cli export <run_id> --kind blueprint_d1 --out .\\blueprint_d1.json`
+  - 一覧: `python -m document_process_app.cli artifacts <run_id>`
+  - 取得: `python -m document_process_app.cli export <run_id> --kind template_filled --out .\\template_filled.md`
+  - 取得（documentsの例）: `python -m document_process_app.cli export <run_id> --kind blueprint_d1 --out .\\blueprint_d1.json`
 - **ファイル直接**: `data/runs/{run_id}/work/` / `out/` / `log/` 配下を開く
 
 ### Web UI（FastAPI）
 
 ```powershell
-uvicorn compare_app.web.app:app --reload
+uvicorn document_process_app.web.app:app --reload
 ```
 
 ブラウザで `http://127.0.0.1:8000` を開いてください。

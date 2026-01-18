@@ -30,7 +30,7 @@ class HitlPaths:
 
 
 def _repo_root() -> Path:
-    # compare_app/agents/hitl.py -> compare_app -> repo root
+    # document_process_app/agents/hitl.py -> document_process_app -> repo root
     return Path(__file__).resolve().parents[2]
 
 
@@ -69,7 +69,7 @@ def open_checkpointer(*, db_path: Optional[str] = None) -> Iterator[Any]:
     - 無ければ MemorySaver にフォールバック（同一プロセス内のresumeは可能）
 
     env:
-    - COMPARE_APP_CHECKPOINT_DB_PATH: SQLiteの保存先（SQLite利用時のみ）
+    - DOCUMENT_PROCESS_APP_CHECKPOINT_DB_PATH: SQLiteの保存先（SQLite利用時のみ）
     """
     if SqliteSaver is None:
         # SQLite saverが無い環境（.venvで確認済み）: in-memoryで継続
@@ -78,11 +78,11 @@ def open_checkpointer(*, db_path: Optional[str] = None) -> Iterator[Any]:
 
     # SQLite saverが使える環境
     if db_path is None:
-        env = os.getenv("COMPARE_APP_CHECKPOINT_DB_PATH")
+        env = os.getenv("DOCUMENT_PROCESS_APP_CHECKPOINT_DB_PATH")
         if env and str(env).strip():
             db_path = str(env).strip()
         else:
-            db_path = str((_repo_root() / "data" / "compare_app_checkpoints.sqlite3").resolve())
+            db_path = str((_repo_root() / "data" / "document_process_app_checkpoints.sqlite3").resolve())
 
     p = Path(db_path)
     p.parent.mkdir(parents=True, exist_ok=True)

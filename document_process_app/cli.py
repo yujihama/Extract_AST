@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 import time
 
-from compare_app.bootstrap import build_default_executor
+from document_process_app.bootstrap import build_default_executor
 
 
 def _print_json(obj) -> None:
@@ -14,7 +14,10 @@ def _print_json(obj) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="compare-agent", description="compare_agent app CLI (UI/CLI共通RunExecutorを使用)")
+    parser = argparse.ArgumentParser(
+        prog="document_process_agent",
+        description="document_process_agent app CLI (UI/CLI共通RunExecutorを使用)",
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_create = sub.add_parser("create", help="Runを作成する")

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from compare_app.core.pipeline import CancelledError, RunContext
+from document_process_app.core.pipeline import CancelledError, RunContext
 
 
 def _utcnow_iso() -> str:

@@ -59,7 +59,7 @@ class TestCliRealMode:
         print("\n[Real Test] Creating run with real mode...")
         create_result = subprocess.run(
             [
-                sys.executable, "-m", "compare_app.cli",
+                sys.executable, "-m", "document_process_app.cli",
                 "create",
                 "--doc", str(test_small_rules_v1),
                 "--doc", str(test_small_rules_v2),
@@ -78,7 +78,7 @@ class TestCliRealMode:
         # 2. 同期実行（realモード - LLMを使用）
         print("[Real Test] Executing run (this may take a few minutes)...")
         execute_result = subprocess.run(
-            [sys.executable, "-m", "compare_app.cli", "execute", run_id],
+            [sys.executable, "-m", "document_process_app.cli", "execute", run_id],
             capture_output=True,
             text=True,
             cwd=cwd,
@@ -97,7 +97,7 @@ class TestCliRealMode:
         # 3. 成果物一覧を確認
         print("[Real Test] Checking artifacts...")
         artifacts_result = subprocess.run(
-            [sys.executable, "-m", "compare_app.cli", "artifacts", run_id],
+            [sys.executable, "-m", "document_process_app.cli", "artifacts", run_id],
             capture_output=True,
             text=True,
             cwd=cwd,
@@ -148,7 +148,7 @@ class TestCliRealMode:
             
             export_result = subprocess.run(
                 [
-                    sys.executable, "-m", "compare_app.cli",
+                    sys.executable, "-m", "document_process_app.cli",
                     "export", run_id, "--kind", "template_filled", "--out", tmp_path,
                 ],
                 capture_output=True,
@@ -179,7 +179,7 @@ class TestCliRealMode:
 
         create_result = subprocess.run(
             [
-                sys.executable, "-m", "compare_app.cli",
+                sys.executable, "-m", "document_process_app.cli",
                 "create",
                 "--doc", str(test_small_rules_v1),
                 "--doc", str(test_small_rules_v2),
@@ -197,7 +197,7 @@ class TestCliRealMode:
         run_id = json.loads(create_result.stdout)["run_id"]
 
         execute_result = subprocess.run(
-            [sys.executable, "-m", "compare_app.cli", "execute", run_id],
+            [sys.executable, "-m", "document_process_app.cli", "execute", run_id],
             capture_output=True,
             text=True,
             cwd=cwd,
@@ -215,7 +215,7 @@ class TestCliRealMode:
 
         create_result = subprocess.run(
             [
-                sys.executable, "-m", "compare_app.cli",
+                sys.executable, "-m", "document_process_app.cli",
                 "create",
                 "--doc", str(test_small_rules_v1),
                 "--request", "この文書を簡潔に要約してください。",
@@ -230,7 +230,7 @@ class TestCliRealMode:
         run_id = json.loads(create_result.stdout)["run_id"]
 
         execute_result = subprocess.run(
-            [sys.executable, "-m", "compare_app.cli", "execute", run_id],
+            [sys.executable, "-m", "document_process_app.cli", "execute", run_id],
             capture_output=True,
             text=True,
             cwd=cwd,
@@ -252,7 +252,7 @@ class TestCliRealMode:
 
         create_result = subprocess.run(
             [
-                sys.executable, "-m", "compare_app.cli",
+                sys.executable, "-m", "document_process_app.cli",
                 "create",
                 "--doc", str(test_small_rules_v1),
                 "--doc", str(test_small_rules_v2),
@@ -269,7 +269,7 @@ class TestCliRealMode:
         run_id = json.loads(create_result.stdout)["run_id"]
 
         execute_result = subprocess.run(
-            [sys.executable, "-m", "compare_app.cli", "execute", run_id],
+            [sys.executable, "-m", "document_process_app.cli", "execute", run_id],
             capture_output=True,
             text=True,
             cwd=cwd,
@@ -309,7 +309,7 @@ class TestCliRealModeSteps:
         print("\n[Real Test] Creating run with step filtering...")
         create_result = subprocess.run(
             [
-                sys.executable, "-m", "compare_app.cli",
+                sys.executable, "-m", "document_process_app.cli",
                 "create",
                 "--doc", str(test_small_rules_v1),
                 "--doc", str(test_small_rules_v2),
@@ -329,7 +329,7 @@ class TestCliRealModeSteps:
         # 実行
         print("[Real Test] Executing with step filtering...")
         execute_result = subprocess.run(
-            [sys.executable, "-m", "compare_app.cli", "execute", run_id],
+            [sys.executable, "-m", "document_process_app.cli", "execute", run_id],
             capture_output=True,
             text=True,
             cwd=cwd,

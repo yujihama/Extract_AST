@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from compare_app.core.pipeline import CancelledError, RunContext
+from document_process_app.core.pipeline import CancelledError, RunContext
 
 
 def _utcnow_iso() -> str:
@@ -209,7 +209,7 @@ def _build_pair_compare_setup_tool(
         doc_b_hash = docs_by_id.get(b_id, {}).get("doc_hash")
         if doc_a_hash and doc_b_hash:
             try:
-                from compare_app.infra.document_store import DocumentPairRepository
+                from document_process_app.infra.document_store import DocumentPairRepository
 
                 pair_repo = DocumentPairRepository()
 
@@ -720,7 +720,7 @@ class PreAnalysisStep:
 
         from langgraph.types import Command
 
-        from compare_app.agents.hitl import (
+        from document_process_app.agents.hitl import (
             get_hitl_paths,
             human_input,
             load_json_if_exists,
@@ -792,7 +792,7 @@ class PreAnalysisStep:
         with open_checkpointer() as checkpointer:
             middleware = []
             try:
-                from compare_app.agents.middleware import EventSinkMiddleware  # type: ignore
+                from document_process_app.agents.middleware import EventSinkMiddleware  # type: ignore
 
                 middleware = [
                     EventSinkMiddleware(
@@ -852,7 +852,7 @@ class PreAnalysisStep:
                 )
             except Exception:
                 pass
-            from compare_app.core.pipeline import WaitingUserError
+            from document_process_app.core.pipeline import WaitingUserError
 
             raise WaitingUserError("hitl interrupted (pre_analysis)")
 
@@ -1034,7 +1034,7 @@ class PreAnalysisStep:
                 "waiting_user_requested",
                 {"ts": _utcnow_iso(), "step": self.name, "questions": review_questions},
             )
-            from compare_app.core.pipeline import WaitingUserError
+            from document_process_app.core.pipeline import WaitingUserError
 
             raise WaitingUserError("pre_analysis requested human review")
 
@@ -1231,7 +1231,7 @@ class CompareAnalysisStep:
 
         middleware = []
         try:
-            from compare_app.agents.middleware import EventSinkMiddleware  # type: ignore
+            from document_process_app.agents.middleware import EventSinkMiddleware  # type: ignore
 
             middleware = [
                 EventSinkMiddleware(

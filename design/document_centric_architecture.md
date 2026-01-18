@@ -56,12 +56,12 @@ data/
 
 ## 4. 主要コンポーネント（現行実装の対応）
 
-- `compare_app/infra/document_store.py`
+- `document_process_app/infra/document_store.py`
   - `DocumentRepository`: `data/documents/` の永続化
   - `DocumentPairRepository`: `data/document_pairs/` の永続化
-- `compare_app/infra/fs_artifacts.py`
+- `document_process_app/infra/fs_artifacts.py`
   - `FileArtifactStore`: Runディレクトリ作成、入力の配置、doc_repo/pair_repo との連携
-- `compare_app/core/run_executor.py`
+- `document_process_app/core/run_executor.py`
 - `RunExecutor.create_run`: `documents` でRun作成
   - run作成時に `config.json` を更新し、`documents_linked` 等のイベントを記録
 

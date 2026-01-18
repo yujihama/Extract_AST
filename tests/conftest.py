@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-# プロジェクトルートをsys.pathに追加（compare_appのimportのため）
+# プロジェクトルートをsys.pathに追加（document_process_app の import のため）
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -57,5 +57,5 @@ def set_test_env():
     """テスト用の環境変数を設定する。"""
     # dotenvの自動読み込みを有効化（.envがあれば読む）
     # テスト時はDBを分離したい場合はここで設定できる
-    # os.environ.setdefault("COMPARE_APP_DB_PATH", "data/test_compare_app.db")
+    # os.environ.setdefault("DOCUMENT_PROCESS_APP_DB_PATH", "data/test_document_process_app.db")
     yield

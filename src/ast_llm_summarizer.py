@@ -131,7 +131,7 @@ class SummarizeOptions:
 
 
 class SummarizationCancelled(RuntimeError):
-    """要約処理中の協調的キャンセル用（compare_app側で CancelledError に変換する）。"""
+    """要約処理中の協調的キャンセル用（document_process_app側で CancelledError に変換する）。"""
 
     pass
 

@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from compare_app.core.pipeline import RunContext
+from document_process_app.core.pipeline import RunContext
 
 
 def _utcnow_iso() -> str:
@@ -277,7 +277,7 @@ class BuildBlueprintStep:
 
         # UI向けイベント（tool_call/agentログ）
         try:
-            from compare_app.agents.middleware import EventSinkMiddleware  # type: ignore
+            from document_process_app.agents.middleware import EventSinkMiddleware  # type: ignore
         except Exception:
             EventSinkMiddleware = None  # type: ignore
 
@@ -419,7 +419,7 @@ class BuildBlueprintStep:
         # ドキュメントリポジトリにも保存（has_blueprintフラグを更新）
         doc_hash = ctx.params.get(f"doc_{which}_hash") or _get_doc_hash(ctx, which)
         if doc_hash:
-            from compare_app.infra.document_store import DocumentRepository
+            from document_process_app.infra.document_store import DocumentRepository
             doc_repo = DocumentRepository()
             doc_repo.save_blueprint(doc_hash, blueprint_data)
 
@@ -494,7 +494,7 @@ class BuildAstStep:
         # ドキュメントリポジトリにも保存（has_astフラグを更新）
         doc_hash = ctx.params.get(f"doc_{which}_hash") or _get_doc_hash(ctx, which)
         if doc_hash:
-            from compare_app.infra.document_store import DocumentRepository
+            from document_process_app.infra.document_store import DocumentRepository
             ast_data = json.loads(out_ast.read_text(encoding="utf-8"))
             doc_repo = DocumentRepository()
             doc_repo.save_ast(doc_hash, ast_data)
@@ -559,7 +559,7 @@ class SummarizeAstStep:
         try:
             summarize_ast_inplace(ast_path=str(ast_path), options=opts, is_cancelled=ctx.cancellation.is_cancelled)
         except SummarizationCancelled:
-            from compare_app.core.pipeline import CancelledError
+            from document_process_app.core.pipeline import CancelledError
 
             raise CancelledError("cancelled during ast summarization")
 
@@ -567,7 +567,7 @@ class SummarizeAstStep:
         doc_hash = ctx.params.get(f"doc_{which}_hash") or _get_doc_hash(ctx, which)
         if doc_hash:
             try:
-                from compare_app.infra.document_store import DocumentRepository
+                from document_process_app.infra.document_store import DocumentRepository
 
                 ast_data = json.loads(ast_path.read_text(encoding="utf-8"))
                 DocumentRepository().save_ast(doc_hash, ast_data)

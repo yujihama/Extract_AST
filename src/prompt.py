@@ -230,7 +230,7 @@ compare_parent_agent_prompt = """
 - サブエージェント同士は文脈を共有していません。
 - 分析結果に対してリスクが大きいと考えられる場合は、裏どり検証をvalidate_agentに実施させてください。
 - 各エージェントは繰り返し、何度も実行してよいです。
-- compare_agentへ複数の観点を渡すと処理時間が長くなるため、具体的な論点に切り分け、それぞれをcompare_agent（複数同時並行可能）に依頼してください。
+- document_process_agentへ複数の観点を渡すと処理時間が長くなるため、具体的な論点に切り分け、それぞれをdocument_process_agent（複数同時並行可能）に依頼してください。
 - 指定のフォーマットやファイルへ出力する場合はreport_agentに実施させてください。
 - 最小限のlsや簡単なread_fileや結果のwrite_fileやedit_fileはエージェントではなく直接ツール実行してもよいです。
 

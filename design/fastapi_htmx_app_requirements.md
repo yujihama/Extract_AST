@@ -1,4 +1,4 @@
-# FastAPI + HTMX アプリ化 要件整理（compare_agent）
+# FastAPI + HTMX アプリ化 要件整理（document_process_agent）
 
 ## 目的と前提
 
@@ -222,15 +222,15 @@ SQLiteは「どのcacheを使ったか/統計」だけ持つのが現実的。
 
 ## 実装状況（最新）
 
-この要件に対して、現在 `compare_app/` を追加して **UI/CLI共通の実行土台**まで実装済みです。
+この要件に対して、現在 `document_process_app/` を追加して **UI/CLI共通の実行土台**まで実装済みです。
 
 ### 実装済み（MVP土台）
 
 - **UI/CLI共通の入口API**:
-  - `RunExecutor` / `Pipeline` を実装（`compare_app/core/`）
+  - `RunExecutor` / `Pipeline` を実装（`document_process_app/core/`）
   - `mode=dummy|real` による経路分岐（`step_skipped` をemit）
 - **永続化（SQLite）**:
-  - `data/compare_app.db` に `runs` / `run_events` / `artifacts` を保存（`schema_version`あり）
+  - `data/document_process_app.db` に `runs` / `run_events` / `artifacts` を保存（`schema_version`あり）
   - `artifacts` は `artifact_created` / `artifact_updated` イベントで自動upsert
 - **ファイル配置（FS）**:
   - `data/runs/{run_id}/input|work|out|log|cache` を作成
@@ -240,9 +240,9 @@ SQLiteは「どのcacheを使ったか/統計」だけ持つのが現実的。
   - `InProcessJobQueue`（別スレッド）で `RunExecutor.execute()` を実行
 - **可視化（案A）**:
   - Pipelineの `step_*` イベントを `EventSink`（SQLite）へ保存
-  - deep_agent の tool/subagent 呼び出しを `EventSinkMiddleware` で `EventSink.emit()`（`compare_app/agents/middleware.py`）
+  - deep_agent の tool/subagent 呼び出しを `EventSinkMiddleware` で `EventSink.emit()`（`document_process_app/agents/middleware.py`）
 - **COMPARE_STATE（比較用グローバル状態）の混線対策**:
-  - `src.tools.COMPARE_STATE` を **スレッドローカルProxy** に差し替え（`compare_app/compat/patch_src_tools.py`）
+  - `src.tools.COMPARE_STATE` を **スレッドローカルProxy** に差し替え（`document_process_app/compat/patch_src_tools.py`）
   - InProcessJobQueue（スレッド実行）で複数Runを動かしても混線しにくい形にした
   - `compare_*` 系ツールは **doc_a_id/doc_b_id を必須**にし、ペアごとの状態復元を行う（pair_dir 永続化を利用）
   - 本文検索は `search_by_keyphrase(file_path, phrase, intent)` で **単一AST** を対象に実行する（ペア非依存）
@@ -251,7 +251,7 @@ SQLiteは「どのcacheを使ったか/統計」だけ持つのが現実的。
   - 成果物一覧（DB優先＋FS補完）/プレビュー（テキスト）/ダウンロード
   - agent/tool/subagent系イベントもタイムラインに表示（dummyで疑似発火して動作確認可能）
 - **CLI**:
-  - `python -m compare_app.cli create/start/execute/cancel/tail/list/artifacts/export` を実装（FastAPIを経由せず `RunExecutor` を直接使用）
+  - `python -m document_process_app.cli create/start/execute/cancel/tail/list/artifacts/export` を実装（FastAPIを経由せず `RunExecutor` を直接使用）
 
 - **UI未実装の要件はAPIで提供（完了扱い）**:
   - テキスト貼り付け入力 / blueprint検証 / AST閲覧（search等）/ イベント一覧（SSE代替）/ 比較統計の参照
@@ -260,10 +260,10 @@ SQLiteは「どのcacheを使ったか/統計」だけ持つのが現実的。
 ### 一部実装（realモードの骨格）
 
 - PDF/TXT → txt（fast/llm） → blueprint（LLM） → AST（非LLM） のステップを追加
-  - `compare_app/core/real_steps.py`
+  - `document_process_app/core/real_steps.py`
   - ※ blueprint生成は LLMキーが必要（未設定時はエラーになる）
 - Pre-Analysis（タスク計画＋テンプレ生成） → Compare-Analysis（テンプレ埋め） のステップを追加
-  - `compare_app/core/compare_steps.py`
+  - `document_process_app/core/compare_steps.py`
   - ※ `pre_analysis` / `execute_analysis` は LLMキーが必要（未設定時は失敗）
 - 必要な比較準備は `pair_compare_setup` ツールで必要ペアだけ準備する
 

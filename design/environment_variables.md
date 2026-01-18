@@ -1,27 +1,31 @@
-# 環境変数一覧（compare_agent / compare_app）
+# 環境変数一覧（document_process_agent / document_process_app）
 
 ## 方針（`.env` と OS環境変数の優先順位）
 
-- `compare_app` は起動時に `.env` を **補助的に読み込みます**（`python-dotenv`）。
+- `document_process_app` は起動時に `.env` を **補助的に読み込みます**（`python-dotenv`）。
 - **OS環境変数が優先**です（`.env` は未設定のキーのみ補完 / `override=False`）。
-- `.env` を使わない運用では、`COMPARE_APP_LOAD_DOTENV=0` で無効化できます。
-- `main.py`（PoC）は `dotenv.load_dotenv()` を常時実行します（`COMPARE_APP_*` は参照しません）。
+- `.env` を使わない運用では、`DOCUMENT_PROCESS_APP_LOAD_DOTENV=0` で無効化できます。
+- `main.py`（PoC）は `dotenv.load_dotenv()` を常時実行します（`*_APP_*` は参照しません）。
 
 ---
 
-## アプリ（compare_app）共通
+## アプリ（document_process_app）共通
 
-- **COMPARE_APP_DB_PATH**
+- **DOCUMENT_PROCESS_APP_DB_PATH**
   - SQLite DBパス
-  - default: `repo_root/data/compare_app.db`（起動ディレクトリに依存しない）
-- **COMPARE_APP_RUNS_ROOT**
+  - default: `repo_root/data/document_process_app.db`（起動ディレクトリに依存しない）
+- **DOCUMENT_PROCESS_APP_RUNS_ROOT**
   - Run成果物の保存先ルート（`{RUNS_ROOT}/{run_id}/...`）
   - default: `repo_root/data/runs`（起動ディレクトリに依存しない）
-- **COMPARE_APP_LOAD_DOTENV**
+- **DOCUMENT_PROCESS_APP_LOAD_DOTENV**
   - `.env` 自動読み込みの有効/無効（`0/false/no/off` で無効）
   - default: `1`
-- **COMPARE_APP_DOTENV_PATH**
+- **DOCUMENT_PROCESS_APP_DOTENV_PATH**
   - 読み込む `.env` のパス（指定が無い場合はリポジトリ直下 `.env`）
+
+- **DOCUMENT_PROCESS_APP_CHECKPOINT_DB_PATH**
+  - HITL用チェックポイントSQLiteの保存先（SQLite利用時のみ）
+  - default: `repo_root/data/document_process_app_checkpoints.sqlite3`
 
 ---
 

@@ -4,20 +4,20 @@ import os
 from pathlib import Path
 from typing import Any, Mapping, Tuple
 
-from compare_app.core.dummy_steps import DummyAgentTraceStep, DummyFillTemplateStep, DummySleepStep, DummyWriteTemplateDraftStep
-from compare_app.core.pipeline import ConditionalStep, Pipeline
-from compare_app.core.compare_steps import CompareAnalysisStep, PreAnalysisStep
-from compare_app.core.real_steps import (
+from document_process_app.core.dummy_steps import DummyAgentTraceStep, DummyFillTemplateStep, DummySleepStep, DummyWriteTemplateDraftStep
+from document_process_app.core.pipeline import ConditionalStep, Pipeline
+from document_process_app.core.compare_steps import CompareAnalysisStep, PreAnalysisStep
+from document_process_app.core.real_steps import (
     BuildAstAllDocsStep,
     BuildBlueprintAllDocsStep,
     EnsureTextAllDocsStep,
     SummarizeAstAllDocsStep,
 )
-from compare_app.core.run_executor import RunExecutor
-from compare_app.compat.patch_src_tools import patch_src_tools_compare_state
-from compare_app.infra.fs_artifacts import FileArtifactStore
-from compare_app.infra.inmemory import InMemoryCancellationRegistry, InProcessJobQueue
-from compare_app.infra.sqlite_store import SqliteArtifactRepository, SqliteEventSink, SqliteRunRepository, init_db
+from document_process_app.core.run_executor import RunExecutor
+from document_process_app.compat.patch_src_tools import patch_src_tools_compare_state
+from document_process_app.infra.fs_artifacts import FileArtifactStore
+from document_process_app.infra.inmemory import InMemoryCancellationRegistry, InProcessJobQueue
+from document_process_app.infra.sqlite_store import SqliteArtifactRepository, SqliteEventSink, SqliteRunRepository, init_db
 
 
 def _env(name: str, default: str) -> str:
@@ -45,15 +45,15 @@ def build_default_executor() -> Tuple[RunExecutor, SqliteRunRepository, SqliteEv
     """
     # .env を自動読み込み（UI/CLI共通）
     # - 環境変数が直接設定されるケースにも対応するため、override=False で「未設定のみ補完」する。
-    # - `.env` を使わない運用では COMPARE_APP_LOAD_DOTENV=0 で無効化できる。
+    # - `.env` を使わない運用では DOCUMENT_PROCESS_APP_LOAD_DOTENV=0 で無効化できる。
     repo_root = Path(__file__).resolve().parent.parent
 
     try:
-        load_flag = (os.getenv("COMPARE_APP_LOAD_DOTENV") or "1").strip().lower()
+        load_flag = _env("DOCUMENT_PROCESS_APP_LOAD_DOTENV", "1").strip().lower()
         if load_flag not in {"0", "false", "no", "off"}:
             from dotenv import load_dotenv
 
-            dotenv_path = os.getenv("COMPARE_APP_DOTENV_PATH")
+            dotenv_path = _env("DOCUMENT_PROCESS_APP_DOTENV_PATH", "")
             if dotenv_path and str(dotenv_path).strip():
                 load_dotenv(Path(dotenv_path), override=False)
             else:
@@ -63,8 +63,8 @@ def build_default_executor() -> Tuple[RunExecutor, SqliteRunRepository, SqliteEv
         pass
 
     # DB/Run保存先は「起動ディレクトリ」に依存しないよう repo_root 基準で固定する。
-    default_db_path = str((repo_root / "data" / "compare_app.db").resolve())
-    raw_db_path = _env("COMPARE_APP_DB_PATH", default_db_path)
+    default_db_path = str((repo_root / "data" / "document_process_app.db").resolve())
+    raw_db_path = _env("DOCUMENT_PROCESS_APP_DB_PATH", default_db_path)
     db_path = _resolve_path(repo_root, raw_db_path)
     init_db(db_path)
 
@@ -75,11 +75,11 @@ def build_default_executor() -> Tuple[RunExecutor, SqliteRunRepository, SqliteEv
     events = SqliteEventSink(db_path=db_path)
     artifacts_repo = SqliteArtifactRepository(db_path=db_path)
     default_runs_root = str((repo_root / "data" / "runs").resolve())
-    raw_runs_root = _env("COMPARE_APP_RUNS_ROOT", default_runs_root)
+    raw_runs_root = _env("DOCUMENT_PROCESS_APP_RUNS_ROOT", default_runs_root)
     runs_root = Path(_resolve_path(repo_root, raw_runs_root))
     
     # ドキュメント中心アーキテクチャ: DocumentRepository, DocumentPairRepository を初期化
-    from compare_app.infra.document_store import DocumentPairRepository, DocumentRepository
+    from document_process_app.infra.document_store import DocumentPairRepository, DocumentRepository
     doc_repo = DocumentRepository(base_dir=repo_root / "data" / "documents")
     pair_repo = DocumentPairRepository(base_dir=repo_root / "data" / "document_pairs")
     

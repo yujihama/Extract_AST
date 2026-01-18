@@ -2,9 +2,9 @@
 
 ## 概要
 
-このドキュメントは `compare_agent` プロジェクトのCLIベースのテスト実施方法を説明します。
+このドキュメントは `document_process_agent` プロジェクトのCLIベースのテスト実施方法を説明します。
 
-テストは `pytest` を使用し、`compare_app.cli` モジュールの各コマンドを検証します。
+テストは `pytest` を使用し、`document_process_app.cli` モジュールの各コマンドを検証します。
 
 ## 前提条件
 
@@ -194,10 +194,10 @@ A: プロジェクトルートで実行しているか確認してください�
 
 ### Q: データベースエラーが発生する
 
-A: `data/compare_app.db` が破損している可能性があります。削除して再実行してください。
+A: `data/document_process_app.db` が破損している可能性があります。削除して再実行してください。
 
 ```powershell
-Remove-Item data/compare_app.db
+Remove-Item data/document_process_app.db
 python -m pytest tests/ -v
 ```
 
@@ -209,7 +209,7 @@ A: `.env` に有効なAPIキーを設定し、以下のようにテストを作�
 def test_real_mode(sample_doc_a, sample_doc_b):
     # --mode real を指定
     result = subprocess.run([
-        sys.executable, "-m", "compare_app.cli",
+        sys.executable, "-m", "document_process_app.cli",
         "create", "--doc", str(sample_doc_a), "--doc", str(sample_doc_b),
         "--mode", "real",
     ], ...)

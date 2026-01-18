@@ -13,7 +13,7 @@ from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFil
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
-from compare_app.bootstrap import build_default_executor
+from document_process_app.bootstrap import build_default_executor
 
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -28,7 +28,7 @@ except Exception:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="compare_agent (MVP)")
+    app = FastAPI(title="document_process_agent (MVP)")
 
     executor, repo, events, artifacts_repo = build_default_executor()
     app.state.executor = executor
@@ -186,7 +186,7 @@ def create_app() -> FastAPI:
     def _save_upload_to_temp(upload: UploadFile) -> str:
         # Windowsでも扱いやすいように NamedTemporaryFile(delete=False)
         suffix = Path(upload.filename or "").suffix
-        fd, tmp_path = tempfile.mkstemp(prefix="compare_app_upload_", suffix=suffix)
+        fd, tmp_path = tempfile.mkstemp(prefix="document_process_app_upload_", suffix=suffix)
         os.close(fd)
         with open(tmp_path, "wb") as f:
             while True:
@@ -197,7 +197,7 @@ def create_app() -> FastAPI:
         return tmp_path
 
     def _write_text_to_temp(text: str, *, suffix: str = ".txt") -> str:
-        fd, tmp_path = tempfile.mkstemp(prefix="compare_app_text_", suffix=suffix)
+        fd, tmp_path = tempfile.mkstemp(prefix="document_process_app_text_", suffix=suffix)
         os.close(fd)
         with open(tmp_path, "w", encoding="utf-8", newline="\n") as f:
             f.write(text)

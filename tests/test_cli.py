@@ -1,6 +1,6 @@
 """CLIコマンドのテストスイート。
 
-compare_app.cli モジュールのコマンドをテストする。
+document_process_app.cli モジュールのコマンドをテストする。
 dummyモードでの軽量テストを中心に、パイプラインの基本動作を検証。
 """
 from __future__ import annotations
@@ -20,7 +20,7 @@ class TestCliCreate:
         """dummyモードでRunを作成できることを確認する。"""
         result = subprocess.run(
             [
-                sys.executable, "-m", "compare_app.cli",
+                sys.executable, "-m", "document_process_app.cli",
                 "create",
                 "--doc", str(sample_doc_a),
                 "--doc", str(sample_doc_b),
@@ -43,7 +43,7 @@ class TestCliCreate:
         """既存の軽量テストデータでRunを作成できることを確認する。"""
         result = subprocess.run(
             [
-                sys.executable, "-m", "compare_app.cli",
+                sys.executable, "-m", "document_process_app.cli",
                 "create",
                 "--doc", str(test_small_rules_v1),
                 "--doc", str(test_small_rules_v2),
@@ -66,7 +66,7 @@ class TestCliCreate:
 
         result = subprocess.run(
             [
-                sys.executable, "-m", "compare_app.cli",
+                sys.executable, "-m", "document_process_app.cli",
                 "create",
                 "--doc", str(sample_doc_a),
                 "--doc", str(sample_doc_b),
@@ -95,7 +95,7 @@ class TestCliCreate:
         cwd = str(Path(__file__).resolve().parent.parent)
         result = subprocess.run(
             [
-                sys.executable, "-m", "compare_app.cli",
+                sys.executable, "-m", "document_process_app.cli",
                 "create",
                 "--doc", str(sample_doc_a),
                 "--request", "この文書を要約してください。",
@@ -126,7 +126,7 @@ class TestCliExecute:
         # Run作成
         create_result = subprocess.run(
             [
-                sys.executable, "-m", "compare_app.cli",
+                sys.executable, "-m", "document_process_app.cli",
                 "create",
                 "--doc", str(sample_doc_a),
                 "--doc", str(sample_doc_b),
@@ -142,7 +142,7 @@ class TestCliExecute:
         # 同期実行
         execute_result = subprocess.run(
             [
-                sys.executable, "-m", "compare_app.cli",
+                sys.executable, "-m", "document_process_app.cli",
                 "execute", run_id,
             ],
             capture_output=True,
@@ -162,7 +162,7 @@ class TestCliExecute:
         # Run作成
         create_result = subprocess.run(
             [
-                sys.executable, "-m", "compare_app.cli",
+                sys.executable, "-m", "document_process_app.cli",
                 "create",
                 "--doc", str(sample_doc_a),
                 "--doc", str(sample_doc_b),
@@ -176,7 +176,7 @@ class TestCliExecute:
         
         # 同期実行
         subprocess.run(
-            [sys.executable, "-m", "compare_app.cli", "execute", run_id],
+            [sys.executable, "-m", "document_process_app.cli", "execute", run_id],
             capture_output=True,
             text=True,
             cwd=cwd,
@@ -184,7 +184,7 @@ class TestCliExecute:
         
         # 成果物一覧を確認
         artifacts_result = subprocess.run(
-            [sys.executable, "-m", "compare_app.cli", "artifacts", run_id],
+            [sys.executable, "-m", "document_process_app.cli", "artifacts", run_id],
             capture_output=True,
             text=True,
             cwd=cwd,
@@ -209,7 +209,7 @@ class TestCliList:
         # まず1件作成
         subprocess.run(
             [
-                sys.executable, "-m", "compare_app.cli",
+                sys.executable, "-m", "document_process_app.cli",
                 "create",
                 "--doc", str(sample_doc_a),
                 "--doc", str(sample_doc_b),
@@ -222,7 +222,7 @@ class TestCliList:
         
         # 一覧取得
         result = subprocess.run(
-            [sys.executable, "-m", "compare_app.cli", "list"],
+            [sys.executable, "-m", "document_process_app.cli", "list"],
             capture_output=True,
             text=True,
             cwd=cwd,
@@ -244,7 +244,7 @@ class TestCliArtifacts:
         # 作成→実行
         create_result = subprocess.run(
             [
-                sys.executable, "-m", "compare_app.cli",
+                sys.executable, "-m", "document_process_app.cli",
                 "create", "--doc", str(sample_doc_a), "--doc", str(sample_doc_b), "--mode", "dummy",
             ],
             capture_output=True, text=True, cwd=cwd,
@@ -252,13 +252,13 @@ class TestCliArtifacts:
         run_id = json.loads(create_result.stdout)["run_id"]
         
         subprocess.run(
-            [sys.executable, "-m", "compare_app.cli", "execute", run_id],
+            [sys.executable, "-m", "document_process_app.cli", "execute", run_id],
             capture_output=True, text=True, cwd=cwd,
         )
         
         # 成果物取得
         result = subprocess.run(
-            [sys.executable, "-m", "compare_app.cli", "artifacts", run_id],
+            [sys.executable, "-m", "document_process_app.cli", "artifacts", run_id],
             capture_output=True, text=True, cwd=cwd,
         )
         
@@ -278,7 +278,7 @@ class TestCliExport:
         # 作成→実行
         create_result = subprocess.run(
             [
-                sys.executable, "-m", "compare_app.cli",
+                sys.executable, "-m", "document_process_app.cli",
                 "create", "--doc", str(sample_doc_a), "--doc", str(sample_doc_b), "--mode", "dummy",
             ],
             capture_output=True, text=True, cwd=cwd,
@@ -286,7 +286,7 @@ class TestCliExport:
         run_id = json.loads(create_result.stdout)["run_id"]
         
         subprocess.run(
-            [sys.executable, "-m", "compare_app.cli", "execute", run_id],
+            [sys.executable, "-m", "document_process_app.cli", "execute", run_id],
             capture_output=True, text=True, cwd=cwd,
         )
         
@@ -294,7 +294,7 @@ class TestCliExport:
         out_path = tmp_path / "exported_template.md"
         result = subprocess.run(
             [
-                sys.executable, "-m", "compare_app.cli",
+                sys.executable, "-m", "document_process_app.cli",
                 "export", run_id, "--kind", "template_filled", "--out", str(out_path),
             ],
             capture_output=True, text=True, cwd=cwd,
@@ -320,7 +320,7 @@ class TestCliEndToEnd:
         # 1. Run作成
         create_result = subprocess.run(
             [
-                sys.executable, "-m", "compare_app.cli",
+                sys.executable, "-m", "document_process_app.cli",
                 "create",
                 "--doc", str(test_small_rules_v1),
                 "--doc", str(test_small_rules_v2),
@@ -334,7 +334,7 @@ class TestCliEndToEnd:
         
         # 2. 同期実行
         execute_result = subprocess.run(
-            [sys.executable, "-m", "compare_app.cli", "execute", run_id],
+            [sys.executable, "-m", "document_process_app.cli", "execute", run_id],
             capture_output=True, text=True, cwd=cwd,
         )
         assert execute_result.returncode == 0
@@ -342,7 +342,7 @@ class TestCliEndToEnd:
         
         # 3. 成果物一覧
         artifacts_result = subprocess.run(
-            [sys.executable, "-m", "compare_app.cli", "artifacts", run_id],
+            [sys.executable, "-m", "document_process_app.cli", "artifacts", run_id],
             capture_output=True, text=True, cwd=cwd,
         )
         assert artifacts_result.returncode == 0
@@ -353,7 +353,7 @@ class TestCliEndToEnd:
         out_path = tmp_path / "result.md"
         export_result = subprocess.run(
             [
-                sys.executable, "-m", "compare_app.cli",
+                sys.executable, "-m", "document_process_app.cli",
                 "export", run_id, "--kind", "template_filled", "--out", str(out_path),
             ],
             capture_output=True, text=True, cwd=cwd,
@@ -366,7 +366,7 @@ class TestCliEndToEnd:
         
         # 5. Run一覧に含まれるか確認
         list_result = subprocess.run(
-            [sys.executable, "-m", "compare_app.cli", "list"],
+            [sys.executable, "-m", "document_process_app.cli", "list"],
             capture_output=True, text=True, cwd=cwd,
         )
         runs = json.loads(list_result.stdout)
@@ -382,7 +382,7 @@ class TestCliErrors:
         cwd = str(Path(__file__).resolve().parent.parent)
         
         result = subprocess.run(
-            [sys.executable, "-m", "compare_app.cli", "execute", "nonexistent_run_id"],
+            [sys.executable, "-m", "document_process_app.cli", "execute", "nonexistent_run_id"],
             capture_output=True, text=True, cwd=cwd,
         )
         
@@ -396,7 +396,7 @@ class TestCliErrors:
         # 作成（実行はしない）
         create_result = subprocess.run(
             [
-                sys.executable, "-m", "compare_app.cli",
+                sys.executable, "-m", "document_process_app.cli",
                 "create", "--doc", str(sample_doc_a), "--doc", str(sample_doc_b), "--mode", "dummy",
             ],
             capture_output=True, text=True, cwd=cwd,
@@ -407,7 +407,7 @@ class TestCliErrors:
         out_path = tmp_path / "should_not_exist.md"
         result = subprocess.run(
             [
-                sys.executable, "-m", "compare_app.cli",
+                sys.executable, "-m", "document_process_app.cli",
                 "export", run_id, "--kind", "template_filled", "--out", str(out_path),
             ],
             capture_output=True, text=True, cwd=cwd,

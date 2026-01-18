@@ -8,10 +8,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional, Protocol, Union
 
-from compare_app.contracts import CancellationRegistry, EventSink, JobQueue
-from compare_app.core.pipeline import CancelledError, Pipeline, RunContext, WaitingUserError
-from compare_app.infra.document_store import Document
-from compare_app.models import RunRecord, RunStatus
+from document_process_app.contracts import CancellationRegistry, EventSink, JobQueue
+from document_process_app.core.pipeline import CancelledError, Pipeline, RunContext, WaitingUserError
+from document_process_app.infra.document_store import Document
+from document_process_app.models import RunRecord, RunStatus
 
 
 def _utcnow() -> datetime:

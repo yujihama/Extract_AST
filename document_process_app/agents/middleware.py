@@ -14,8 +14,8 @@ from langchain.agents.middleware import AgentMiddleware, AgentState
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from compare_app.contracts import CancellationToken, EventSink
-from compare_app.core.pipeline import CancelledError
+from document_process_app.contracts import CancellationToken, EventSink
+from document_process_app.core.pipeline import CancelledError
 
 
 def _utcnow_iso() -> str:

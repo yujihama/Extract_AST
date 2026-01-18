@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from compare_app.compat.threadlocal_state import ThreadLocalDict
+from document_process_app.compat.threadlocal_state import ThreadLocalDict
 
 
 def patch_src_tools_compare_state() -> None:

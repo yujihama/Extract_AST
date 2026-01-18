@@ -49,10 +49,20 @@ Thumbs.db
 *.pdf
 *.json
 
-data/
+*.db
+ast/
+blueprint/
+document_pairs/
+documents/
+embedding/
+runs/
+# 除外しないファイル・ディレクトリ
+!data/test_template_single.md
+!data/input/**
+
 log/
 backup/
 .venv/
 templates/
-!compare_app/web/templates/
-!compare_app/web/templates/**
+!document_process_app/web/templates/
+!document_process_app/web/templates/**
