@@ -193,6 +193,15 @@ def main(argv: list[str] | None = None) -> int:
             request="この文書を英訳し、重要な事実（原因/影響/対策）が保持されていることを確認してください。",
             docs=[data_in / "jp_security_notice.txt"],
         ),
+        Scenario(
+            id="11_branch_routing",
+            request="各文書の内容を分析し、文書の長さやフォーマットに基づいて適切な処理方式が選択されていることを確認してください。",
+            docs=[
+                data_in / "branch_short_under_5k.txt",
+                data_in / "branch_long_over_5k.txt",
+                data_in / "branch_markdown.md",
+            ],
+        ),
     ]
 
     wanted = set(str(x).strip() for x in (args.ids or []) if str(x).strip())
