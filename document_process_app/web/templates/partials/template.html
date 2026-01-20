@@ -1,9 +1,314 @@
 {% if content %}
-<div class="relative">
-  <div class="bg-neutral text-neutral-content rounded-lg p-4 text-xs max-h-96 overflow-auto">
-    <pre><code>{{ content }}</code></pre>
+{% set modal_id = "template-modal-" ~ (kind or "default") ~ "-" ~ range(100000, 999999) | random %}
+{% set container_id = "template-container-" ~ (kind or "default") ~ "-" ~ range(100000, 999999) | random %}
+<div id="{{ container_id }}" class="relative group template-container" data-modal-id="{{ modal_id }}" data-kind="{{ kind or 'default' }}">
+  <!-- ツールバー -->
+  <div class="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+    <button class="btn btn-xs btn-ghost bg-base-100/80 hover:bg-base-200" 
+            onclick="copyTemplateContent(this)" 
+            title="コピー">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+      </svg>
+    </button>
+    <button class="btn btn-xs btn-ghost bg-base-100/80 hover:bg-base-200" 
+            onclick="openTemplateModal('{{ modal_id }}', '{{ kind or 'default' }}')"
+            title="拡大表示">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+      </svg>
+    </button>
+  </div>
+  
+  <!-- コンテンツ表示エリア（インライン） -->
+  <div class="template-content bg-base-200 rounded-lg p-4 text-sm max-h-[500px] overflow-auto">
+    <div class="template-markdown-rendered prose prose-sm max-w-none dark:prose-invert"></div>
+    <div class="template-raw-content hidden">{{ content }}</div>
   </div>
 </div>
+
+<script>
+// グローバル関数定義（1回だけ）
+if (typeof window.templateFunctionsInitialized === 'undefined') {
+  window.templateFunctionsInitialized = true;
+  
+  window.escapeHtmlForTemplate = function(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  };
+  
+  // YAML frontmatterを除去
+  window.stripFrontmatter = function(text) {
+    // ---で始まり---で終わるfrontmatterを除去
+    const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
+    if (match) {
+      return text.slice(match[0].length);
+    }
+    return text;
+  };
+  
+  window.renderTemplateMarkdown = function(container) {
+    if (!container) return;
+    
+    const rawEl = container.querySelector('.template-raw-content');
+    const renderedEl = container.querySelector('.template-markdown-rendered');
+    
+    if (rawEl && renderedEl && typeof marked !== 'undefined') {
+      const rawContent = stripFrontmatter(rawEl.textContent);
+      
+      try {
+        // markedの設定（GFMテーブル対応）
+        if (typeof marked.setOptions === 'function') {
+          marked.setOptions({
+            breaks: true,
+            gfm: true,
+            tables: true
+          });
+        }
+        const html = marked.parse(rawContent);
+        renderedEl.innerHTML = html;
+        
+        // シンタックスハイライト
+        if (typeof hljs !== 'undefined') {
+          renderedEl.querySelectorAll('pre code').forEach((block) => {
+            hljs.highlightElement(block);
+          });
+        }
+      } catch (e) {
+        console.error('Markdown render error:', e);
+        // フォールバック: プレーンテキスト表示
+        renderedEl.innerHTML = '<pre class="whitespace-pre-wrap">' + escapeHtmlForTemplate(rawContent) + '</pre>';
+      }
+    }
+  };
+  
+  window.initAllTemplateContainers = function() {
+    document.querySelectorAll('.template-container').forEach((container) => {
+      // 既にレンダリング済みかチェック
+      const rendered = container.querySelector('.template-markdown-rendered');
+      if (rendered && rendered.innerHTML.trim() === '') {
+        renderTemplateMarkdown(container);
+      }
+    });
+  };
+  
+  // モーダルをbodyに動的に作成
+  window.openTemplateModal = function(modalId, kind) {
+    // 既存のモーダルがあれば削除
+    const existingModal = document.getElementById(modalId);
+    if (existingModal) {
+      existingModal.remove();
+    }
+    
+    // コンテナからraw contentを取得
+    const container = document.querySelector(`[data-modal-id="${modalId}"]`);
+    if (!container) return;
+    
+    const rawContent = stripFrontmatter(container.querySelector('.template-raw-content').textContent);
+    
+    let html = '';
+    try {
+      if (typeof marked !== 'undefined') {
+        if (typeof marked.setOptions === 'function') {
+          marked.setOptions({ breaks: true, gfm: true, tables: true });
+        }
+        html = marked.parse(rawContent);
+      }
+    } catch (e) {
+      html = '<pre class="whitespace-pre-wrap">' + escapeHtmlForTemplate(rawContent) + '</pre>';
+    }
+    
+    // モーダルタイトル
+    let title = 'テンプレート';
+    if (kind === 'filled') title = 'テンプレート（Filled）';
+    else if (kind === 'draft') title = 'テンプレート（Draft）';
+    
+    // モーダル要素を作成
+    const modal = document.createElement('dialog');
+    modal.id = modalId;
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal-box w-11/12 max-w-5xl max-h-[90vh]">
+        <form method="dialog">
+          <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+        </form>
+        <h3 class="font-bold text-lg mb-4">${escapeHtmlForTemplate(title)}</h3>
+        <div class="overflow-auto max-h-[70vh] pr-2">
+          <div class="prose prose-sm md:prose-base max-w-none dark:prose-invert">${html}</div>
+        </div>
+        <div class="modal-action">
+          <button class="btn btn-sm btn-ghost" onclick="copyModalContent('${modalId}')">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            コピー
+          </button>
+          <form method="dialog">
+            <button class="btn btn-sm btn-primary">閉じる</button>
+          </form>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+      </form>
+    `;
+    
+    // bodyに追加して表示
+    document.body.appendChild(modal);
+    modal.showModal();
+    
+    // シンタックスハイライト
+    if (typeof hljs !== 'undefined') {
+      modal.querySelectorAll('pre code').forEach((block) => {
+        hljs.highlightElement(block);
+      });
+    }
+    
+    // 閉じた時にモーダルを削除
+    modal.addEventListener('close', () => {
+      modal.remove();
+    });
+  };
+  
+  window.copyModalContent = function(modalId) {
+    const container = document.querySelector(`[data-modal-id="${modalId}"]`);
+    if (!container) return;
+    const content = container.querySelector('.template-raw-content').textContent;
+    navigator.clipboard.writeText(content).then(() => {
+      if (typeof showToast === 'function') showToast('コピーしました', 'success');
+    });
+  };
+  
+  window.copyTemplateContent = function(btn) {
+    const container = btn.closest('.template-container');
+    const content = container.querySelector('.template-raw-content').textContent;
+    navigator.clipboard.writeText(content).then(() => {
+      const originalHtml = btn.innerHTML;
+      btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>';
+      setTimeout(() => { btn.innerHTML = originalHtml; }, 1500);
+    });
+  };
+  
+  // HTMX afterSwap イベントでレンダリング
+  document.body.addEventListener('htmx:afterSwap', function(evt) {
+    setTimeout(initAllTemplateContainers, 10);
+  });
+  
+  // 初回ロード時
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initAllTemplateContainers);
+  } else {
+    setTimeout(initAllTemplateContainers, 10);
+  }
+}
+
+// このスクリプトが読み込まれた時点でもレンダリングを試みる
+(function() {
+  setTimeout(function() {
+    if (typeof initAllTemplateContainers === 'function') {
+      initAllTemplateContainers();
+    }
+  }, 50);
+})();
+</script>
+
+<style>
+/* Markdownスタイル調整 */
+.prose h1 {
+  font-size: 1.25em;
+  font-weight: 700;
+  margin-top: 0;
+  margin-bottom: 0.75em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid oklch(var(--bc) / 0.2);
+}
+.prose h2 {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+  color: oklch(var(--p));
+}
+.prose h3 {
+  font-size: 1em;
+  font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 0.4em;
+}
+.prose ul, .prose ol {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  padding-left: 1.5em;
+}
+.prose ul { list-style-type: disc; }
+.prose ol { list-style-type: decimal; }
+.prose li {
+  margin-top: 0.2em;
+  margin-bottom: 0.2em;
+}
+.prose li > ul, .prose li > ol {
+  margin-top: 0.2em;
+  margin-bottom: 0.2em;
+}
+.prose p {
+  margin-top: 0.4em;
+  margin-bottom: 0.4em;
+}
+.prose pre {
+  background-color: oklch(var(--n));
+  padding: 1em;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+}
+.prose code:not(pre code) {
+  background-color: oklch(var(--b3));
+  padding: 0.125em 0.375em;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+}
+.prose strong {
+  font-weight: 600;
+}
+/* テーブルスタイル */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.75em;
+  margin-bottom: 0.75em;
+  font-size: 0.875em;
+}
+.prose thead {
+  background-color: oklch(var(--b3));
+}
+.prose th, .prose td {
+  border: 1px solid oklch(var(--bc) / 0.2);
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+.prose th {
+  font-weight: 600;
+}
+.prose tbody tr:nth-child(even) {
+  background-color: oklch(var(--b2) / 0.5);
+}
+/* blockquote（注意書き等） */
+.prose blockquote {
+  border-left: 3px solid oklch(var(--p));
+  padding-left: 1em;
+  margin-left: 0;
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  color: oklch(var(--bc) / 0.8);
+  font-style: italic;
+}
+/* 水平線 */
+.prose hr {
+  border: none;
+  border-top: 1px solid oklch(var(--bc) / 0.2);
+  margin: 1.5em 0;
+}
+</style>
 {% else %}
 <div class="flex flex-col items-center justify-center py-6 text-base-content/50">
   <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">

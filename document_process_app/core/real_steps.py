@@ -8,7 +8,7 @@ import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 
 from document_process_app.core.pipeline import RunContext
 
@@ -46,7 +46,12 @@ def _extract_json_from_text(text: str) -> dict:
     start = text.find("{")
     end = text.rfind("}")
     if start != -1 and end != -1 and end > start:
-        return json.loads(text[start : end + 1])
+        # JSONDecodeError を上位へそのまま投げるとステップ失敗理由が曖昧になるので、
+        # ここでも明示的にメッセージ化して返す。
+        try:
+            return json.loads(text[start : end + 1])
+        except Exception as e:
+            raise ValueError(f"Failed to parse JSON from extracted substring: {e}") from e
     raise ValueError("Failed to parse JSON from LLM response")
 
 
@@ -69,6 +74,63 @@ def _normalize_doc_id(raw: Any, fallback: str) -> str:
     # ファイル名として安全な範囲に限定
     safe = re.sub(r"[^A-Za-z0-9_-]+", "_", text)
     return safe or fallback
+
+
+def _normalize_string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return [str(v).strip() for v in value if str(v).strip()]
+    if isinstance(value, str):
+        return [v.strip() for v in value.split(",") if v.strip()]
+    return [str(value).strip()] if str(value).strip() else []
+
+
+def _get_doc_filename(ctx: RunContext, doc_id: str) -> Optional[str]:
+    for d in _get_documents(ctx):
+        if str(d.get("doc_id")) == str(doc_id):
+            return str(d.get("filename") or d.get("original_filename") or "") or None
+    return None
+
+
+def _select_ast_builder_strategy(
+    ctx: RunContext,
+    doc_id: str,
+    *,
+    text_path: Optional[Path] = None,
+) -> Tuple[str, dict[str, Any]]:
+    policy = str(ctx.params.get("ast_builder_policy", "auto") or "auto").lower().strip()
+    max_chars = int(ctx.params.get("ast_bypass_max_chars", 5000) or 5000)
+    force_bp = set(_normalize_string_list(ctx.params.get("ast_force_blueprint_doc_ids")))
+
+    filename = _get_doc_filename(ctx, doc_id)
+    ext = Path(filename).suffix.lower() if filename else ""
+    char_count = None
+
+    if doc_id in force_bp:
+        return "blueprint", {"reason": "force_blueprint", "policy": policy, "filename": filename, "char_count": char_count}
+
+    if policy in {"blueprint", "markdown", "llm_direct"}:
+        return policy, {"reason": f"policy:{policy}", "policy": policy, "filename": filename, "char_count": char_count}
+
+    if ext in {".md", ".markdown"}:
+        return "markdown", {"reason": "ext_markdown", "policy": policy, "filename": filename, "char_count": char_count}
+
+    if text_path and text_path.exists():
+        try:
+            char_count = len(_safe_read_text(text_path))
+        except Exception:
+            char_count = None
+
+    if char_count is not None and char_count <= max_chars:
+        return "llm_direct", {
+            "reason": f"short_text<={max_chars}",
+            "policy": policy,
+            "filename": filename,
+            "char_count": char_count,
+        }
+
+    return "blueprint", {"reason": "default", "policy": policy, "filename": filename, "char_count": char_count}
 
 
 def _get_documents(ctx: RunContext) -> list[dict[str, Any]]:
@@ -136,6 +198,20 @@ class EnsureTextStep:
             rel = out_txt.relative_to(run_dir).as_posix()
             ctx.events.emit(ctx.run_id, "artifact_updated", {"ts": _utcnow_iso(), "kind": f"txt_{which}", "path": rel})
             return
+
+        # テキスト系拡張子（例: .md）にも対応（テンプレ/FAQなど）
+        # - pipelineの後続（blueprint/AST）は .txt 前提のため、work配下へ .txt として正規化する
+        for ext in [".md", ".markdown", ".csv", ".json"]:
+            cand = input_dir / f"doc_{which}{ext}"
+            if cand.exists():
+                shutil.copy2(cand, out_txt)
+                rel = out_txt.relative_to(run_dir).as_posix()
+                ctx.events.emit(
+                    ctx.run_id,
+                    "artifact_updated",
+                    {"ts": _utcnow_iso(), "kind": f"txt_{which}", "path": rel},
+                )
+                return
 
         if not src_pdf.exists():
             raise FileNotFoundError(f"input not found for doc_{which}: {src_txt} / {src_pdf}")
@@ -244,6 +320,11 @@ class BuildBlueprintStep:
         work_dir = Path(ctx.paths["work_dir"])
         out_path = work_dir / f"blueprint_{self.which.lower()}.json"
         force = bool(ctx.params.get("force", False))
+        if not force:
+            txt_path = work_dir / f"doc_{self.which.lower()}.txt"
+            strategy, _ = _select_ast_builder_strategy(ctx, self.which.lower(), text_path=txt_path)
+            if strategy != "blueprint":
+                return False
         return force or (not out_path.exists())
 
     def run(self, ctx: RunContext) -> None:
@@ -379,6 +460,8 @@ class BuildBlueprintStep:
             model=llm_complex,
             tools=tools_blueprint_builder,
             system_prompt=blueprint_ast_builder_prompt,
+            # 可能なら structured_response を使って JSON抽出の脆さを回避する
+            response_format=DocumentStructureBlueprint,
             middleware=middleware,
             subagents=[
                 {
@@ -399,14 +482,20 @@ class BuildBlueprintStep:
         recursion_limit = int(ctx.params.get("recursion_limit", 120) or 120)
         config_lg = {"configurable": {"thread_id": f"{ctx.run_id}:{which}:blueprint"}, "recursion_limit": recursion_limit}
         result = agent.invoke({"messages": [{"role": "user", "content": query}], "files": files}, config=config_lg)
-        last_text = _extract_last_ai_text(result)
-        if not last_text.strip():
-            raise RuntimeError("blueprint agent returned no final AI message")
-        blueprint_dict = _extract_json_from_text(last_text)
-        try:
-            blueprint = DocumentStructureBlueprint(**blueprint_dict)
-        except Exception as e:
-            raise RuntimeError(f"blueprint agent returned invalid JSON: {e}")
+        # structured output を唯一のソースにする（テキストからJSON抽出しない）
+        if not isinstance(result, dict):
+            raise RuntimeError("blueprint agent returned non-dict result (structured_response unavailable)")
+        sr = result.get("structured_response")
+        if isinstance(sr, DocumentStructureBlueprint):
+            blueprint = sr
+        elif isinstance(sr, dict):
+            blueprint = DocumentStructureBlueprint(**sr)
+        else:
+            # 型安全を優先するため、ここで明示的に失敗させる
+            raise RuntimeError(
+                "blueprint agent returned no structured_response. "
+                "Ensure response_format is supported and the model/toolchain is configured correctly."
+            )
 
         # 永続化（Runのworkディレクトリ）
         blueprint_data = blueprint.model_dump()
@@ -473,20 +562,120 @@ class BuildAstStep:
         bp_path = work_dir / f"blueprint_{which}.json"
         if not txt_path.exists():
             raise FileNotFoundError(str(txt_path))
-        if not bp_path.exists():
-            raise FileNotFoundError(str(bp_path))
 
         out_ast = work_dir / f"ast_{which}.ast.json"
-
-        from src import blueprint_ast_builder
-
-        blueprint_ast_builder.build_ast_from_blueprint(
-            blueprint_path=str(bp_path),
-            text_path=str(txt_path),
-            out_ast_path=str(out_ast),
-            root_title=f"doc_{which}",
-            max_content_chars_per_node=int(ctx.params.get("max_content_chars_per_node", 2000)),
+        strategy, info = _select_ast_builder_strategy(ctx, which, text_path=txt_path)
+        ctx.events.emit(
+            ctx.run_id,
+            "ast_builder_selected",
+            {
+                "ts": _utcnow_iso(),
+                "which": which,
+                "strategy": strategy,
+                "reason": info.get("reason"),
+                "policy": info.get("policy"),
+                "filename": info.get("filename"),
+                "char_count": info.get("char_count"),
+            },
         )
+
+        if strategy == "markdown":
+            from src import markdown_ast_builder
+
+            markdown_ast_builder.build_ast_from_markdown(
+                text_path=str(txt_path),
+                out_ast_path=str(out_ast),
+                root_title=f"doc_{which}",
+                max_content_chars_per_node=int(ctx.params.get("max_content_chars_per_node", 2000)),
+            )
+        elif strategy == "llm_direct":
+            if not (os.getenv("OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_API_KEY")):
+                raise RuntimeError("LLM API key not set (OPENAI_API_KEY or AZURE_OPENAI_API_KEY)")
+
+            from deepagents import create_deep_agent
+            from deepagents.backends.utils import create_file_data
+
+            from src.prompt import direct_ast_builder_prompt
+            from src.schema import DirectDocumentAST
+            from src.utils import build_llm
+
+            # UI向けイベント（tool_call/agentログ）
+            try:
+                from document_process_app.agents.middleware import EventSinkMiddleware  # type: ignore
+            except Exception:
+                EventSinkMiddleware = None  # type: ignore
+
+            model_name = str(
+                ctx.params.get("ast_llm_direct_model")
+                or ctx.params.get("llm_complex_model")
+                or "gpt-5-mini"
+            )
+            llm = build_llm(model=model_name)
+
+            middleware = []
+            if EventSinkMiddleware is not None:
+                middleware = [
+                    EventSinkMiddleware(
+                        run_id=ctx.run_id,
+                        events=ctx.events,
+                        cancellation=ctx.cancellation,
+                        agent_name=f"direct_ast_builder_{which}",
+                    )
+                ]
+
+            agent = create_deep_agent(
+                model=llm,
+                tools=[],
+                system_prompt=direct_ast_builder_prompt,
+                response_format=DirectDocumentAST,
+                middleware=middleware,
+                debug=False,
+            )
+
+            txt_name = f"doc_{which}.txt"
+            files = {f"/{txt_name}": create_file_data(_safe_read_text(txt_path))}
+            query = f"ファイル '{txt_name}' を解析してASTを構築してください。"
+            config_lg = {"configurable": {"thread_id": f"{ctx.run_id}:{which}:direct_ast"}}
+            result = agent.invoke({"messages": [{"role": "user", "content": query}], "files": files}, config=config_lg)
+            if not isinstance(result, dict):
+                raise RuntimeError("direct AST agent returned non-dict result (structured_response unavailable)")
+            sr = result.get("structured_response")
+            if isinstance(sr, DirectDocumentAST):
+                ast_obj = sr
+            elif isinstance(sr, dict):
+                ast_obj = DirectDocumentAST(**sr)
+            else:
+                raise RuntimeError("direct AST agent returned no structured_response")
+
+            ast_data = ast_obj.model_dump()
+            if not ast_data.get("file_name"):
+                ast_data["file_name"] = os.path.basename(str(txt_path))
+            root = ast_data.get("root") or {}
+            if isinstance(root, dict) and not root.get("section_title"):
+                root["section_title"] = f"doc_{which}"
+                ast_data["root"] = root
+
+            ast_data["__meta__"] = {
+                "rev": 0,
+                "updated_at": _utcnow_iso(),
+                "generated_from": "llm_direct",
+                "model": model_name,
+            }
+
+            out_ast.write_text(json.dumps(ast_data, ensure_ascii=False, indent=2), encoding="utf-8")
+        else:
+            if not bp_path.exists():
+                raise FileNotFoundError(str(bp_path))
+
+            from src import blueprint_ast_builder
+
+            blueprint_ast_builder.build_ast_from_blueprint(
+                blueprint_path=str(bp_path),
+                text_path=str(txt_path),
+                out_ast_path=str(out_ast),
+                root_title=f"doc_{which}",
+                max_content_chars_per_node=int(ctx.params.get("max_content_chars_per_node", 2000)),
+            )
 
         rel = out_ast.relative_to(run_dir).as_posix()
         ctx.events.emit(ctx.run_id, "artifact_updated", {"ts": _utcnow_iso(), "kind": f"ast_{which}", "path": rel})

@@ -103,6 +103,36 @@ NGがある場合は、原因を調査して、blueprintをedit_fileツールで
 
 """.strip()
 
+# Direct AST Builder Prompt (short text / markdown bypass)
+direct_ast_builder_prompt = """
+あなたはドキュメントから直接AST（抽象構文木）を構築するエージェントです。
+提供されたテキストを読み、章立て（セクション構造）と本文を抽出して、次のJSON形式で出力してください。
+
+重要:
+- 出力はJSONのみ（前後に説明文を付けない）。
+- content_summary は空文字でよい。
+- 章立ては原文に根拠がある範囲で作成し、創作しない。
+- 見出しが明確でない場合は、全体を1セクションにまとめる。
+
+JSON構造:
+{
+  "file_name": "document.txt",
+  "root": {
+    "section_title": "document",
+    "content": "",
+    "content_summary": "",
+    "children": [
+      {
+        "section_title": "セクションタイトル",
+        "content": "本文...",
+        "content_summary": "",
+        "children": []
+      }
+    ]
+  }
+}
+""".strip()
+
 compare_type_analysis_prompt = f"""
 あなたは与えられた2つのドキュメントの構造や特性を分析し、後続の差分分析の具体的な手順を策定しようとしています。
 # 目的
@@ -205,6 +235,7 @@ task_pre_analysis_prompt = """
 # テンプレート出力
 - is_complete=false の場合は、テンプレート本文を `/template_draft.md` に出力すること
 - is_complete=true の場合は、filled_report に完成レポート本文を入れること（/template_filled.md を出力してもよい）
+- **重要**: テンプレートは必ずMarkdown形式で記述すること（見出しは `#`, `##`, `###`、箇条書きは `-`、番号付きリストは `1.` 等）
 
 # 出力（structured）
 以下のJSONを**そのまま**出力してください（前後に余計な説明を付けない）。

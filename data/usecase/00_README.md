@@ -56,9 +56,48 @@
 
 ---
 
-## PowerShellでの配置確認
+## 実行方法（ユースケース一括実行）
+
+このフォルダ（`data/usecase/`）の文書群を使った代表ユースケースは、`scripts/run_cli_scenarios.py` でまとめて実行できます。
+
+### 事前準備
+
+- 依存関係をインストールしてから実行してください（詳細はリポジトリ直下の `README.md` を参照）。
+
+### dummy モード（APIキー不要）
 
 ```powershell
-Get-ChildItem .\data\input\ -File | Select-Object Name,Length
+# リポジトリ直下で実行
+python .\scripts\run_cli_scenarios.py --mode dummy
 ```
+
+### real モード（APIキー必要）
+
+`.env` または OS 環境変数に `OPENAI_API_KEY` もしくは `AZURE_OPENAI_API_KEY` を設定してから実行してください。
+
+```powershell
+# 例: real を全シナリオ実行（モデルは必要に応じて変更）
+python .\scripts\run_cli_scenarios.py --mode real --llm-complex-model gpt-5-mini
+```
+
+### 出力先（デフォルト）
+
+- **dummy**: `data/usecase/cli_scenarios/`
+- **real**: `data/usecase/cli_scenarios_real/`
+
+各シナリオ配下に `create.json` / `execute.json` / `artifacts.json` / `template_filled.md` / `events.jsonl` などが出力されます。
+
+### よく使うオプション
+
+```powershell
+# 特定シナリオだけ実行（例: 準拠評価 + ギャップ）
+python .\scripts\run_cli_scenarios.py --mode dummy --ids 01_compliance 02_gap
+
+# フェーズだけ実行（create/execute/export/all）
+python .\scripts\run_cli_scenarios.py --mode dummy --phase create
+
+# 出力先を明示（相対パス指定）
+python .\scripts\run_cli_scenarios.py --mode dummy --out data\usecase\cli_scenarios_custom
+```
+
 

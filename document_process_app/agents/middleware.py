@@ -26,6 +26,18 @@ def _truncate(s: str, n: int = 300) -> str:
     t = s if isinstance(s, str) else str(s)
     return t if len(t) <= n else (t[:n] + "…")
 
+def _stringify_ai_content(content: Any) -> str:
+    """AIMessage.content をイベント格納用に文字列化する（安全側に倒す）。"""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    try:
+        # list/dict などは JSON っぽく見える形に寄せる
+        return json.dumps(content, ensure_ascii=False, indent=2)
+    except Exception:
+        return str(content)
+
 
 def _generate_invocation_id() -> str:
     """短いユニークな呼び出しIDを生成する。"""
@@ -233,7 +245,7 @@ class EventSinkMiddleware(AgentMiddleware):
         final_content = None
         for m in reversed(messages):
             if isinstance(m, AIMessage) and m.content and not m.tool_calls:
-                final_content = m.content
+                final_content = _stringify_ai_content(m.content)
                 break
         self.events.emit(
             self.run_id,
@@ -243,6 +255,8 @@ class EventSinkMiddleware(AgentMiddleware):
                 "agent_name": self.agent_name,
                 "is_subagent": bool(self.is_subagent),
                 "total_messages": len(messages),
+                # イベントログで全文を参照できるようにする
+                "final_response": final_content if final_content else None,
                 "final_response_preview": _truncate(final_content or "", 500) if final_content else None,
                 **self._get_hierarchy_info(),
             },

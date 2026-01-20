@@ -40,4 +40,16 @@
     </div>
   </div>
   {% endif %}
+
+  <!-- エージェント最終回答（全文） -->
+  {% if agent_answer_text %}
+  <div class="mt-2">
+    <div class="flex items-center justify-between gap-2">
+      <div class="text-sm font-medium text-base-content/70">エージェント最終回答{% if agent_answer_name %}（{{ agent_answer_name }}）{% endif %}</div>
+    </div>
+    <div class="bg-base-200 rounded-lg p-3 text-xs max-h-64 overflow-auto">
+      <pre class="whitespace-pre-wrap break-words">{{ agent_answer_text }}</pre>
+    </div>
+  </div>
+  {% endif %}
 </div>

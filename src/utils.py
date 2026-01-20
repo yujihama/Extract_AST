@@ -29,6 +29,19 @@ def build_llm(**kwargs):
     provider = (os.getenv("LLM_PROVIDER") or "openai").lower()
     temperature = float(os.getenv("TEMPERATURE") or "0")
     model = kwargs.pop("model", "gpt-5-mini")
+    # ぶら下がり（無限待ち）を避けるため、デフォルトのtimeout/retryを入れる
+    # - langchain_openai の ChatOpenAI/AzureChatOpenAI は timeout/max_retries を受け取れる
+    if "timeout" not in kwargs:
+        # 秒。環境変数が無い場合も安全側でデフォルト設定。
+        try:
+            kwargs["timeout"] = float(os.getenv("LLM_TIMEOUT") or "180")
+        except Exception:
+            kwargs["timeout"] = 180.0
+    if "max_retries" not in kwargs:
+        try:
+            kwargs["max_retries"] = int(os.getenv("LLM_MAX_RETRIES") or "2")
+        except Exception:
+            kwargs["max_retries"] = 2
 
     if provider in {"azure", "azureopenai", "azure_openai"}:
         return AzureChatOpenAI(

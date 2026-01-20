@@ -33,7 +33,20 @@
             <label class="label">
               <span class="label-text">既存ドキュメントから選択（複数可）</span>
             </label>
-            <select name="doc_hashes" multiple class="select select-bordered w-full h-72 md:h-96">
+            <div class="flex flex-wrap items-center gap-2 mb-2">
+              <button type="button" class="btn btn-xs" onclick="docSelectAll('doc_hashes')">全選択</button>
+              <button type="button" class="btn btn-xs btn-ghost" onclick="docSelectNone('doc_hashes')">選択解除</button>
+              <button type="button" class="btn btn-xs btn-ghost" onclick="docSelectInvert('doc_hashes')">反転</button>
+              <span class="text-xs text-base-content/50">Ctrl+クリックで追加/解除、Shift+クリックで範囲選択</span>
+            </div>
+            <select
+              id="doc_hashes"
+              name="doc_hashes"
+              multiple
+              size="18"
+              class="select select-bordered select-lg w-full h-96 md:h-[32rem] text-base leading-relaxed doc-multi-select"
+              aria-describedby="doc_hashes_help"
+            >
               {% for doc in documents %}
               <option value="{{ doc.doc_hash }}">
                 {{ doc.original_filename }} ({{ "{:,}".format(doc.char_count) }}文字)
@@ -43,7 +56,9 @@
               {% endfor %}
             </select>
             <label class="label">
-              <span class="label-text-alt text-base-content/50">Ctrl/Shiftで複数選択できます。</span>
+              <span id="doc_hashes_help" class="label-text-alt text-base-content/50">
+                ヒント: Windowsでは Ctrl+クリック（追加/解除）、Shift+クリック（範囲）、キーボードの↑↓ + Space でも選択できます。
+              </span>
             </label>
           </div>
 
@@ -55,7 +70,7 @@
               type="file"
               name="docs"
               class="file-input file-input-bordered file-input-primary w-full"
-              accept=".pdf,.txt"
+              accept=".pdf,.txt,.md,.markdown"
               multiple
             />
             <label class="label">
@@ -226,6 +241,29 @@
           </div>
         </div>
         <div class="divider"></div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="form-control w-full">
+            <label class="label">
+              <span class="label-text">AST生成ポリシー</span>
+            </label>
+            <select name="ast_builder_policy" class="select select-bordered select-sm w-full">
+              <option value="auto" selected>auto（拡張子/文字数で自動）</option>
+              <option value="blueprint">blueprint（常に従来方式）</option>
+              <option value="markdown">markdown（Markdownルール優先）</option>
+              <option value="llm_direct">llm_direct（短文をLLM直AST）</option>
+            </select>
+          </div>
+          <div class="form-control w-full">
+            <label class="label">
+              <span class="label-text">短文バイパス閾値（文字数）</span>
+            </label>
+            <input type="number" name="ast_bypass_max_chars" value="5000" min="100" class="input input-bordered input-sm w-full" />
+            <label class="label">
+              <span class="label-text-alt text-base-content/50">auto時にこの文字数以下はLLM直AST</span>
+            </label>
+          </div>
+        </div>
+        <div class="divider"></div>
         <div class="form-control w-full max-w-md">
           <label class="label">
             <span class="label-text">複雑処理用LLMモデル（任意）</span>
@@ -318,4 +356,43 @@
     </div>
   </form>
 </div>
+
+<script>
+(function () {
+  if (window.docSelectHelpersInitialized) return;
+  window.docSelectHelpersInitialized = true;
+
+  function getSelect(selectId) {
+    return document.getElementById(selectId);
+  }
+
+  window.docSelectAll = function (selectId) {
+    const sel = getSelect(selectId);
+    if (!sel) return;
+    Array.from(sel.options).forEach((o) => (o.selected = true));
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  window.docSelectNone = function (selectId) {
+    const sel = getSelect(selectId);
+    if (!sel) return;
+    Array.from(sel.options).forEach((o) => (o.selected = false));
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  window.docSelectInvert = function (selectId) {
+    const sel = getSelect(selectId);
+    if (!sel) return;
+    Array.from(sel.options).forEach((o) => (o.selected = !o.selected));
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+})();
+</script>
+
+<style>
+/* multi-select の行のクリック領域を少し大きくする（ブラウザ依存） */
+select.doc-multi-select[multiple] option {
+  padding: 0.35rem 0.5rem;
+}
+</style>
 {% endblock %}

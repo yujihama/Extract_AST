@@ -1,0 +1,162 @@
+# 抽出結果（JSON）
+
+以下は /docs/d1/doc.txt から抽出した「義務/禁止/期限/例外/罰則」の構造化データです。
+
+[
+  {
+    "clause_id": "d1_sec2_item1",
+    "section_heading": "2. 通知義務",
+    "clause_text": "個人情報漏えいの疑いがある場合、72時間以内に通知する。",
+    "type": ["義務", "期限"],
+    "obligation_summary": "漏えい疑い時に72時間以内で通知する義務",
+    "deadline_or_period": "72時間以内",
+    "exception": "-",
+    "penalty": "-",
+    "source_doc": "d1",
+    "location": "line 7",
+    "confidence": 0.95
+  },
+  {
+    "clause_id": "d1_sec2_item2",
+    "section_heading": "2. 通知義務",
+    "clause_text": "重大インシデントは24時間以内に一次報告する。",
+    "type": ["義務", "期限"],
+    "obligation_summary": "重大インシデントは24時間以内に一次報告する義務",
+    "deadline_or_period": "24時間以内",
+    "exception": "-",
+    "penalty": "-",
+    "source_doc": "d1",
+    "location": "line 8",
+    "confidence": 0.93
+  },
+  {
+    "clause_id": "d1_sec3_item1",
+    "section_heading": "3. 保存・削除",
+    "clause_text": "個人情報は国内リージョンに保存する。",
+    "type": ["義務"],
+    "obligation_summary": "個人情報を国内リージョンに保存する義務",
+    "deadline_or_period": "-",
+    "exception": "-",
+    "penalty": "-",
+    "source_doc": "d1",
+    "location": "line 11",
+    "confidence": 0.90
+  },
+  {
+    "clause_id": "d1_sec3_item2",
+    "section_heading": "3. 保存・削除",
+    "clause_text": "契約終了後 30 日以内に削除する。",
+    "type": ["義務", "期限"],
+    "obligation_summary": "契約終了後30日以内に個人情報を削除する義務",
+    "deadline_or_period": "契約終了後30日以内",
+    "exception": "-",
+    "penalty": "-",
+    "source_doc": "d1",
+    "location": "line 12",
+    "confidence": 0.94
+  },
+  {
+    "clause_id": "d1_sec3_item3",
+    "section_heading": "3. 保存・削除",
+    "clause_text": "監査ログは 365 日保管する。",
+    "type": ["義務", "期限"],
+    "obligation_summary": "監査ログを365日保管する義務",
+    "deadline_or_period": "365日",
+    "exception": "-",
+    "penalty": "-",
+    "source_doc": "d1",
+    "location": "line 13",
+    "confidence": 0.90
+  },
+  {
+    "clause_id": "d1_sec4_item1",
+    "section_heading": "4. 再委託",
+    "clause_text": "再委託は事前承認を必須とする。",
+    "type": ["義務"],
+    "obligation_summary": "再委託には事前承認が必要である",
+    "deadline_or_period": "-",
+    "exception": "-",
+    "penalty": "-",
+    "source_doc": "d1",
+    "location": "line 16",
+    "confidence": 0.92
+  },
+  {
+    "clause_id": "d1_sec4_item2",
+    "section_heading": "4. 再委託",
+    "clause_text": "再委託先一覧と監査結果を年次で提出する。",
+    "type": ["義務", "期限"],
+    "obligation_summary": "再委託先一覧と監査結果を年次で提出する義務",
+    "deadline_or_period": "年次",
+    "exception": "-",
+    "penalty": "-",
+    "source_doc": "d1",
+    "location": "line 17",
+    "confidence": 0.88
+  },
+  {
+    "clause_id": "d1_sec5_item1",
+    "section_heading": "5. 暗号化・鍵管理",
+    "clause_text": "重要情報は保存時/通信時に暗号化する。",
+    "type": ["義務"],
+    "obligation_summary": "重要情報を保存時および通信時に暗号化する義務",
+    "deadline_or_period": "-",
+    "exception": "-",
+    "penalty": "-",
+    "source_doc": "d1",
+    "location": "line 20",
+    "confidence": 0.92
+  },
+  {
+    "clause_id": "d1_sec5_item2",
+    "section_heading": "5. 暗号化・鍵管理",
+    "clause_text": "鍵はKMSで管理し、180日以内にローテーションする。",
+    "type": ["義務", "期限"],
+    "obligation_summary": "鍵をKMSで管理し、180日以内にローテーションする義務",
+    "deadline_or_period": "180日以内",
+    "exception": "-",
+    "penalty": "-",
+    "source_doc": "d1",
+    "location": "line 21",
+    "confidence": 0.90
+  },
+  {
+    "clause_id": "d1_sec5_item3",
+    "section_heading": "5. 暗号化・鍵管理",
+    "clause_text": "平文での鍵保存は禁止する。",
+    "type": ["禁止"],
+    "obligation_summary": "鍵を平文で保存してはならない（禁止）",
+    "deadline_or_period": "-",
+    "exception": "-",
+    "penalty": "-",
+    "source_doc": "d1",
+    "location": "line 22",
+    "confidence": 0.95
+  },
+  {
+    "clause_id": "d1_sec6_item1",
+    "section_heading": "6. 例外",
+    "clause_text": "例外は期限付きで承認し、代替策を添える。",
+    "type": ["例外", "義務"],
+    "obligation_summary": "例外は期限付きで承認され、代替策を添える必要がある",
+    "deadline_or_period": "期限付き（具体期間は明示なし）",
+    "exception": "例外は期限付きで承認、代替策を要求",
+    "penalty": "-",
+    "source_doc": "d1",
+    "location": "line 25",
+    "confidence": 0.85
+  },
+  {
+    "clause_id": "d1_sec7_item1",
+    "section_heading": "7. 違約金",
+    "clause_text": "重大違反の場合、年間利用料の 10% を上限とする違約金を支払う。",
+    "type": ["罰則"],
+    "obligation_summary": "重大違反の場合に違約金を支払う義務（上限: 年間利用料の10%）",
+    "deadline_or_period": "-",
+    "exception": "-",
+    "penalty": "年間利用料の10%を上限とする違約金",
+    "source_doc": "d1",
+    "location": "line 28",
+    "confidence": 0.90
+  }
+]

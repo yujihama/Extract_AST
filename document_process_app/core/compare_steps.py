@@ -1217,6 +1217,7 @@ class CompareAnalysisStep:
                 "- compare_* ツールは doc_a_id/doc_b_id のペア指定が必須です（dirは指定しません）",
                 "- compare_* ツールを使う前に、対象ペアの pair_compare_setup を必ず実行すること（未実行の場合は失敗します）",
                 "- 最終成果物は /template_filled.md として出力すること",
+                "- **重要**: 出力はMarkdown形式で記述すること（見出しは `#`, `##`, `###`、箇条書きは `-`、番号付きリストは `1.` 等）",
                 "",
                 "利用可能なファイル:",
                 "- /template_draft.md (テンプレート)",

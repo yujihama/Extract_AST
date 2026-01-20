@@ -278,6 +278,8 @@ def create_app() -> FastAPI:
         summarize_ast: str = Form("1"),
         ast_summary_model: str = Form("gpt-5-mini"),
         llm_complex_model: str = Form(""),
+        ast_builder_policy: str = Form("auto"),
+        ast_bypass_max_chars: str = Form("5000"),
         step_from: str = Form(""),
         step_to: str = Form(""),
         start_now: Optional[str] = Form("on"),
@@ -333,6 +335,17 @@ def create_app() -> FastAPI:
             params["summarize_ast"] = sa in {"1", "true", "on", "yes", "y"}
             if str(ast_summary_model).strip():
                 params["ast_summary_model"] = str(ast_summary_model).strip()
+
+            # AST生成ポリシー（auto/blueprint/markdown/llm_direct）
+            pol = str(ast_builder_policy or "").strip().lower()
+            if pol in {"auto", "blueprint", "markdown", "llm_direct"}:
+                params["ast_builder_policy"] = pol
+            try:
+                max_chars = int(ast_bypass_max_chars or "0")
+                if max_chars > 0:
+                    params["ast_bypass_max_chars"] = max_chars
+            except Exception:
+                pass
 
             # 任意: 複雑系モデル
             if str(llm_complex_model).strip():
@@ -444,7 +457,48 @@ def create_app() -> FastAPI:
     @app.get("/runs/{run_id}/partials/status", response_class=HTMLResponse)
     def runs_status_partial(request: Request, run_id: str):
         run = repo.get_run(run_id)
-        return templates.TemplateResponse("partials/status.html", {"request": request, "run": run})
+        # ステータス欄に「直近のエージェント最終回答」を表示する
+        latest_agent = None
+        latest_any = None
+        try:
+            evs = events.list(run_id, limit=500)
+            for ev in reversed(list(evs)):
+                if str(getattr(ev, "event_type", "")) != "agent_end":
+                    continue
+                payload = getattr(ev, "payload", {}) or {}
+                if not isinstance(payload, dict):
+                    payload = {"payload": payload}
+                rec = {
+                    "ts": getattr(ev, "ts", None),
+                    "agent_name": payload.get("agent_name"),
+                    "is_subagent": bool(payload.get("is_subagent", False)),
+                    "final_response": payload.get("final_response") or "",
+                    "final_response_preview": payload.get("final_response_preview") or "",
+                }
+                if latest_any is None:
+                    latest_any = rec
+                if not rec["is_subagent"] and latest_agent is None:
+                    latest_agent = rec
+                if latest_agent is not None and latest_any is not None:
+                    break
+        except Exception:
+            latest_agent = None
+            latest_any = None
+
+        agent_answer_obj = latest_agent or latest_any
+        agent_answer_text = ""
+        agent_answer_name = None
+        if isinstance(agent_answer_obj, dict):
+            agent_answer_name = agent_answer_obj.get("agent_name")
+            agent_answer_text = (
+                str(agent_answer_obj.get("final_response") or "").strip()
+                or str(agent_answer_obj.get("final_response_preview") or "").strip()
+            )
+
+        return templates.TemplateResponse(
+            "partials/status.html",
+            {"request": request, "run": run, "agent_answer_text": agent_answer_text, "agent_answer_name": agent_answer_name},
+        )
 
     def _get_run_base_dir(run_id: str) -> Path:
         run = repo.get_run(run_id)
@@ -824,7 +878,7 @@ def create_app() -> FastAPI:
             content = p.read_text(encoding="utf-8", errors="replace")
         else:
             content = ""  # ファイルが存在しない場合は空（UIで「-」表示）
-        return templates.TemplateResponse("partials/template.html", {"request": request, "content": content})
+        return templates.TemplateResponse("partials/template.html", {"request": request, "content": content, "kind": kind})
 
     @app.get("/runs/{run_id}/partials/template", response_class=HTMLResponse)
     def runs_template_partial(request: Request, run_id: str, kind: str = "draft"):

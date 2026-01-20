@@ -1,5 +1,5 @@
 from typing import Optional, Dict, List, Any
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 import re
 
 
@@ -40,6 +40,26 @@ class AgentResult(BaseModel):
 DocumentNode.model_rebuild()
 DocumentAST.model_rebuild()
 AgentResult.model_rebuild()
+
+
+class DirectDocumentNode(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    section_title: Optional[str] = Field(None, description="セクションのタイトル")
+    content: str = Field("", description="セクション本文（Markdown/テキスト）")
+    content_summary: str = Field("", description="セクションの要約（空で可）")
+    children: List['DirectDocumentNode'] = Field(default_factory=list, description="サブセクション")
+
+
+class DirectDocumentAST(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    file_name: str = Field(..., description="解析されたファイル名")
+    root: DirectDocumentNode = Field(..., description="文書構造のルートノード")
+
+
+DirectDocumentNode.model_rebuild()
+DirectDocumentAST.model_rebuild()
 
 class ValidationRules(BaseModel):
     """見出し抽出時の誤検知を防ぐための検証ルールセット。

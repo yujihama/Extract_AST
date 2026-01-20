@@ -50,6 +50,9 @@ Thumbs.db
 *.json
 
 *.db
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
 ast/
 blueprint/
 document_pairs/
@@ -57,7 +60,6 @@ documents/
 embedding/
 runs/
 # 除外しないファイル・ディレクトリ
-!data/test_template_single.md
 !data/input/**
 
 log/
