@@ -57,7 +57,7 @@ def _load_dotenv_if_available(repo_root: Path) -> None:
 def _has_api_key() -> bool:
     import os
 
-    return bool(os.getenv("OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_API_KEY"))
+    return bool(os.getenv("OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -328,7 +328,7 @@ def main(argv: list[str] | None = None) -> int:
         if not _has_api_key():
             raise RuntimeError(
                 "realモードの実行にはAPIキーが必要です。"
-                " .env に OPENAI_API_KEY または AZURE_OPENAI_API_KEY を設定してください。"
+                " .env に OPENAI_API_KEY, AZURE_OPENAI_API_KEY, または GOOGLE_API_KEY を設定してください。"
             )
 
     for s in scenarios:
