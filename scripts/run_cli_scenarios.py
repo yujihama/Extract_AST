@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -342,7 +343,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.phase in {"all", "create"}:
             params: dict[str, Any] = {"mode": args.mode}
             if args.mode == "real":
-                llm_complex_model = str(args.llm_complex_model or "").strip() or "gpt-5-mini"
+                # LLM_PROVIDERに応じてデフォルトモデルを選択
+                default_model = "gpt-5-mini"
+                if os.getenv("LLM_PROVIDER") == "gemini":
+                    default_model = os.getenv("GEMINI_MODEL") or "gemini-2.0-flash"
+                llm_complex_model = str(args.llm_complex_model or "").strip() or default_model
                 params["llm_complex_model"] = llm_complex_model
 
                 # real: summarize_ast はユーザ指定を優先（未指定ならデフォルトOFF）
