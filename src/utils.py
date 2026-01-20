@@ -1,4 +1,3 @@
-from langchain_openai import AzureChatOpenAI, ChatOpenAI
 import os
 import threading
 import json
@@ -25,43 +24,15 @@ except Exception:  # pragma: no cover
 LOG_DIR = Path("log")
 
 def build_llm(**kwargs):
-    """環境変数から OpenAI / Azure OpenAI のチャットモデルを作成する。"""
-    provider = (os.getenv("LLM_PROVIDER") or "openai").lower()
-    temperature = float(os.getenv("TEMPERATURE") or "0")
-    model = kwargs.pop("model", "gpt-5-mini")
-    # ぶら下がり（無限待ち）を避けるため、デフォルトのtimeout/retryを入れる
-    # - langchain_openai の ChatOpenAI/AzureChatOpenAI は timeout/max_retries を受け取れる
-    if "timeout" not in kwargs:
-        # 秒。環境変数が無い場合も安全側でデフォルト設定。
-        try:
-            kwargs["timeout"] = float(os.getenv("LLM_TIMEOUT") or "180")
-        except Exception:
-            kwargs["timeout"] = 180.0
-    if "max_retries" not in kwargs:
-        try:
-            kwargs["max_retries"] = int(os.getenv("LLM_MAX_RETRIES") or "2")
-        except Exception:
-            kwargs["max_retries"] = 2
+    """
+    環境変数からチャットモデルを作成する（OpenAI/Azure/Gemini）。
 
-    if provider in {"azure", "azureopenai", "azure_openai"}:
-        return AzureChatOpenAI(
-            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-            azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
-            or os.getenv("AZURE_OPENAI_DEPLOYMENT")
-            or model,
-            api_version=os.getenv("AZURE_OPENAI_API_VERSION")
-            or os.getenv("OPENAI_API_VERSION"),
-            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-            # temperature=temperature,
-            **kwargs,
-        )
+    互換のため `build_llm(model=...)` 形式は維持しつつ、実体は `src.llm_provider.build_chat_llm` を使う。
+    """
+    from src.llm_provider import build_chat_llm
 
-    return ChatOpenAI(
-        model=model,
-        api_key=os.getenv("OPENAI_API_KEY"),
-        # temperature=temperature,
-        **kwargs,
-    )
+    model = kwargs.pop("model", None)
+    return build_chat_llm(model=model, **kwargs)
 
 class DebugLoggingMiddleware(AgentMiddleware):
     """

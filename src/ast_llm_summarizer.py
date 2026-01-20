@@ -138,32 +138,11 @@ class SummarizationCancelled(RuntimeError):
 
 def _build_llm(model: Optional[str] = None):
     """
-    Notebookの build_llm と同等の環境変数で OpenAI / Azure OpenAI を選択。
-    依存: langchain-openai
+    環境変数で OpenAI / Azure / Gemini を切り替えてチャットモデルを作成する。
     """
-    provider = (os.getenv("LLM_PROVIDER") or "openai").lower()
-    temperature = float(os.getenv("TEMPERATURE") or "0")
+    from src.llm_provider import build_chat_llm
 
-    from langchain_openai import AzureChatOpenAI, ChatOpenAI
-
-    model_name = model or os.getenv("OPENAI_MODEL") or os.getenv("MODEL") or "gpt-5-mini"
-
-    if provider in {"azure", "azureopenai", "azure_openai"}:
-        return AzureChatOpenAI(
-            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-            azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
-            or os.getenv("AZURE_OPENAI_DEPLOYMENT")
-            or model_name,
-            api_version=os.getenv("AZURE_OPENAI_API_VERSION") or os.getenv("OPENAI_API_VERSION"),
-            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-            # temperature=temperature,
-        )
-
-    return ChatOpenAI(
-        model=model_name,
-        api_key=os.getenv("OPENAI_API_KEY"),
-        # temperature=temperature,
-    )
+    return build_chat_llm(model=model)
 
 
 def summarize_ast_inplace(

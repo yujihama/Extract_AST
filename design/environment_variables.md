@@ -32,13 +32,23 @@
 ## LLMプロバイダ共通（src/utils.build_llm, src/ast_llm_summarizer など）
 
 - **LLM_PROVIDER**
-  - `openai` / `azure`（`azureopenai`, `azure_openai` も許容）
+  - `openai` / `azure` / `gemini`（`azureopenai`, `azure_openai`, `google`, `google_genai` も許容）
   - default: `openai`
 - **TEMPERATURE**
   - 0推奨（`src/ast_compare` / `src/ast_llm_summarizer` で参照。`src.utils.build_llm` は現状 temperature を渡していない）
 - **PDF_LLM_MODEL**
   - `src/pdf_to_text_llm.convert_pdf_with_llm` が使用するモデル（未指定時）
-  - 未設定の場合は `AZURE_OPENAI_DEPLOYMENT_NAME_COMPLEX` / `OPENAI_MODEL` 等へフォールバック
+  - 未設定の場合は `AZURE_OPENAI_DEPLOYMENT_NAME_COMPLEX` / `GEMINI_MODEL` / `OPENAI_MODEL` 等へフォールバック
+
+---
+
+## Gemini（AI Studio: Chat + Embedding）
+
+- **GOOGLE_API_KEY**（必須）
+- **GEMINI_MODEL**
+  - デフォルトチャットモデル（例: `gemini-2.0-flash`）
+- **GEMINI_EMBEDDING_MODEL**
+  - デフォルトEmbeddingモデル（例: `text-embedding-004`）
 
 ---
 
@@ -84,6 +94,16 @@ LLM_PROVIDER=openai
 OPENAI_API_KEY=your_key
 OPENAI_MODEL=gpt-5-mini
 OPENAI_EMBEDDING_MODEL=text-embedding-3-large
+TEMPERATURE=0
+```
+
+Gemini (AI Studio):
+
+```dotenv
+LLM_PROVIDER=gemini
+GOOGLE_API_KEY=your_key
+GEMINI_MODEL=gemini-2.0-flash
+GEMINI_EMBEDDING_MODEL=text-embedding-004
 TEMPERATURE=0
 ```
 

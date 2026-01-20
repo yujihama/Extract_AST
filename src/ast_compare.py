@@ -660,79 +660,26 @@ def _normalize_openai_embedding_model_id(model: str) -> str:
     return m
 
 
-def _build_openai_embedding_client_and_model() -> Tuple[Any, str, str]:
+def _build_embeddings_and_id(*, model_override: Optional[str] = None) -> Tuple[Any, str]:
     """
-    OpenAI / Azure OpenAI を env で切り替えて embeddings client を構築する。
+    LangChainのEmbeddingsを構築し、キャッシュ識別子（embedding_id）も返す。
 
-    - OpenAI: OPENAI_API_KEY, OPENAI_EMBEDDING_MODEL (任意)
-    - Azure:  AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, (AZURE_OPENAI_API_VERSION or OPENAI_API_VERSION),
-              AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME (任意。未設定なら text-embedding-3-large を使用)
+    - `LLM_PROVIDER=openai|azure|gemini` をサポート
+    - OpenAI/Azure/Gemini いずれも LangChain 経由で統一（OpenAI SDK直呼びはしない）
     """
+    from src.llm_provider import build_embeddings, provider_ids
+
     provider = (os.getenv("LLM_PROVIDER") or "openai").lower()
-    default_model = "text-embedding-3-large"
+    mo = (model_override or "").strip()
+    if mo and not _is_azure_provider(provider) and provider not in {"gemini", "google", "google_genai"}:
+        # OpenAI embeddings のみ表記ゆれ吸収
+        mo = _normalize_openai_embedding_model_id(mo)
 
-    if _is_azure_provider(provider):
-        try:
-            from openai import AzureOpenAI  # type: ignore
-        except Exception as e:  # pragma: no cover
-            raise RuntimeError("Azure OpenAI embeddings を使うには Python パッケージ 'openai' が必要です。") from e
-
-        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-        api_key = os.getenv("AZURE_OPENAI_API_KEY")
-        api_version = os.getenv("AZURE_OPENAI_API_VERSION") or os.getenv("OPENAI_API_VERSION")
-        deployment = (
-            os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME")
-            or os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT")
-            or default_model
-        )
-
-        if not endpoint or not api_key:
-            raise RuntimeError(
-                "Azure OpenAI embeddings を使うには AZURE_OPENAI_ENDPOINT と AZURE_OPENAI_API_KEY が必要です。"
-            )
-        if not api_version:
-            raise RuntimeError(
-                "Azure OpenAI embeddings を使うには AZURE_OPENAI_API_VERSION（または OPENAI_API_VERSION）が必要です。"
-            )
-
-        client = AzureOpenAI(azure_endpoint=endpoint, api_key=api_key, api_version=api_version)
-        embedding_id = f"azure:{deployment}"
-        return client, deployment, embedding_id
-
-    # OpenAI
-    try:
-        from openai import OpenAI  # type: ignore
-    except Exception as e:  # pragma: no cover
-        raise RuntimeError("OpenAI embeddings を使うには Python パッケージ 'openai' が必要です。") from e
-
-    api_key = os.getenv("OPENAI_API_KEY")
-    model = _normalize_openai_embedding_model_id(os.getenv("OPENAI_EMBEDDING_MODEL") or default_model)
-    if not api_key:
-        raise RuntimeError("OpenAI embeddings を使うには OPENAI_API_KEY が必要です。")
-
-    client = OpenAI(api_key=api_key)
-    embedding_id = f"openai:{model}"
-    return client, model, embedding_id
+    embeddings = build_embeddings(model=mo or None)
+    ids = provider_ids(embedding_model=mo or None)
+    return embeddings, ids.embedding_id
 
 
-def _embed_texts(
-    *,
-    client: Any,
-    model: str,
-    texts: List[str],
-) -> List[List[float]]:
-    if not texts:
-        return []
-    resp = client.embeddings.create(model=model, input=texts, encoding_format="float")
-    # resp.data[i].embedding
-    out: List[List[float]] = []
-    for item in getattr(resp, "data", []) or []:
-        emb = getattr(item, "embedding", None)
-        if emb is None:
-            out.append([])
-            continue
-        out.append([float(x) for x in emb])
-    return out
 
 
 @dataclass(frozen=True)
@@ -765,16 +712,10 @@ class HybridChunkIndex:
         self._cache_lock_path = (self.cache_path + ".lock") if self.cache_path else ""
         self.batch_size = max(1, int(batch_size))
 
-        self._client, self._model, self._embedding_id = _build_openai_embedding_client_and_model()
-        # 引数で指定された場合は、env より優先（OpenAIは model、Azureは deployment 名として扱う）
-        if self.embedding_model:
-            # OpenAI は model、Azure は deployment 名として扱う
-            provider = (os.getenv("LLM_PROVIDER") or "openai").lower()
-            if _is_azure_provider(provider):
-                self._model = self.embedding_model
-            else:
-                self._model = _normalize_openai_embedding_model_id(self.embedding_model)
-            self._embedding_id = ("azure:" if _is_azure_provider(provider) else "openai:") + self._model
+        # Embeddingsは provider に応じてLangChainで統一
+        self._embeddings, self._embedding_id = _build_embeddings_and_id(
+            model_override=(self.embedding_model or None)
+        )
 
         self._vecs, self._norms = self._embed_chunks_with_cache()
         self._kw_sets = [set(_extract_keywords(c.content)) for c in self.chunks]
@@ -853,12 +794,13 @@ class HybridChunkIndex:
         if missing_texts:
             for start in range(0, len(missing_texts), self.batch_size):
                 batch = missing_texts[start : start + self.batch_size]
-                batch_vecs = _embed_texts(client=self._client, model=self._model, texts=batch)
+                batch_vecs = self._embeddings.embed_documents(batch)
                 for j, vec in enumerate(batch_vecs):
                     idx = missing_indices[start + j]
-                    vecs[idx] = vec
+                    clean_vec = [float(x) for x in (vec or [])]
+                    vecs[idx] = clean_vec
                     key = self._cache_key_for_text(self.chunks[idx].content)
-                    to_write.append((key, vec))
+                    to_write.append((key, clean_vec))
 
             # 保存時に最新のキャッシュを再ロードしてマージ（同時実行での取りこぼし防止）
             if self.cache_path and to_write:
@@ -902,8 +844,13 @@ class HybridChunkIndex:
                     except Exception:
                         pass
 
-        vecs = _embed_texts(client=self._client, model=self._model, texts=[q])
-        vec = vecs[0] if vecs else []
+        try:
+            v = self._embeddings.embed_query(q)
+            vec = [float(x) for x in (v or [])]
+        except Exception:
+            # 一部Embeddings実装は embed_query を持たない可能性があるためフォールバック
+            vecs = self._embeddings.embed_documents([q])
+            vec = [float(x) for x in (vecs[0] or [])] if vecs else []
 
         # 保存は「再ロード→再チェック→書き込み」で競合と取りこぼしを回避
         if self.cache_path:
@@ -1364,64 +1311,16 @@ def build_compare_text(
     return "\n\n".join([p for p in parts if p.strip()]).strip()
 
 
-def _build_openai_chat_client_and_model(*, model_override: Optional[str] = None) -> Tuple[Any, str, str, float]:
+def _build_chat_llm_and_id(*, model_override: Optional[str] = None) -> Tuple[Any, str]:
     """
-    OpenAI / Azure OpenAI を env で切り替えて chat client を構築する。
-
-    - OpenAI: OPENAI_API_KEY, OPENAI_MODEL or MODEL (任意)
-    - Azure:  LLM_PROVIDER=azure,
-              AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY,
-              AZURE_OPENAI_API_VERSION (or OPENAI_API_VERSION),
-              AZURE_OPENAI_DEPLOYMENT_NAME (or AZURE_OPENAI_DEPLOYMENT)
+    LangChainのChatモデルを構築し、識別子（chat_id）も返す。
     """
-    provider = (os.getenv("LLM_PROVIDER") or "openai").lower()
-    temperature = float(os.getenv("TEMPERATURE") or "0")
+    from src.llm_provider import build_chat_llm, provider_ids
 
-    if _is_azure_provider(provider):
-        try:
-            from openai import AzureOpenAI  # type: ignore
-        except Exception as e:  # pragma: no cover
-            raise RuntimeError("Azure OpenAI を使うには Python パッケージ 'openai' が必要です。") from e
-
-        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-        api_key = os.getenv("AZURE_OPENAI_API_KEY")
-        api_version = os.getenv("AZURE_OPENAI_API_VERSION") or os.getenv("OPENAI_API_VERSION")
-        deployment = (
-            (model_override.strip() if isinstance(model_override, str) and model_override.strip() else None)
-            or os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
-            or os.getenv("AZURE_OPENAI_DEPLOYMENT")
-            or os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME")
-            or "gpt-5.1"
-        )
-
-        if not endpoint or not api_key:
-            raise RuntimeError("Azure OpenAI を使うには AZURE_OPENAI_ENDPOINT と AZURE_OPENAI_API_KEY が必要です。")
-        if not api_version:
-            raise RuntimeError("Azure OpenAI を使うには AZURE_OPENAI_API_VERSION（または OPENAI_API_VERSION）が必要です。")
-
-        client = AzureOpenAI(azure_endpoint=endpoint, api_key=api_key, api_version=api_version)
-        chat_id = f"azure:{deployment}"
-        return client, deployment, chat_id, temperature
-
-    # OpenAI
-    try:
-        from openai import OpenAI  # type: ignore
-    except Exception as e:  # pragma: no cover
-        raise RuntimeError("OpenAI を使うには Python パッケージ 'openai' が必要です。") from e
-
-    api_key = os.getenv("OPENAI_API_KEY")
-    model = (
-        (model_override.strip() if isinstance(model_override, str) and model_override.strip() else None)
-        or os.getenv("OPENAI_MODEL")
-        or os.getenv("MODEL")
-        or "gpt-5.1"
-    )
-    if not api_key:
-        raise RuntimeError("OpenAI を使うには OPENAI_API_KEY が必要です。")
-
-    client = OpenAI(api_key=api_key)
-    chat_id = f"openai:{model}"
-    return client, model, chat_id, temperature
+    mo = (model_override or "").strip()
+    llm = build_chat_llm(model=mo or None)
+    ids = provider_ids(chat_model=mo or None)
+    return llm, ids.chat_id
 
 
 def _truncate_for_llm(text: str, *, max_chars: int) -> str:
@@ -1465,7 +1364,7 @@ def _llm_extract_differences(
     """
     LLMで2テキストの差分を抽出して JSON（dict）として返す。
     """
-    client, model, chat_id, temperature = _build_openai_chat_client_and_model(model_override=model_override)
+    llm, chat_id = _build_chat_llm_and_id(model_override=model_override)
 
     a = _truncate_for_llm(text_a, max_chars=max_input_chars_per_text)
     b = _truncate_for_llm(text_b, max_chars=max_input_chars_per_text)
@@ -1500,20 +1399,15 @@ def _llm_extract_differences(
         + _dump_json(schema_hint)
     )
 
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        # temperature=temperature,
-    )
+    from langchain_core.messages import HumanMessage, SystemMessage
 
-    content = ""
-    try:
-        content = resp.choices[0].message.content or ""
-    except Exception:
-        content = ""
+    resp = llm.invoke([SystemMessage(content=system), HumanMessage(content=user)])
+    content = getattr(resp, "content", "") or ""
+    if not isinstance(content, str):
+        try:
+            content = json.dumps(content, ensure_ascii=False, indent=2)
+        except Exception:
+            content = str(content)
 
     parsed = _extract_first_json_object(content)
     if parsed is None:
@@ -1535,7 +1429,7 @@ def _llm_extract_differences_batch(
     LLMで複数チャンクをまとめた2テキストの差分を抽出して JSON（dict）として返す。
     チャンクIDを含めた出力を要求し、どのチャンク間の差分かを明確にする。
     """
-    client, model, chat_id, temperature = _build_openai_chat_client_and_model(model_override=model_override)
+    llm, chat_id = _build_chat_llm_and_id(model_override=model_override)
 
     a = _truncate_for_llm(text_a, max_chars=max_input_chars_per_text)
     b = _truncate_for_llm(text_b, max_chars=max_input_chars_per_text)
@@ -1580,20 +1474,15 @@ def _llm_extract_differences_batch(
         + _dump_json(schema_hint)
     )
 
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        # temperature=temperature,
-    )
+    from langchain_core.messages import HumanMessage, SystemMessage
 
-    content = ""
-    try:
-        content = resp.choices[0].message.content or ""
-    except Exception:
-        content = ""
+    resp = llm.invoke([SystemMessage(content=system), HumanMessage(content=user)])
+    content = getattr(resp, "content", "") or ""
+    if not isinstance(content, str):
+        try:
+            content = json.dumps(content, ensure_ascii=False, indent=2)
+        except Exception:
+            content = str(content)
 
     parsed = _extract_first_json_object(content)
     if parsed is None:

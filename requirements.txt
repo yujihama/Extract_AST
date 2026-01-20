@@ -7,6 +7,7 @@ python-multipart>=0.0.9,<1
 langchain>=1.2,<2
 langchain-core>=1.2,<2
 langchain-openai>=1.1,<2
+langchain-google-genai>=4.2,<5
 langgraph>=1.0.2,<1.1
 # checkpointer (sqlite) for Human-in-the-loop resume
 langgraph-checkpoint-sqlite>=3,<4

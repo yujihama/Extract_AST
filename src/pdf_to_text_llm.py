@@ -60,11 +60,11 @@ def get_llm(model: Optional[str] = None):
         model
         or os.getenv("PDF_LLM_MODEL")
         or os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME_COMPLEX")
+        or os.getenv("GEMINI_MODEL")
         or os.getenv("OPENAI_MODEL")
         or os.getenv("MODEL")
-        or "gpt-5-mini"
     )
-    return build_llm(model=model_name)
+    return build_llm(model=model_name) if model_name else build_llm()
 
 
 # =============================================================================

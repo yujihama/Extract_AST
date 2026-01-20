@@ -17,7 +17,7 @@ def _utcnow_iso() -> str:
 
 
 def _have_llm_key() -> bool:
-    return bool(os.getenv("OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_API_KEY"))
+    return bool(os.getenv("OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
 
 
 def _load_run_config(ctx: RunContext) -> dict[str, Any]:
@@ -111,7 +111,7 @@ def _build_pair_compare_setup_tool(
             raise ValueError("unknown doc_id for pair_compare_setup")
 
         if not _have_llm_key():
-            raise RuntimeError("Embedding/LLM API key not set (OPENAI_API_KEY or AZURE_OPENAI_API_KEY)")
+            raise RuntimeError("Embedding/LLM API key not set (OPENAI_API_KEY or AZURE_OPENAI_API_KEY or GOOGLE_API_KEY)")
 
         safe_a = _normalize_doc_id(a_id, a_id)
         safe_b = _normalize_doc_id(b_id, b_id)
@@ -562,11 +562,41 @@ def _extract_last_ai_text(result: Any) -> str:
             if hasattr(m, "__class__") and m.__class__.__name__ == "AIMessage":
                 content = getattr(m, "content", None)
                 if content:
+                    if isinstance(content, str):
+                        return content
+                    if isinstance(content, dict):
+                        text = content.get("text")
+                        return str(text) if text else str(content)
+                    if isinstance(content, list):
+                        texts = []
+                        for item in content:
+                            if isinstance(item, dict):
+                                if item.get("text"):
+                                    texts.append(str(item.get("text")))
+                            elif isinstance(item, str):
+                                texts.append(item)
+                        if texts:
+                            return "\n".join(texts)
                     return str(content)
             # dict形式も許容
             if isinstance(m, dict) and (m.get("role") in {"assistant", "ai"}):
                 c = m.get("content")
                 if c:
+                    if isinstance(c, str):
+                        return c
+                    if isinstance(c, dict):
+                        text = c.get("text")
+                        return str(text) if text else str(c)
+                    if isinstance(c, list):
+                        texts = []
+                        for item in c:
+                            if isinstance(item, dict):
+                                if item.get("text"):
+                                    texts.append(str(item.get("text")))
+                            elif isinstance(item, str):
+                                texts.append(item)
+                        if texts:
+                            return "\n".join(texts)
                     return str(c)
     return ""
 
@@ -649,7 +679,7 @@ class PreAnalysisStep:
                 template_seed_text = None
 
         if not _have_llm_key():
-            raise RuntimeError("LLM API key not set (OPENAI_API_KEY or AZURE_OPENAI_API_KEY)")
+            raise RuntimeError("LLM API key not set (OPENAI_API_KEY or AZURE_OPENAI_API_KEY or GOOGLE_API_KEY)")
 
         docs_meta: list[dict[str, Any]] = []
         for d in docs:
@@ -729,7 +759,8 @@ class PreAnalysisStep:
             write_json,
         )
 
-        llm_complex = build_llm(model=str(ctx.params.get("llm_complex_model", "gpt-5-mini")))
+        llm_complex_model = str(ctx.params.get("llm_complex_model") or "").strip()
+        llm_complex = build_llm(model=llm_complex_model) if llm_complex_model else build_llm()
 
         pair_compare_setup = _build_pair_compare_setup_tool(ctx, docs_by_id, run_dir, work_dir)
 
@@ -1116,10 +1147,12 @@ class CompareAnalysisStep:
         )
         from src.utils import build_llm
 
-        llm_complex = build_llm(model=str(ctx.params.get("llm_complex_model", "gpt-5-mini")))
-        llm_visual = build_llm(
-            model=str(ctx.params.get("llm_visual_model", ctx.params.get("llm_complex_model", "gpt-5-mini")))
-        )
+        llm_complex_model = str(ctx.params.get("llm_complex_model") or "").strip()
+        llm_visual_model = str(ctx.params.get("llm_visual_model") or "").strip()
+        llm_complex = build_llm(model=llm_complex_model) if llm_complex_model else build_llm()
+        if not llm_visual_model:
+            llm_visual_model = llm_complex_model
+        llm_visual = build_llm(model=llm_visual_model) if llm_visual_model else build_llm()
         from langchain_core.messages import HumanMessage
         from langchain_core.tools import tool
         import base64
@@ -1288,6 +1321,22 @@ class CompareAnalysisStep:
             if text:
                 content = text
                 break
+        if not content:
+            # Gemini等がファイル書き込みを省略する場合のフォールバック
+            last_text = _extract_last_ai_text(result)
+            if last_text:
+                extracted = last_text
+                if "```" in last_text:
+                    start = last_text.find("```")
+                    end = last_text.rfind("```")
+                    if end > start:
+                        block = last_text[start + 3 : end]
+                        block = block.lstrip()
+                        if block.startswith("markdown"):
+                            block = block.split("\n", 1)[1] if "\n" in block else ""
+                        extracted = block.strip()
+                if extracted.strip():
+                    content = extracted
         if not content:
             raise RuntimeError("template_filled.md not produced by executor")
 

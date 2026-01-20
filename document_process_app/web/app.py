@@ -276,7 +276,7 @@ def create_app() -> FastAPI:
         pdf_use_image: Optional[str] = Form(None),
         # run_new.html 側で hidden(0) + checkbox(1) を送るため、常に値が来る想定
         summarize_ast: str = Form("1"),
-        ast_summary_model: str = Form("gpt-5-mini"),
+        ast_summary_model: str = Form(""),
         llm_complex_model: str = Form(""),
         ast_builder_policy: str = Form("auto"),
         ast_bypass_max_chars: str = Form("5000"),

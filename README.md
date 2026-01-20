@@ -52,6 +52,16 @@ AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME=text-embedding-3-large
 TEMPERATURE=0
 ```
 
+Gemini (AI Studio) 利用例:
+
+```dotenv
+LLM_PROVIDER=gemini
+GOOGLE_API_KEY=your_key
+GEMINI_MODEL=gemini-2.0-flash
+GEMINI_EMBEDDING_MODEL=text-embedding-004
+TEMPERATURE=0
+```
+
 #### 429 / insufficient_quota について（重要）
 
 OpenAI利用時に `RateLimitError: 429 (insufficient_quota)` が出る場合、**APIキーのクォータ/請求設定**が原因です。

@@ -29,10 +29,40 @@ def _extract_last_ai_text(result: Any) -> str:
             if hasattr(m, "__class__") and m.__class__.__name__ == "AIMessage":
                 content = getattr(m, "content", None)
                 if content:
+                    if isinstance(content, str):
+                        return content
+                    if isinstance(content, dict):
+                        text = content.get("text")
+                        return str(text) if text else str(content)
+                    if isinstance(content, list):
+                        texts = []
+                        for item in content:
+                            if isinstance(item, dict):
+                                if item.get("text"):
+                                    texts.append(str(item.get("text")))
+                            elif isinstance(item, str):
+                                texts.append(item)
+                        if texts:
+                            return "\n".join(texts)
                     return str(content)
             if isinstance(m, dict) and (m.get("role") in {"assistant", "ai"}):
                 c = m.get("content")
                 if c:
+                    if isinstance(c, str):
+                        return c
+                    if isinstance(c, dict):
+                        text = c.get("text")
+                        return str(text) if text else str(c)
+                    if isinstance(c, list):
+                        texts = []
+                        for item in c:
+                            if isinstance(item, dict):
+                                if item.get("text"):
+                                    texts.append(str(item.get("text")))
+                            elif isinstance(item, str):
+                                texts.append(item)
+                        if texts:
+                            return "\n".join(texts)
                     return str(c)
     return ""
 
@@ -253,11 +283,7 @@ class EnsureTextStep:
         batch_size = int(_get_param("pdf_batch_size", 5) or 5)
         use_image = bool(_get_param("pdf_use_image", False) or False)
 
-        model = str(
-            _get_param("pdf_llm_model")
-            or ctx.params.get("llm_complex_model")
-            or "gpt-5-mini"
-        )
+        model_override = str(_get_param("pdf_llm_model") or ctx.params.get("llm_complex_model") or "").strip()
         asyncio.run(
             convert_pdf_with_llm(
                 pdf_path=str(src_pdf),
@@ -266,7 +292,7 @@ class EnsureTextStep:
                 end_page=end_page_i,
                 batch_size=batch_size,
                 use_image=use_image,
-                model=model,
+                model=model_override or None,
                 verbose=False,
             )
         )
@@ -338,8 +364,8 @@ class BuildBlueprintStep:
         out_path = work_dir / f"blueprint_{which}.json"
 
         # LLMキー未設定の場合は明示的に失敗（silent skipしない）
-        if not (os.getenv("OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_API_KEY")):
-            raise RuntimeError("LLM API key not set (OPENAI_API_KEY or AZURE_OPENAI_API_KEY)")
+        if not (os.getenv("OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("GOOGLE_API_KEY")):
+            raise RuntimeError("LLM API key not set (OPENAI_API_KEY or AZURE_OPENAI_API_KEY or GOOGLE_API_KEY)")
 
         from deepagents import create_deep_agent
         from deepagents.backends.utils import create_file_data
@@ -363,7 +389,8 @@ class BuildBlueprintStep:
             EventSinkMiddleware = None  # type: ignore
 
         llm = build_llm()
-        llm_complex = build_llm(model=str(ctx.params.get("llm_complex_model", "gpt-5-mini")))
+        llm_complex_model = str(ctx.params.get("llm_complex_model") or "").strip()
+        llm_complex = build_llm(model=llm_complex_model) if llm_complex_model else build_llm()
 
         # data/input固定依存を避けるため、run入力（data/runs/{run_id}/input）を読む analyze_visual_contents を提供する
         from langchain_core.messages import HumanMessage
@@ -589,8 +616,8 @@ class BuildAstStep:
                 max_content_chars_per_node=int(ctx.params.get("max_content_chars_per_node", 2000)),
             )
         elif strategy == "llm_direct":
-            if not (os.getenv("OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_API_KEY")):
-                raise RuntimeError("LLM API key not set (OPENAI_API_KEY or AZURE_OPENAI_API_KEY)")
+            if not (os.getenv("OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("GOOGLE_API_KEY")):
+                raise RuntimeError("LLM API key not set (OPENAI_API_KEY or AZURE_OPENAI_API_KEY or GOOGLE_API_KEY)")
 
             from deepagents import create_deep_agent
             from deepagents.backends.utils import create_file_data
@@ -605,12 +632,8 @@ class BuildAstStep:
             except Exception:
                 EventSinkMiddleware = None  # type: ignore
 
-            model_name = str(
-                ctx.params.get("ast_llm_direct_model")
-                or ctx.params.get("llm_complex_model")
-                or "gpt-5-mini"
-            )
-            llm = build_llm(model=model_name)
+            model_name = str(ctx.params.get("ast_llm_direct_model") or ctx.params.get("llm_complex_model") or "").strip()
+            llm = build_llm(model=model_name) if model_name else build_llm()
 
             middleware = []
             if EventSinkMiddleware is not None:
@@ -742,9 +765,9 @@ class SummarizeAstStep:
 
         from src.ast_llm_summarizer import SummarizeOptions, SummarizationCancelled, summarize_ast_inplace
 
-        model = str(ctx.params.get("ast_summary_model") or ctx.params.get("llm_complex_model") or "gpt-5-mini")
+        model = str(ctx.params.get("ast_summary_model") or ctx.params.get("llm_complex_model") or "").strip()
         overwrite = bool(ctx.params.get("ast_summary_overwrite", False) or ctx.params.get("force", False))
-        opts = SummarizeOptions(model=model, skip_if_summary_exists=not overwrite)
+        opts = SummarizeOptions(model=model or "", skip_if_summary_exists=not overwrite)
         try:
             summarize_ast_inplace(ast_path=str(ast_path), options=opts, is_cancelled=ctx.cancellation.is_cancelled)
         except SummarizationCancelled:
