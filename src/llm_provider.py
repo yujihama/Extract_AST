@@ -130,8 +130,8 @@ def build_embeddings(*, model: Optional[str] = None, **kwargs: Any):
       - env: LLM_PROVIDER=gemini, GOOGLE_API_KEY
       - default model: text-embedding-004
     - Claude (Anthropic):
-      - Claude はネイティブ Embedding をサポートしないため、OpenAI Embedding にフォールバック
-      - env: OPENAI_API_KEY（必須）, OPENAI_EMBEDDING_MODEL(任意)
+      - Voyage AI Embedding を使用（Anthropic 推奨）
+      - env: VOYAGE_API_KEY（必須）, VOYAGE_EMBEDDING_MODEL(任意; デフォルト voyage-3-large)
     """
     provider = _provider()
 
@@ -170,17 +170,14 @@ def build_embeddings(*, model: Optional[str] = None, **kwargs: Any):
         return GoogleGenerativeAIEmbeddings(model=model_name, google_api_key=api_key, **kwargs)
 
     if provider in {"anthropic", "claude"}:
-        # Claude はネイティブ Embedding をサポートしないため、OpenAI Embedding にフォールバック
-        from langchain_openai import OpenAIEmbeddings
+        # Voyage AI Embedding を使用（Anthropic 推奨）
+        from langchain_voyageai import VoyageAIEmbeddings
 
-        api_key = _env("OPENAI_API_KEY")
+        api_key = _env("VOYAGE_API_KEY")
         if not api_key:
-            raise RuntimeError(
-                "Claude の Embedding には OpenAI API キーが必要です（Claude はネイティブ Embedding 未対応）。"
-                " OPENAI_API_KEY を設定してください。"
-            )
-        model_name = (str(model).strip() if model else "") or _env("OPENAI_EMBEDDING_MODEL") or "text-embedding-3-large"
-        return OpenAIEmbeddings(model=model_name, api_key=api_key, **kwargs)
+            raise RuntimeError("Claude の Embedding には VOYAGE_API_KEY が必要です。")
+        model_name = (str(model).strip() if model else "") or _env("VOYAGE_EMBEDDING_MODEL") or "voyage-3-large"
+        return VoyageAIEmbeddings(model=model_name, voyage_api_key=api_key, **kwargs)
 
     # OpenAI (default)
     from langchain_openai import OpenAIEmbeddings
@@ -213,9 +210,9 @@ def provider_ids(*, chat_model: Optional[str] = None, embedding_model: Optional[
         return ProviderIds(provider="gemini", chat_id=f"gemini:{chat}", embedding_id=f"gemini:{emb}")
     if provider in {"anthropic", "claude"}:
         chat = (chat_model or "").strip() or _env("CLAUDE_MODEL") or "claude-haiku-4-5-20250514"
-        # Claude は Embedding をサポートしないため、OpenAI にフォールバック
-        emb = (embedding_model or "").strip() or _env("OPENAI_EMBEDDING_MODEL") or "text-embedding-3-large"
-        return ProviderIds(provider="claude", chat_id=f"claude:{chat}", embedding_id=f"openai:{emb}")
+        # Voyage AI Embedding を使用
+        emb = (embedding_model or "").strip() or _env("VOYAGE_EMBEDDING_MODEL") or "voyage-3-large"
+        return ProviderIds(provider="claude", chat_id=f"claude:{chat}", embedding_id=f"voyage:{emb}")
     chat = (chat_model or "").strip() or _env("OPENAI_MODEL") or _env("MODEL") or "gpt-5-mini"
     emb = (embedding_model or "").strip() or _env("OPENAI_EMBEDDING_MODEL") or "text-embedding-3-large"
     return ProviderIds(provider="openai", chat_id=f"openai:{chat}", embedding_id=f"openai:{emb}")

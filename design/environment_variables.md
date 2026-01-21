@@ -52,7 +52,7 @@
 
 ---
 
-## Claude（Anthropic: Chat）
+## Claude（Anthropic: Chat + Voyage Embedding）
 
 - **ANTHROPIC_API_KEY**（必須）
 - **CLAUDE_MODEL**
@@ -61,10 +61,15 @@
     - `claude-haiku-4-5-20250514`（軽量・高速・低コスト）
     - `claude-sonnet-4-20250514`（バランス型）
     - `claude-opus-4-20250514`（高性能）
+- **VOYAGE_API_KEY**（Embedding 使用時は必須）
+- **VOYAGE_EMBEDDING_MODEL**
+  - デフォルトEmbeddingモデル（例: `voyage-3-large`）
+  - 利用可能なモデル:
+    - `voyage-3-large`（高性能・推奨）
+    - `voyage-3`（バランス型）
+    - `voyage-3-lite`（軽量・高速）
 
-**注意**: Claude はネイティブ Embedding をサポートしません。
-Embedding を使用する機能（`ast_compare` など）では **OpenAI Embedding にフォールバック** します。
-そのため、Claude を使用する場合も `OPENAI_API_KEY` と `OPENAI_EMBEDDING_MODEL` の設定が必要です。
+**注意**: Claude はネイティブ Embedding をサポートしないため、Anthropic 推奨の **Voyage AI** を使用します。
 
 ---
 
@@ -143,7 +148,7 @@ ANTHROPIC_API_KEY=your_key
 CLAUDE_MODEL=claude-haiku-4-5-20250514
 TEMPERATURE=0
 
-# Embedding は OpenAI にフォールバック（必須）
-OPENAI_API_KEY=your_key
-OPENAI_EMBEDDING_MODEL=text-embedding-3-large
+# Embedding は Voyage AI を使用
+VOYAGE_API_KEY=your_key
+VOYAGE_EMBEDDING_MODEL=voyage-3-large
 ```
