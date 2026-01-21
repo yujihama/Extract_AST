@@ -32,7 +32,7 @@
 ## LLMプロバイダ共通（src/utils.build_llm, src/ast_llm_summarizer など）
 
 - **LLM_PROVIDER**
-  - `openai` / `azure` / `gemini`（`azureopenai`, `azure_openai`, `google`, `google_genai` も許容）
+  - `openai` / `azure` / `gemini` / `claude`（`azureopenai`, `azure_openai`, `google`, `google_genai`, `anthropic` も許容）
   - default: `openai`
 - **TEMPERATURE**
   - 0推奨（`src/ast_compare` / `src/ast_llm_summarizer` で参照。`src.utils.build_llm` は現状 temperature を渡していない）
@@ -49,6 +49,22 @@
   - デフォルトチャットモデル（例: `gemini-2.0-flash`）
 - **GEMINI_EMBEDDING_MODEL**
   - デフォルトEmbeddingモデル（例: `text-embedding-004`）
+
+---
+
+## Claude（Anthropic: Chat）
+
+- **ANTHROPIC_API_KEY**（必須）
+- **CLAUDE_MODEL**
+  - デフォルトチャットモデル（例: `claude-haiku-4-5-20250514`）
+  - 利用可能なモデル:
+    - `claude-haiku-4-5-20250514`（軽量・高速・低コスト）
+    - `claude-sonnet-4-20250514`（バランス型）
+    - `claude-opus-4-20250514`（高性能）
+
+**注意**: Claude はネイティブ Embedding をサポートしません。
+Embedding を使用する機能（`ast_compare` など）では **OpenAI Embedding にフォールバック** します。
+そのため、Claude を使用する場合も `OPENAI_API_KEY` と `OPENAI_EMBEDDING_MODEL` の設定が必要です。
 
 ---
 
@@ -117,4 +133,17 @@ AZURE_OPENAI_API_VERSION=2024-xx-xx
 AZURE_OPENAI_DEPLOYMENT_NAME=gpt-5-mini
 AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME=text-embedding-3-large
 TEMPERATURE=0
+```
+
+Claude (Anthropic):
+
+```dotenv
+LLM_PROVIDER=claude
+ANTHROPIC_API_KEY=your_key
+CLAUDE_MODEL=claude-haiku-4-5-20250514
+TEMPERATURE=0
+
+# Embedding は OpenAI にフォールバック（必須）
+OPENAI_API_KEY=your_key
+OPENAI_EMBEDDING_MODEL=text-embedding-3-large
 ```

@@ -58,7 +58,12 @@ def _load_dotenv_if_available(repo_root: Path) -> None:
 def _has_api_key() -> bool:
     import os
 
-    return bool(os.getenv("OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
+    return bool(
+        os.getenv("OPENAI_API_KEY")
+        or os.getenv("AZURE_OPENAI_API_KEY")
+        or os.getenv("GOOGLE_API_KEY")
+        or os.getenv("ANTHROPIC_API_KEY")
+    )
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -329,7 +334,7 @@ def main(argv: list[str] | None = None) -> int:
         if not _has_api_key():
             raise RuntimeError(
                 "realモードの実行にはAPIキーが必要です。"
-                " .env に OPENAI_API_KEY, AZURE_OPENAI_API_KEY, または GOOGLE_API_KEY を設定してください。"
+                " .env に OPENAI_API_KEY, AZURE_OPENAI_API_KEY, GOOGLE_API_KEY, または ANTHROPIC_API_KEY を設定してください。"
             )
 
     for s in scenarios:
@@ -345,8 +350,11 @@ def main(argv: list[str] | None = None) -> int:
             if args.mode == "real":
                 # LLM_PROVIDERに応じてデフォルトモデルを選択
                 default_model = "gpt-5-mini"
-                if os.getenv("LLM_PROVIDER") == "gemini":
+                llm_provider = os.getenv("LLM_PROVIDER", "").lower()
+                if llm_provider == "gemini":
                     default_model = os.getenv("GEMINI_MODEL") or "gemini-2.0-flash"
+                elif llm_provider in {"claude", "anthropic"}:
+                    default_model = os.getenv("CLAUDE_MODEL") or "claude-haiku-4-5-20250514"
                 llm_complex_model = str(args.llm_complex_model or "").strip() or default_model
                 params["llm_complex_model"] = llm_complex_model
 

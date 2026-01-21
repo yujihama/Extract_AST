@@ -37,7 +37,7 @@ class ProviderIds:
 
 def build_chat_llm(*, model: Optional[str] = None, **kwargs: Any):
     """
-    LangChainのチャットモデルを構築する（OpenAI/Azure/Gemini）。
+    LangChainのチャットモデルを構築する（OpenAI/Azure/Gemini/Claude）。
 
     - OpenAI:
       - env: OPENAI_API_KEY, OPENAI_MODEL(任意), MODEL(任意)
@@ -47,6 +47,9 @@ def build_chat_llm(*, model: Optional[str] = None, **kwargs: Any):
     - Gemini (AI Studio):
       - env: LLM_PROVIDER=gemini, GOOGLE_API_KEY
       - env: GEMINI_MODEL(任意)
+    - Claude (Anthropic):
+      - env: LLM_PROVIDER=claude, ANTHROPIC_API_KEY
+      - env: CLAUDE_MODEL(任意; デフォルト claude-haiku-4-5-20250514)
     """
     provider = _provider()
 
@@ -95,6 +98,15 @@ def build_chat_llm(*, model: Optional[str] = None, **kwargs: Any):
         # ChatGoogleGenerativeAI は google_api_key を受け取れる
         return ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key, **kwargs)
 
+    if provider in {"anthropic", "claude"}:
+        from langchain_anthropic import ChatAnthropic
+
+        api_key = _env("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise RuntimeError("Claude を使うには ANTHROPIC_API_KEY が必要です。")
+        model_name = (str(model).strip() if model else "") or _env("CLAUDE_MODEL") or "claude-haiku-4-5-20250514"
+        return ChatAnthropic(model=model_name, api_key=api_key, **kwargs)
+
     # OpenAI (default)
     from langchain_openai import ChatOpenAI
 
@@ -107,7 +119,7 @@ def build_chat_llm(*, model: Optional[str] = None, **kwargs: Any):
 
 def build_embeddings(*, model: Optional[str] = None, **kwargs: Any):
     """
-    LangChainのEmbeddingを構築する（OpenAI/Azure/Gemini）。
+    LangChainのEmbeddingを構築する（OpenAI/Azure/Gemini/Claude）。
 
     - OpenAI:
       - env: OPENAI_API_KEY, OPENAI_EMBEDDING_MODEL(任意)
@@ -117,6 +129,9 @@ def build_embeddings(*, model: Optional[str] = None, **kwargs: Any):
     - Gemini (AI Studio):
       - env: LLM_PROVIDER=gemini, GOOGLE_API_KEY
       - default model: text-embedding-004
+    - Claude (Anthropic):
+      - Claude はネイティブ Embedding をサポートしないため、OpenAI Embedding にフォールバック
+      - env: OPENAI_API_KEY（必須）, OPENAI_EMBEDDING_MODEL(任意)
     """
     provider = _provider()
 
@@ -154,6 +169,19 @@ def build_embeddings(*, model: Optional[str] = None, **kwargs: Any):
         model_name = (str(model).strip() if model else "") or _env("GEMINI_EMBEDDING_MODEL") or "text-embedding-004"
         return GoogleGenerativeAIEmbeddings(model=model_name, google_api_key=api_key, **kwargs)
 
+    if provider in {"anthropic", "claude"}:
+        # Claude はネイティブ Embedding をサポートしないため、OpenAI Embedding にフォールバック
+        from langchain_openai import OpenAIEmbeddings
+
+        api_key = _env("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "Claude の Embedding には OpenAI API キーが必要です（Claude はネイティブ Embedding 未対応）。"
+                " OPENAI_API_KEY を設定してください。"
+            )
+        model_name = (str(model).strip() if model else "") or _env("OPENAI_EMBEDDING_MODEL") or "text-embedding-3-large"
+        return OpenAIEmbeddings(model=model_name, api_key=api_key, **kwargs)
+
     # OpenAI (default)
     from langchain_openai import OpenAIEmbeddings
 
@@ -183,6 +211,11 @@ def provider_ids(*, chat_model: Optional[str] = None, embedding_model: Optional[
         chat = (chat_model or "").strip() or _env("GEMINI_MODEL") or "gemini-2.0-flash"
         emb = (embedding_model or "").strip() or _env("GEMINI_EMBEDDING_MODEL") or "text-embedding-004"
         return ProviderIds(provider="gemini", chat_id=f"gemini:{chat}", embedding_id=f"gemini:{emb}")
+    if provider in {"anthropic", "claude"}:
+        chat = (chat_model or "").strip() or _env("CLAUDE_MODEL") or "claude-haiku-4-5-20250514"
+        # Claude は Embedding をサポートしないため、OpenAI にフォールバック
+        emb = (embedding_model or "").strip() or _env("OPENAI_EMBEDDING_MODEL") or "text-embedding-3-large"
+        return ProviderIds(provider="claude", chat_id=f"claude:{chat}", embedding_id=f"openai:{emb}")
     chat = (chat_model or "").strip() or _env("OPENAI_MODEL") or _env("MODEL") or "gpt-5-mini"
     emb = (embedding_model or "").strip() or _env("OPENAI_EMBEDDING_MODEL") or "text-embedding-3-large"
     return ProviderIds(provider="openai", chat_id=f"openai:{chat}", embedding_id=f"openai:{emb}")
