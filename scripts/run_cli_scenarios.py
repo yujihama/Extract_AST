@@ -314,6 +314,31 @@ def main(argv: list[str] | None = None) -> int:
                 data_in / "ma_financial_dd_findings.txt",
             ],
         ),
+        # ========================================
+        # 拡張シナリオ: グループガバナンス
+        # ========================================
+        # グループ会社間セキュリティポリシー整合性チェック
+        Scenario(
+            id="22_group_security_policy",
+            request="ABCホールディングスのグループ情報セキュリティポリシーおよび業態別ガイドラインを基準として、"
+            "各子会社（製造業・小売業・IT・金融）のセキュリティ規程の整合性を評価してください。\n\n"
+            "以下の観点で分析を行ってください：\n"
+            "1. グループ共通必須要件（GP-01〜GP-10）への準拠状況を各社ごとに評価\n"
+            "2. 業態別追加要件（区分A〜D）への対応状況を該当する子会社ごとに評価\n"
+            "3. 各社規程間の不整合・矛盾点の検出\n"
+            "4. グループポリシーより厳しい独自要件を設けている好事例の抽出\n"
+            "5. 各社の業態を考慮した規程改善提案（追加すべき条項、強化すべき項目）\n\n"
+            "結果は会社別・要件別のマトリクス形式で整理し、"
+            "優先度（高・中・低）と改善案を付記してください。",
+            docs=[
+                data_in / "group_security_policy_parent.txt",
+                data_in / "industry_security_guidelines.txt",
+                data_in / "subsidiary_security_manufacturing.txt",
+                data_in / "subsidiary_security_retail.txt",
+                data_in / "subsidiary_security_it.txt",
+                data_in / "subsidiary_security_finance.txt",
+            ],
+        ),
     ]
 
     wanted = set(str(x).strip() for x in (args.ids or []) if str(x).strip())
