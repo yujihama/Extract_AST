@@ -243,6 +243,53 @@
 
 ---
 
+## 13) グループ会社間セキュリティポリシー整合性チェック（Group Security Policy Alignment）
+
+**データ**
+- グループポリシー: `group_security_policy_parent.txt`
+- 業態別ガイドライン: `industry_security_guidelines.txt`
+- 製造業子会社規程: `subsidiary_security_manufacturing.txt`
+- 小売業子会社規程: `subsidiary_security_retail.txt`
+- IT子会社規程: `subsidiary_security_it.txt`
+- 金融子会社規程: `subsidiary_security_finance.txt`
+
+**期待値**
+- グループ共通必須要件（GP-01〜GP-10）への各社準拠状況
+  - GP-01 ガバナンス体制: CISO届出、委員会開催頻度
+  - GP-02 アクセス制御: 共有ID禁止、棚卸頻度、退職時対応
+  - GP-03 認証: パスワード要件、MFA必須化
+  - GP-04 データ保護: 暗号化必須、鍵管理、ローテーション期間
+  - GP-05 ログ管理: 保管期間、ログ項目、改ざん耐性
+  - GP-06 委託先管理: 再委託承認、年次評価
+  - GP-07 インシデント対応: 報告期限、訓練頻度
+  - GP-08 脆弱性管理: パッチ適用期限、診断頻度
+  - GP-09 教育: 年次教育、標的型メール訓練
+  - GP-10 例外管理: 期限設定、台帳管理
+- 業態別追加要件への対応状況
+  - 区分A（金融）: FISC準拠、取引データ保存、不正検知、RPO/RTO
+  - 区分B（製造）: OT/IT分離、設計情報管理、サプライチェーン
+  - 区分C（小売）: PCI-DSS、顧客情報管理、POSセキュリティ
+  - 区分D（IT）: セキュアコーディング、環境分離、ソースコード管理
+- 不整合・ギャップの検出
+  - パスワード文字数の差異（8文字 vs 12文字 vs 14文字）
+  - ログ保管期間の差異（90日 vs 180日 vs 365日 vs 3年 vs 7年）
+  - インシデント報告期限の差異（速やか vs 48時間 vs 24時間 vs 4時間）
+  - 委員会開催頻度の差異（半期 vs 四半期 vs 月次）
+- 好事例の抽出
+  - グループ要件を上回る独自要件（IT子会社、金融子会社）
+  - 業態固有の追加対策
+- 改善提案
+  - 各社への是正勧告項目（優先度付き）
+  - 規程改定案の提示
+
+**応用例**
+- グループ全体のセキュリティガバナンス評価
+- 内部監査の準備・計画策定
+- グループ共通規程の改定検討
+- 子会社への支援・指導計画
+
+---
+
 # ドメイン別データ一覧
 
 ## セキュリティ・ガバナンス
@@ -287,3 +334,11 @@
 - `ma_legal_dd_checklist.txt` - 法務DDチェックリスト
 - `ma_legal_dd_findings.txt` - 法務DD調査報告書
 - `ma_financial_dd_findings.txt` - 財務DD調査報告書
+
+## グループガバナンス
+- `group_security_policy_parent.txt` - ABCホールディングス グループ情報セキュリティポリシー
+- `industry_security_guidelines.txt` - 業態別情報セキュリティ要件ガイドライン
+- `subsidiary_security_manufacturing.txt` - ABCマニュファクチャリング（製造業）セキュリティ規程
+- `subsidiary_security_retail.txt` - ABCリテール（小売業）セキュリティ規程
+- `subsidiary_security_it.txt` - ABCシステムズ（IT）セキュリティ規程
+- `subsidiary_security_finance.txt` - ABCファイナンス（金融）セキュリティ規程
