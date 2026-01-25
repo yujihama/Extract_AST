@@ -39,7 +39,7 @@
 
 - **アップロード**: PDF/TXT をアップロードして Run に紐付けて保存
 - **テキスト入力**: 直接貼り付け（小さいデータ用、任意）
-  - 現状は UI 未対応。JSON API（`POST /api/runs/multi`）で `documents[].text` として作成可能
+  - 現状は UI/JSON API ともに未対応（将来要件）
 - **前処理**:
   - PDF→txt 変換（高速モード / LLMモード）
   - txt はそのまま利用（エンコーディングは `errors=replace` 等で扱う）
