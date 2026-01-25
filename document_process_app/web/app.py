@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
 
-from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
@@ -65,35 +65,6 @@ def create_app() -> FastAPI:
             {"request": request, "documents": docs},
         )
 
-    @app.get("/api/documents")
-    def api_list_documents():
-        """ドキュメント一覧API"""
-        docs = doc_repo.list_all()
-        return JSONResponse([d.to_dict() for d in docs])
-
-    @app.get("/api/documents/{doc_hash}")
-    def api_get_document(doc_hash: str):
-        """ドキュメント詳細API"""
-        doc = doc_repo.get(doc_hash)
-        if not doc:
-            raise HTTPException(status_code=404, detail="Document not found")
-        return JSONResponse(doc.to_dict())
-
-    @app.post("/api/documents")
-    async def api_upload_document(file: UploadFile = File(...)):
-        """ドキュメントアップロードAPI"""
-        content = await file.read()
-        doc = doc_repo.add(content, file.filename or "uploaded.txt")
-        return JSONResponse(doc.to_dict())
-
-    @app.delete("/api/documents/{doc_hash}")
-    def api_delete_document(doc_hash: str):
-        """ドキュメント削除API"""
-        deleted = doc_repo.delete(doc_hash)
-        if not deleted:
-            raise HTTPException(status_code=404, detail="Document not found")
-        return JSONResponse({"deleted": True, "doc_hash": doc_hash})
-
     @app.delete("/documents/{doc_hash}", response_class=HTMLResponse)
     def delete_document_ui(request: Request, doc_hash: str):
         """ドキュメント削除（UI用・HTMXから呼び出し）"""
@@ -102,76 +73,6 @@ def create_app() -> FastAPI:
             return HTMLResponse("<div class='alert alert-error'>ドキュメントが見つかりません</div>", status_code=404)
         # 削除成功時は空のレスポンス（行が消える）
         return HTMLResponse("")
-
-    # ----------------------------
-    # JSON API（UI未実装でも使えるI/F）
-    # ----------------------------
-
-    @app.get("/api/runs")
-    def api_list_runs(limit: int = 50):
-        runs = repo.list_runs(limit=max(1, int(limit)))
-        return JSONResponse(
-            [
-                {
-                    "run_id": r.run_id,
-                    "status": r.status,
-                    "created_at": r.created_at.isoformat(),
-                    "started_at": r.started_at.isoformat() if r.started_at else None,
-                    "finished_at": r.finished_at.isoformat() if r.finished_at else None,
-                    "params": r.params,
-                    "workdir": r.workdir,
-                }
-                for r in runs
-            ]
-        )
-
-    @app.get("/api/runs/{run_id}")
-    def api_get_run(run_id: str):
-        r = repo.get_run(run_id)
-        return JSONResponse(
-            {
-                "run_id": r.run_id,
-                "status": r.status,
-                "created_at": r.created_at.isoformat(),
-                "started_at": r.started_at.isoformat() if r.started_at else None,
-                "finished_at": r.finished_at.isoformat() if r.finished_at else None,
-                "params": r.params,
-                "error_message": r.error_message,
-                "workdir": r.workdir,
-            }
-        )
-
-    @app.delete("/api/runs/{run_id}")
-    def api_delete_run(run_id: str):
-        """Run削除API（DB上のrun/events/artifacts + FSのrun dir）。"""
-        try:
-            run = repo.get_run(run_id)
-        except Exception:
-            raise HTTPException(status_code=404, detail="run not found")
-
-        # 実行中なら協調キャンセルを要求（best effort）
-        try:
-            if str(getattr(run, "status", "")).lower() == "running":
-                executor.request_cancel(run_id)
-        except Exception:
-            pass
-
-        deleted = False
-        if hasattr(repo, "delete_run"):
-            deleted = bool(repo.delete_run(run_id))  # type: ignore[attr-defined]
-        else:
-            raise HTTPException(status_code=500, detail="repo does not support delete_run")
-
-        # FS掃除（best effort）
-        try:
-            if run.workdir:
-                shutil.rmtree(run.workdir, ignore_errors=True)
-        except Exception:
-            pass
-
-        if not deleted:
-            raise HTTPException(status_code=404, detail="run not found")
-        return JSONResponse({"deleted": True, "run_id": run_id})
 
     @app.get("/runs/new", response_class=HTMLResponse)
     def runs_new(request: Request):
@@ -195,69 +96,6 @@ def create_app() -> FastAPI:
                     break
                 f.write(chunk)
         return tmp_path
-
-    def _write_text_to_temp(text: str, *, suffix: str = ".txt") -> str:
-        fd, tmp_path = tempfile.mkstemp(prefix="document_process_app_text_", suffix=suffix)
-        os.close(fd)
-        with open(tmp_path, "w", encoding="utf-8", newline="\n") as f:
-            f.write(text)
-        return tmp_path
-
-    @app.post("/api/runs/multi")
-    async def api_runs_create_multi(payload: dict[str, Any] = Body(...)):
-        documents = payload.get("documents")
-        if not isinstance(documents, list) or len(documents) < 1:
-            raise HTTPException(status_code=400, detail="documents must be a list (len>=1)")
-
-        params = payload.get("params") or {}
-        if not isinstance(params, dict):
-            params = {"params": params}
-
-        if "mode" in payload and "mode" not in params:
-            params["mode"] = payload.get("mode")
-        params.setdefault("summarize_ast", True)
-
-        request_text = payload.get("request_text") or ""
-        hil_enabled = bool(payload.get("hil_enabled", False))
-        start_now = bool(payload.get("start_now", False))
-
-        tmp_paths: list[str] = []
-        docs_for_run: list[dict[str, Any]] = []
-        for i, spec in enumerate(documents, 1):
-            if not isinstance(spec, dict):
-                raise HTTPException(status_code=400, detail="documents must be list of objects")
-            doc_id = str(spec.get("doc_id") or f"d{i}")
-            if spec.get("doc_hash"):
-                docs_for_run.append({"doc_id": doc_id, "doc_hash": str(spec.get("doc_hash"))})
-                continue
-            if spec.get("path"):
-                docs_for_run.append({"doc_id": doc_id, "path": str(spec.get("path"))})
-                continue
-            if spec.get("text"):
-                tmp_path = _write_text_to_temp(str(spec.get("text")), suffix=".txt")
-                tmp_paths.append(tmp_path)
-                docs_for_run.append({"doc_id": doc_id, "path": tmp_path})
-                continue
-            raise HTTPException(status_code=400, detail="each document needs doc_hash, path, or text")
-
-        try:
-            run = executor.create_run(
-                documents=docs_for_run,
-                request_text=str(request_text) if request_text is not None else "",
-                hil_enabled=hil_enabled,
-                params=params,
-            )
-        finally:
-            for p in tmp_paths:
-                try:
-                    os.remove(p)
-                except Exception:
-                    pass
-
-        if start_now:
-            executor.start(run.run_id)
-
-        return JSONResponse({"run_id": run.run_id, "status": run.status})
 
     @app.post("/runs")
     async def runs_create(
@@ -674,148 +512,9 @@ def create_app() -> FastAPI:
         if base_dir not in candidate.parents and candidate != base_dir:
             raise ValueError("invalid path")
         return candidate
-
-    def _get_work_file(run_id: str, name: str) -> Path:
-        base_dir = _get_run_base_dir(run_id).resolve()
-        p = (base_dir / "work" / name).resolve()
-        if base_dir not in p.parents and p != base_dir:
-            raise ValueError("invalid path")
-        return p
-
-    @app.get("/api/runs/{run_id}/blueprint/{which}")
-    def api_get_blueprint(run_id: str, which: str):
-        w = str(which).lower()
-        if w not in {"a", "b"}:
-            raise HTTPException(status_code=400, detail="which must be 'a' or 'b'")
-        bp = _get_work_file(run_id, f"blueprint_{w}.json")
-        if not bp.exists():
-            raise HTTPException(status_code=404, detail="blueprint not found")
-        try:
-            return JSONResponse(json.loads(bp.read_text(encoding="utf-8")))
-        except Exception:
-            return JSONResponse({"ok": False, "error": "failed to read blueprint"}, status_code=500)
-
-    @app.put("/api/runs/{run_id}/blueprint/{which}")
-    async def api_put_blueprint(run_id: str, which: str, payload: dict[str, Any] = Body(...)):
-        w = str(which).lower()
-        if w not in {"a", "b"}:
-            raise HTTPException(status_code=400, detail="which must be 'a' or 'b'")
-        bp = _get_work_file(run_id, f"blueprint_{w}.json")
-        bp.parent.mkdir(parents=True, exist_ok=True)
-        bp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        # artifact更新イベント
-        try:
-            base_dir = _get_run_base_dir(run_id).resolve()
-            rel = bp.relative_to(base_dir).as_posix()
-            events.emit(run_id, "artifact_updated", {"ts": "", "kind": f"blueprint_{w}", "path": rel})
-        except Exception:
-            pass
-        return JSONResponse({"ok": True})
-
-    @app.get("/api/runs/{run_id}/blueprint/{which}/preview")
-    def api_preview_blueprint(run_id: str, which: str):
-        w = str(which).lower()
-        if w not in {"a", "b"}:
-            raise HTTPException(status_code=400, detail="which must be 'a' or 'b'")
-        bp = _get_work_file(run_id, f"blueprint_{w}.json")
-        txt = _get_work_file(run_id, f"doc_{w}.txt")
-        if not bp.exists() or not txt.exists():
-            raise HTTPException(status_code=404, detail="required files not found")
-        from src.tools import preview_blueprint_headings
-
-        out = preview_blueprint_headings.invoke({"blueprint_path": str(bp), "text_path": str(txt)})
-        try:
-            return JSONResponse(json.loads(out))
-        except Exception:
-            return JSONResponse({"ok": False, "raw": out})
-
-    @app.get("/api/runs/{run_id}/blueprint/{which}/validate")
-    def api_validate_blueprint(
-        run_id: str,
-        which: str,
-        mode: str = "gaps",
-        gap_threshold: int = 100,
-        max_level: int = 3,
-    ):
-        w = str(which).lower()
-        if w not in {"a", "b"}:
-            raise HTTPException(status_code=400, detail="which must be 'a' or 'b'")
-        bp = _get_work_file(run_id, f"blueprint_{w}.json")
-        txt = _get_work_file(run_id, f"doc_{w}.txt")
-        if not bp.exists() or not txt.exists():
-            raise HTTPException(status_code=404, detail="required files not found")
-        from src.tools import validate_blueprint
-
-        out = validate_blueprint.invoke(
-            {
-                "blueprint_path": str(bp),
-                "text_path": str(txt),
-                "mode": str(mode),
-                "gap_threshold": int(gap_threshold),
-                "max_level": int(max_level),
-            }
-        )
-        try:
-            return JSONResponse(json.loads(out))
-        except Exception:
-            return JSONResponse({"ok": False, "raw": out})
-
-    def _parse_node_path(s: Optional[str]) -> Optional[list[int]]:
-        if s is None:
-            return None
-        s = str(s).strip()
-        if not s:
-            return None
-        try:
-            return [int(x) for x in s.split(",") if str(x).strip() != ""]
-        except Exception:
-            return None
-
-    @app.get("/api/runs/{run_id}/ast/{which}")
-    def api_read_ast(
-        run_id: str,
-        which: str,
-        mode: str = "summary",
-        node_path: Optional[str] = None,
-        title_query: Optional[str] = None,
-        max_depth: int = 3,
-        include_content: bool = False,
-        max_content_chars: int = 500,
-    ):
-        w = str(which).lower()
-        if w not in {"a", "b"}:
-            raise HTTPException(status_code=400, detail="which must be 'a' or 'b'")
-        ast_path = _get_work_file(run_id, f"ast_{w}.ast.json")
-        if not ast_path.exists():
-            raise HTTPException(status_code=404, detail="ast not found")
-        from src.tools import read_ast
-
-        out = read_ast.invoke(
-            {
-                "file_path": str(ast_path),
-                "mode": str(mode),
-                "node_path": _parse_node_path(node_path),
-                "title_query": title_query,
-                "max_depth": int(max_depth),
-                "include_content": bool(include_content),
-                "max_content_chars": int(max_content_chars),
-            }
-        )
-        try:
-            return JSONResponse(json.loads(out))
-        except Exception:
-            return JSONResponse({"ok": False, "raw": out})
-
-    @app.get("/api/runs/{run_id}/compare/initial_matching")
-    def api_get_initial_matching(run_id: str):
-        p = _get_work_file(run_id, "initial_matching.json")
-        if not p.exists():
-            raise HTTPException(status_code=404, detail="initial_matching not found")
-        try:
-            return JSONResponse(json.loads(p.read_text(encoding="utf-8")))
-        except Exception:
-            return JSONResponse({"ok": False, "error": "failed to read initial_matching"}, status_code=500)
-
+    # ----------------------------
+    # JSON API（UI補助: イベントのJSON取得）
+    # ----------------------------
     @app.get("/api/runs/{run_id}/events")
     def api_list_events(run_id: str, after_event_id: Optional[int] = None, limit: int = 200):
         evs = events.list(run_id, after_event_id=after_event_id, limit=max(1, int(limit)))

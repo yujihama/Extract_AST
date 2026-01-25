@@ -32,15 +32,8 @@
   - `POST /runs/{run_id}/start`, `POST /runs/{run_id}/cancel`
   - `GET /runs/{run_id}/events`（SSE）
   - `GET /runs/{run_id}/template/{draft|filled}`（テンプレプレビュー）
-- **JSON API（UI未実装でも使えるI/F）**: `document_process_app/web/app.py`
-  - `GET /api/runs`, `GET /api/runs/{run_id}`
-  - `POST /api/runs/multi`（テキスト/ファイル指定でRun作成）
-  - `GET /api/runs/{run_id}/events`（JSONイベント一覧）
-  - `GET /api/runs/{run_id}/blueprint/{doc_id}` / `PUT /api/runs/{run_id}/blueprint/{doc_id}`
-- `GET /api/runs/{run_id}/blueprint/{doc_id}/preview`
-- `GET /api/runs/{run_id}/blueprint/{doc_id}/validate`
-- `GET /api/runs/{run_id}/ast/{doc_id}`
-  - `GET /api/runs/{run_id}/compare/initial_matching`
+- **JSON API（UI補助）**: `document_process_app/web/app.py`
+  - `GET /api/runs/{run_id}/events`（JSONイベント一覧 / UIの復元用）
 - **CLI（テスト自動化の入口）**: `document_process_app/cli.py`
   - `create/start/execute/cancel/tail/list/artifacts/export`
 - **エージェント可視化（案A）**:
@@ -218,19 +211,11 @@ Run詳細は「常時更新される領域」と「手動で開く領域」を�
 - `GET /runs/{run_id}/artifacts/view/{rel_path}`（テキストプレビュー）
 - `GET /runs/{run_id}/artifacts/download/{rel_path}`（ダウンロード）
 
-### 2.6 JSON API（UI未実装でも利用可能）
+### 2.6 JSON API（UI補助）
 
-UIで未実装の機能（例: AST検索/blueprint検証/テキスト貼り付け入力）も、先にAPIだけ提供しておく。
+現状は UI の復元用途として **イベント取得のみ**を提供する。
 
-- `GET /api/runs` / `GET /api/runs/{run_id}`
-- `POST /api/runs/multi`（テキスト/ファイル指定でRun作成）
-- `POST /api/runs/multi`（documentsで複数入力してRun作成）
 - `GET /api/runs/{run_id}/events`（SSEの代替: JSON取得）
-- `GET /api/runs/{run_id}/blueprint/{doc_id}` / `PUT /api/runs/{run_id}/blueprint/{doc_id}`
-- `GET /api/runs/{run_id}/blueprint/{doc_id}/preview`
-- `GET /api/runs/{run_id}/blueprint/{doc_id}/validate`
-- `GET /api/runs/{run_id}/ast/{doc_id}`（mode=summary|outline|chunk|search）
-- `GET /api/runs/{run_id}/compare/initial_matching`
 
 ---
 
