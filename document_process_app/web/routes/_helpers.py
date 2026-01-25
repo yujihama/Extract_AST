@@ -18,6 +18,13 @@ def resolve_artifact_path(repo, run_id: str, rel_path: str) -> Path:
     return candidate
 
 
+def resolve_user_artifact_path(repo, run_id: str, rel_path: str, *, allowed_prefixes: list[str]) -> Path:
+    rel = str(rel_path or "").replace("\\", "/")
+    if not rel or not _is_rel_allowed(rel, allowed_prefixes):
+        raise ValueError("forbidden path")
+    return resolve_artifact_path(repo, run_id, rel)
+
+
 def get_work_file(repo, run_id: str, name: str) -> Path:
     base_dir = get_run_base_dir(repo, run_id)
     p = (base_dir / "work" / name).resolve()
@@ -36,3 +43,14 @@ def parse_node_path(s: Optional[str]) -> Optional[list[int]]:
         return [int(x) for x in s.split(",") if str(x).strip() != ""]
     except Exception:
         return None
+
+
+def _is_rel_allowed(rel_path: str, allowed_prefixes: list[str]) -> bool:
+    rel = str(rel_path or "").replace("\\", "/")
+    for prefix in allowed_prefixes or []:
+        pref = str(prefix or "").replace("\\", "/")
+        if not pref:
+            continue
+        if rel == pref or rel.startswith(pref):
+            return True
+    return False

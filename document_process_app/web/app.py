@@ -4,7 +4,7 @@ from fastapi import FastAPI
 
 from document_process_app.bootstrap import build_default_executor
 from document_process_app.service import RunService
-from document_process_app.web.routes import admin, api
+from document_process_app.web.routes import admin, api, user
 
 
 def create_app() -> FastAPI:
@@ -19,6 +19,7 @@ def create_app() -> FastAPI:
 
     app.include_router(admin.router)
     app.include_router(api.router)
+    app.include_router(user.router)
 
     return app
 

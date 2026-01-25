@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, AsyncGenerator, Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from document_process_app.service import RunServiceError
 from document_process_app.web.routes._helpers import get_run_base_dir, resolve_artifact_path
+from document_process_app.web.sse import stream_run_events
 
 router = APIRouter(prefix="/admin")
 
@@ -488,37 +488,4 @@ def runs_template_partial(request: Request, run_id: str, kind: str = "draft"):
 
 @router.get("/runs/{run_id}/events")
 async def runs_events(request: Request, run_id: str):
-    events = request.app.state.events
-    last_id_hdr = request.headers.get("Last-Event-ID")
-    try:
-        last_id = int(last_id_hdr) if last_id_hdr else 0
-    except Exception:
-        last_id = 0
-
-    async def gen() -> AsyncGenerator[bytes, None]:
-        nonlocal last_id
-        # 最初のkeep-alive
-        yield b": connected\n\n"
-        while True:
-            if await request.is_disconnected():
-                break
-
-            new_events = events.list(run_id, after_event_id=(last_id or None), limit=200)
-            if not new_events:
-                yield b": keepalive\n\n"
-                await asyncio.sleep(0.5)
-                continue
-
-            for ev in new_events:
-                last_id = ev.event_id
-                payload = {
-                    "event_id": ev.event_id,
-                    "ts": ev.ts.isoformat(),
-                    "event_type": ev.event_type,
-                    "payload": ev.payload,
-                }
-                data = json.dumps(payload, ensure_ascii=False)
-                msg = f"id: {ev.event_id}\nevent: {ev.event_type}\ndata: {data}\n\n"
-                yield msg.encode("utf-8")
-
-    return StreamingResponse(gen(), media_type="text/event-stream")
+    return stream_run_events(request, request.app.state.events, run_id)

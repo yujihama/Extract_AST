@@ -212,6 +212,8 @@ class RunExecutor:
                 cfg["request_text"] = request_text
             if hil_enabled is not None:
                 cfg["hil_enabled"] = bool(hil_enabled)
+            if params_dict.get("recipe_id"):
+                cfg["recipe_id"] = str(params_dict.get("recipe_id"))
 
             # テンプレートもドキュメントとして永続化（doc_repo）し、Runに紐付ける。
             # - documents 配列には入れない（分析対象に混ざるため）

@@ -1,0 +1,310 @@
+{% extends "user/base.html" %}
+{% block content %}
+<div class="flex flex-col gap-8">
+  <div class="surface-card">
+    <div class="card-body gap-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div class="flex items-center gap-2">
+          <a href="/u/{{ recipe.recipe_id }}" class="btn btn-ghost btn-sm">戻る</a>
+          <div>
+            <h1 class="text-2xl md:text-3xl font-semibold tracking-tight">Run詳細</h1>
+            <p class="text-sm text-base-content/60">{{ recipe.title }}</p>
+            <p class="font-mono text-xs text-base-content/50 mt-1">{{ run.run_id }}</p>
+          </div>
+        </div>
+        <div class="text-xs text-base-content/50">実行状況は数秒ごとに更新されます</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="surface-card">
+      <div class="card-body">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">ステータス</h2>
+          <span class="badge badge-ghost">ライブ更新</span>
+        </div>
+        <div id="status-panel" hx-get="/u/{{ recipe.recipe_id }}/runs/{{ run.run_id }}/partials/status" hx-trigger="load, refresh">
+          <div class="flex justify-center py-4">
+            <span class="loading loading-spinner loading-md"></span>
+          </div>
+        </div>
+        <div id="hitl-panel" class="mt-4" hx-get="/u/{{ recipe.recipe_id }}/runs/{{ run.run_id }}/partials/hitl" hx-trigger="load, refresh">
+          <div class="flex justify-center py-2">
+            <span class="loading loading-spinner loading-sm"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="surface-card">
+      <div class="card-body">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">成果物一覧</h2>
+          <span class="badge badge-ghost">アウトプット</span>
+        </div>
+        <div id="artifacts-panel" hx-get="/u/{{ recipe.recipe_id }}/runs/{{ run.run_id }}/partials/artifacts" hx-trigger="load, refresh">
+          <div class="flex justify-center py-4">
+            <span class="loading loading-spinner loading-md"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="surface-card">
+    <div class="card-body">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold">Pipeline Mini-map</h2>
+        <span class="badge badge-outline">リアルタイム</span>
+      </div>
+
+      {% set step_labels = {
+        "ensure_text_all": "テキスト化",
+        "build_blueprint_all": "Blueprint",
+        "build_ast_all": "AST生成",
+        "summarize_ast_all": "AST要約",
+        "pre_analysis": "Pre分析",
+        "execute_analysis": "実行"
+      } %}
+      {% set step_order = [
+        "ensure_text_all",
+        "build_blueprint_all",
+        "build_ast_all",
+        "summarize_ast_all",
+        "pre_analysis",
+        "execute_analysis"
+      ] %}
+
+      <div id="pipeline-steps" class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mt-4">
+        {% for step in step_order %}
+        <div class="surface-soft p-3" data-step="{{ step }}" data-status="pending">
+          <div class="text-xs font-semibold">{{ step_labels[step] }}</div>
+          <div class="text-[10px] text-base-content/50">{{ step }}</div>
+          <div class="mt-2">
+            <span class="badge badge-ghost badge-xs" data-step-badge>待機</span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="divider my-4"></div>
+
+      <div class="flex items-center justify-between">
+        <div class="text-sm font-semibold">稼働中エージェント</div>
+        <div class="text-xs text-base-content/50">並列実行を可視化</div>
+      </div>
+      <div id="agent-lanes" class="mt-3 space-y-2"></div>
+    </div>
+  </div>
+
+  <div class="surface-card">
+    <div class="card-body">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold">最終成果物</h2>
+        <span class="badge badge-outline">template_filled</span>
+      </div>
+      <div id="output-panel" hx-get="/u/{{ recipe.recipe_id }}/runs/{{ run.run_id }}/partials/output" hx-trigger="load, refresh">
+        <div class="flex justify-center py-4">
+          <span class="loading loading-spinner loading-md"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const runId = "{{ run.run_id }}";
+  const usecaseId = "{{ recipe.recipe_id }}";
+
+  const stepOrder = [
+    "ensure_text_all",
+    "build_blueprint_all",
+    "build_ast_all",
+    "summarize_ast_all",
+    "pre_analysis",
+    "execute_analysis"
+  ];
+
+  const stepLabels = {
+    "ensure_text_all": "Text",
+    "build_blueprint_all": "BP",
+    "build_ast_all": "AST",
+    "summarize_ast_all": "Sum",
+    "pre_analysis": "Pre",
+    "execute_analysis": "Exec"
+  };
+
+  const statusMeta = {
+    pending: { label: "待機", badge: "badge-ghost" },
+    running: { label: "実行中", badge: "badge-primary" },
+    finished: { label: "完了", badge: "badge-success" },
+    failed: { label: "失敗", badge: "badge-error" },
+    skipped: { label: "スキップ", badge: "badge-warning" }
+  };
+
+  const stepStatus = {};
+  stepOrder.forEach((s) => stepStatus[s] = "pending");
+
+  let currentStep = null;
+  const statusPanel = document.getElementById("status-panel");
+  const hitlPanel = document.getElementById("hitl-panel");
+  const artifactsPanel = document.getElementById("artifacts-panel");
+  const outputPanel = document.getElementById("output-panel");
+  const agents = new Map();
+  let agentSeq = 0;
+
+  function triggerRefresh(panel, delayMs = 300) {
+    if (!panel || !window.htmx) return;
+    if (panel.dataset.refreshPending === "1") return;
+    panel.dataset.refreshPending = "1";
+    setTimeout(() => {
+      panel.dataset.refreshPending = "";
+      window.htmx.trigger(panel, "refresh");
+    }, delayMs);
+  }
+
+  function updateStep(step, status) {
+    if (!step || !stepStatus.hasOwnProperty(step)) return;
+    stepStatus[step] = status;
+    const node = document.querySelector(`[data-step="${step}"]`);
+    if (!node) return;
+    node.dataset.status = status;
+    const badge = node.querySelector("[data-step-badge]");
+    if (badge) {
+      const meta = statusMeta[status] || statusMeta.pending;
+      badge.textContent = meta.label;
+      badge.className = `badge badge-xs ${meta.badge}`;
+    }
+  }
+
+  function renderAgents() {
+    const container = document.getElementById("agent-lanes");
+    if (!container) return;
+    const list = Array.from(agents.values()).sort((a, b) => a.seq - b.seq);
+    if (list.length === 0) {
+      container.innerHTML = `<div class="surface-soft p-3 text-xs text-base-content/60">実行中のエージェントはありません。</div>`;
+      return;
+    }
+
+    const html = list.map((a) => {
+      const indent = Math.min(Number(a.depth || 0), 3) * 10;
+      const badge = a.status === "running" ? "badge-primary" : "badge-ghost";
+      const pulse = a.status === "running" ? "animate-pulse" : "";
+      const chips = stepOrder.map((s) => {
+        const cls = (s === a.step) ? "badge-primary" : "badge-ghost";
+        const label = stepLabels[s] || s;
+        return `<span class="badge badge-xs ${cls}">${label}</span>`;
+      }).join("");
+
+      return `
+        <div class="surface-soft p-3 flex items-center justify-between gap-4 ${pulse}">
+          <div class="flex items-center gap-2" style="margin-left:${indent}px">
+            <span class="badge badge-xs ${badge}">${a.status === "running" ? "running" : "done"}</span>
+            <div class="text-xs font-semibold">${a.is_subagent ? "Sub" : "Agent"}: ${a.name || "agent"}</div>
+          </div>
+          <div class="flex flex-wrap gap-1 justify-end">${chips}</div>
+        </div>
+      `;
+    }).join("");
+
+    container.innerHTML = html;
+  }
+
+  function handleEvent(payload) {
+    const eventType = payload.event_type;
+    const data = payload.payload || {};
+
+    switch (eventType) {
+      case "step_started":
+        currentStep = data.step;
+        updateStep(data.step, "running");
+        triggerRefresh(statusPanel);
+        break;
+      case "step_finished":
+        updateStep(data.step, "finished");
+        triggerRefresh(statusPanel);
+        triggerRefresh(artifactsPanel);
+        if (data.step === "execute_analysis") {
+          triggerRefresh(outputPanel);
+        }
+        break;
+      case "step_failed":
+        updateStep(data.step, "failed");
+        triggerRefresh(statusPanel);
+        break;
+      case "step_skipped":
+        updateStep(data.step, "skipped");
+        triggerRefresh(statusPanel);
+        break;
+      case "agent_start": {
+        const id = data.invocation_id || `agent-${Date.now()}`;
+        const existing = agents.get(id);
+        if (!existing) {
+          agents.set(id, {
+            id,
+            name: data.agent_name || "agent",
+            is_subagent: !!data.is_subagent,
+            depth: data.depth || 0,
+            step: currentStep,
+            status: "running",
+            seq: ++agentSeq,
+          });
+        } else {
+          existing.status = "running";
+          existing.step = currentStep || existing.step;
+        }
+        renderAgents();
+        triggerRefresh(statusPanel);
+        break;
+      }
+      case "agent_end": {
+        const id = data.invocation_id;
+        if (id && agents.has(id)) {
+          const agent = agents.get(id);
+          agent.status = "done";
+          renderAgents();
+          setTimeout(() => {
+            if (agents.has(id) && agents.get(id).status === "done") {
+              agents.delete(id);
+              renderAgents();
+            }
+          }, 8000);
+        }
+        triggerRefresh(statusPanel);
+        break;
+      }
+      case "run_status_changed": {
+        triggerRefresh(statusPanel);
+        if (data.status === "waiting_user") {
+          triggerRefresh(hitlPanel);
+        }
+        if (data.status === "succeeded") {
+          triggerRefresh(outputPanel);
+        }
+        break;
+      }
+    }
+  }
+
+  const source = new EventSource(`/u/${usecaseId}/runs/${runId}/events`);
+  source.onmessage = (event) => {
+    try {
+      const payload = JSON.parse(event.data);
+      handleEvent(payload);
+    } catch (e) {
+      // ignore
+    }
+  };
+  ["step_started","step_finished","step_failed","step_skipped","agent_start","agent_end","run_status_changed"].forEach((name) => {
+    source.addEventListener(name, (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        handleEvent(payload);
+      } catch (e) {
+        // ignore
+      }
+    });
+  });
+</script>
+{% endblock %}

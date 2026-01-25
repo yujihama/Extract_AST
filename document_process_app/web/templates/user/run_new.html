@@ -1,0 +1,231 @@
+{% extends "user/base.html" %}
+{% block content %}
+<div class="flex flex-col gap-8">
+  <section class="surface-card">
+    <div class="card-body gap-6">
+      <div class="flex items-center justify-between gap-4">
+        <div class="flex items-center gap-2">
+          <a href="/u/{{ recipe.recipe_id }}" class="btn btn-ghost btn-sm">戻る</a>
+          <div>
+            <h1 class="text-2xl md:text-3xl font-semibold tracking-tight">新規Run作成</h1>
+            <p class="text-sm text-base-content/60">{{ recipe.title }}の実行を開始します。</p>
+          </div>
+        </div>
+        <span class="badge badge-outline">{{ recipe.recipe_id }}</span>
+      </div>
+      <div class="text-xs text-base-content/50">
+        入力→依頼文→（任意）詳細設定→作成 の順に1画面で完結します。
+      </div>
+    </div>
+  </section>
+
+  <form action="/u/{{ recipe.recipe_id }}/runs" method="post" enctype="multipart/form-data" class="flex flex-col gap-8">
+    <input type="hidden" name="mode" value="real" />
+
+    <div class="surface-card">
+      <div class="card-body">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">入力ドキュメント</h2>
+          <span class="badge badge-ghost">Step 1</span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+          <div class="form-control w-full">
+            <label class="label">
+              <span class="label-text">既存ドキュメントから選択（複数可）</span>
+            </label>
+            <div class="flex flex-wrap items-center gap-2 mb-2">
+              <button type="button" class="btn btn-xs" onclick="docSelectAll('doc_hashes')">全選択</button>
+              <button type="button" class="btn btn-xs btn-ghost" onclick="docSelectNone('doc_hashes')">選択解除</button>
+              <button type="button" class="btn btn-xs btn-ghost" onclick="docSelectInvert('doc_hashes')">反転</button>
+              <span class="text-xs text-base-content/50">Ctrl+クリックで追加/解除</span>
+            </div>
+            <select
+              id="doc_hashes"
+              name="doc_hashes"
+              multiple
+              size="14"
+              class="select select-bordered select-lg w-full h-72 text-base leading-relaxed doc-multi-select"
+            >
+              {% for doc in documents %}
+              <option value="{{ doc.doc_hash }}">
+                {{ doc.original_filename }} ({{ "{:,}".format(doc.char_count) }}文字)
+                {% if doc.has_ast %} ✓AST{% endif %}
+                {% if doc.has_blueprint %} ✓BP{% endif %}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="form-control w-full">
+            <label class="label">
+              <span class="label-text">または新規アップロード（複数可）</span>
+            </label>
+            <div class="surface-soft p-4">
+              <input
+                type="file"
+                name="docs"
+                class="file-input file-input-bordered file-input-primary w-full"
+                accept=".pdf,.txt,.md,.markdown"
+                multiple
+              />
+              <div class="mt-2 text-xs text-base-content/50">PDF/TXT/Markdown をまとめて選択できます。</div>
+            </div>
+            <label class="label">
+              <span class="label-text-alt text-base-content/50">合計1件以上のドキュメントが必要です。</span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="surface-card">
+      <div class="card-body">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">依頼文</h2>
+          <span class="badge badge-ghost">Step 2</span>
+        </div>
+        <textarea
+          name="request_text"
+          class="textarea textarea-bordered w-full"
+          rows="6"
+          placeholder="{{ recipe.request_text_template }}"
+        ></textarea>
+        <label class="label">
+          <span class="label-text-alt text-base-content/50">目的や評価観点を具体的に書くと精度が上がります。</span>
+        </label>
+        <label class="label cursor-pointer justify-start gap-4 mt-2">
+          <input type="checkbox" name="start_now" checked class="checkbox checkbox-primary" />
+          <div>
+            <span class="label-text font-medium">すぐに開始</span>
+            <p class="text-xs text-base-content/50">チェックを外すと作成のみ行います</p>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <div class="collapse collapse-arrow surface-card">
+      <input type="checkbox" />
+      <div class="collapse-title font-medium">詳細設定（任意 / Step 3）</div>
+      <div class="collapse-content">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+          <div class="form-control w-full">
+            <label class="label">
+              <span class="label-text">PDF変換モード</span>
+            </label>
+            <select name="pdf_mode" class="select select-bordered select-sm w-full">
+              <option value="fast" selected>fast（高速）</option>
+              <option value="llm">llm（高精度）</option>
+            </select>
+          </div>
+          <div class="form-control w-full">
+            <label class="label">
+              <span class="label-text">テンプレート（任意 / アップロード）</span>
+            </label>
+            <input type="file" name="template_file" class="file-input file-input-bordered w-full" accept=".md,.txt" />
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="form-control w-full">
+            <label class="label">
+              <span class="label-text text-sm">開始ページ</span>
+            </label>
+            <input type="number" name="pdf_start_page" value="1" min="1" class="input input-bordered input-sm w-full" />
+          </div>
+          <div class="form-control w-full">
+            <label class="label">
+              <span class="label-text text-sm">終了ページ</span>
+            </label>
+            <input type="number" name="pdf_end_page" placeholder="最後まで" class="input input-bordered input-sm w-full" />
+          </div>
+          <div class="form-control w-full">
+            <label class="label">
+              <span class="label-text text-sm">バッチサイズ</span>
+            </label>
+            <input type="number" name="pdf_batch_size" value="5" min="1" class="input input-bordered input-sm w-full" />
+          </div>
+          <div class="form-control">
+            <label class="label cursor-pointer justify-start gap-2">
+              <input type="checkbox" name="pdf_use_image" class="checkbox checkbox-sm" />
+              <span class="label-text text-sm">画像付きLLM変換</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+        <div class="form-control">
+          <label class="label cursor-pointer justify-start gap-4">
+            <input type="hidden" name="summarize_ast" value="0" />
+            <input type="checkbox" name="summarize_ast" value="1" checked class="checkbox checkbox-sm" />
+            <div>
+              <span class="label-text font-medium">AST枝サマリを有効化</span>
+              <p class="text-xs text-base-content/50">各ノードに要約を付与（LLMコスト増）</p>
+            </div>
+          </label>
+        </div>
+
+        <div class="form-control mt-3">
+          <label class="label cursor-pointer justify-start gap-4">
+            <input type="hidden" name="hil_enabled" value="0" />
+            <input type="checkbox" name="hil_enabled" value="1" class="checkbox checkbox-sm" />
+            <div>
+              <span class="label-text font-medium">Human-in-the-loop</span>
+              <p class="text-xs text-base-content/50">確認が必要な場合のみ停止します</p>
+            </div>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="surface-card">
+      <div class="card-body">
+        <div class="flex flex-col sm:flex-row gap-4 justify-end">
+          <a href="/u/{{ recipe.recipe_id }}" class="btn btn-ghost">キャンセル</a>
+          <button type="submit" class="btn btn-primary">
+            <span class="htmx-indicator loading loading-spinner loading-sm"></span>
+            Run作成
+          </button>
+        </div>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+  if (window.docSelectHelpersInitialized) return;
+  window.docSelectHelpersInitialized = true;
+
+  function getSelect(selectId) {
+    return document.getElementById(selectId);
+  }
+
+  window.docSelectAll = function (selectId) {
+    const sel = getSelect(selectId);
+    if (!sel) return;
+    Array.from(sel.options).forEach((o) => (o.selected = true));
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  window.docSelectNone = function (selectId) {
+    const sel = getSelect(selectId);
+    if (!sel) return;
+    Array.from(sel.options).forEach((o) => (o.selected = false));
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  window.docSelectInvert = function (selectId) {
+    const sel = getSelect(selectId);
+    if (!sel) return;
+    Array.from(sel.options).forEach((o) => (o.selected = !o.selected));
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+})();
+</script>
+
+<style>
+select.doc-multi-select[multiple] option {
+  padding: 0.35rem 0.5rem;
+}
+</style>
+{% endblock %}

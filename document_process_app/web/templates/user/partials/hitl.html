@@ -1,0 +1,40 @@
+{% if run.status == "waiting_user" and hitl and hitl.get("action_requests") %}
+  {% set actions = hitl.get("action_requests") %}
+  {% set first = actions[0] %}
+  <div class="surface-card border border-warning/30">
+    <div class="card-body gap-4">
+      <div class="flex items-center gap-2">
+        <span class="badge badge-warning badge-sm">要確認</span>
+        <div class="font-semibold">Human-in-the-loop</div>
+      </div>
+      <div class="text-sm">
+        {% if first.get("name") == "human_input" %}
+          <div class="whitespace-pre-wrap break-words">{{ (first.get("args") or {}).get("question") }}</div>
+        {% else %}
+          <div class="font-mono text-xs">tool: {{ first.get("name") }}</div>
+        {% endif %}
+      </div>
+
+      {% if actions|length > 1 %}
+        <div class="text-xs text-base-content/70">
+          注意: 現状のUIは最初の1件のみ回答対応です（pending={{ actions|length }}）。
+        </div>
+      {% endif %}
+
+      <form hx-post="/u/{{ usecase }}/runs/{{ run.run_id }}/hitl/respond" hx-target="#hitl-panel" hx-swap="innerHTML">
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text text-sm">回答</span>
+          </label>
+          <textarea name="answer" class="textarea textarea-bordered textarea-sm w-full" rows="3" placeholder="ここに回答を入力してください"></textarea>
+        </div>
+        <div class="mt-3 flex gap-2">
+          <button type="submit" class="btn btn-sm btn-primary">回答して再開</button>
+          <button type="button" class="btn btn-sm btn-outline" hx-post="/u/{{ usecase }}/runs/{{ run.run_id }}/start" hx-target="#status-panel" hx-swap="innerHTML">再開のみ</button>
+        </div>
+      </form>
+    </div>
+  </div>
+{% elif flash_message %}
+  <div class="surface-soft p-3 text-sm">{{ flash_message }}</div>
+{% endif %}

@@ -1,0 +1,55 @@
+{% extends "user/base.html" %}
+{% block content %}
+<div class="flex flex-col gap-8">
+  <section class="surface-card">
+    <div class="card-body gap-6">
+      <div class="flex flex-col gap-8 md:flex-row md:items-center md:justify-between">
+        <div class="space-y-3">
+          <div class="badge badge-outline">End-user UI</div>
+          <h1 class="text-3xl md:text-4xl font-semibold tracking-tight">ユースケースを選択</h1>
+          <p class="text-base-content/70">成果物に最短で到達できる導線を用意しています。</p>
+          <div class="flex flex-wrap gap-2">
+            <span class="badge badge-ghost">成果物中心</span>
+            <span class="badge badge-ghost">段階的開示</span>
+            <span class="badge badge-ghost">安全設計</span>
+          </div>
+        </div>
+        <div class="stats bg-base-200/70 shadow">
+          <div class="stat">
+            <div class="stat-title">ユースケース</div>
+            <div class="stat-value text-primary">{{ recipes | length }}</div>
+            <div class="stat-desc">用途別に最適化</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">導線</div>
+            <div class="stat-value text-secondary">3</div>
+            <div class="stat-desc">入力→実行→成果物</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+    {% for recipe in recipes %}
+    <div class="surface-card group transition duration-200 hover:-translate-y-1 hover:shadow-2xl">
+      <div class="card-body gap-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">{{ recipe.title }}</h2>
+          <span class="badge badge-outline text-xs">{{ recipe.recipe_id }}</span>
+        </div>
+        <p class="text-sm text-base-content/70">{{ recipe.description }}</p>
+        <div class="flex flex-wrap gap-2 text-xs">
+          <span class="badge badge-ghost">最小 {{ recipe.doc_constraints.get("min") }} 件</span>
+          <span class="badge badge-ghost">最大 {{ recipe.doc_constraints.get("max") or "制限なし" }}</span>
+        </div>
+        <div class="card-actions justify-between items-center pt-2">
+          <div class="text-xs text-base-content/50">実行前の準備は最小限</div>
+          <a href="/u/{{ recipe.recipe_id }}" class="btn btn-primary btn-sm">開始</a>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

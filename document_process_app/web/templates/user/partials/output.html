@@ -1,0 +1,31 @@
+{% if filled_content %}
+  <div class="flex items-center justify-between gap-2 mb-3">
+    <div class="flex items-center gap-2">
+      <span class="badge badge-success badge-sm">完成</span>
+      <div class="text-sm font-medium">template_filled.md</div>
+    </div>
+    <div class="flex gap-2">
+      <a class="btn btn-ghost btn-xs" href="/u/{{ usecase }}/runs/{{ run.run_id }}/artifacts/view/{{ filled_path }}">表示</a>
+      <a class="btn btn-ghost btn-xs" href="/u/{{ usecase }}/runs/{{ run.run_id }}/artifacts/download/{{ filled_path }}">ダウンロード</a>
+    </div>
+  </div>
+  {% set content = filled_content %}
+  {% set kind = "filled" %}
+  {% include "partials/template.html" %}
+{% elif draft_content %}
+  <div class="flex items-center justify-between gap-2 mb-3">
+    <div class="flex items-center gap-2">
+      <span class="badge badge-warning badge-sm">作成中</span>
+      <div class="text-sm font-medium">template_draft.md</div>
+    </div>
+    <div class="flex gap-2">
+      <a class="btn btn-ghost btn-xs" href="/u/{{ usecase }}/runs/{{ run.run_id }}/artifacts/view/{{ draft_path }}">表示</a>
+      <a class="btn btn-ghost btn-xs" href="/u/{{ usecase }}/runs/{{ run.run_id }}/artifacts/download/{{ draft_path }}">ダウンロード</a>
+    </div>
+  </div>
+  {% set content = draft_content %}
+  {% set kind = "draft" %}
+  {% include "partials/template.html" %}
+{% else %}
+  <div class="surface-soft p-4 text-sm text-base-content/60">成果物はまだ生成されていません。</div>
+{% endif %}

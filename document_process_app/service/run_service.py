@@ -39,6 +39,8 @@ class RunService:
         upload_docs: Optional[Sequence[UploadFile]] = None,
         request_text: str = "",
         template_file: Optional[UploadFile] = None,
+        recipe_id: Optional[str] = None,
+        recipe_defaults: Optional[Mapping[str, Any]] = None,
         hil_enabled: Optional[str] = None,
         mode: Optional[str] = None,
         pdf_mode: Optional[str] = None,
@@ -88,7 +90,7 @@ class RunService:
             template_file_path = tmp_template
 
         params = self._normalize_params(
-            base_params={},
+            base_params=dict(recipe_defaults or {}),
             mode=mode,
             default_mode="dummy",
             pdf_mode=pdf_mode,
@@ -105,6 +107,8 @@ class RunService:
             step_to=step_to,
             default_summarize_ast=True,
         )
+        if recipe_id:
+            params["recipe_id"] = str(recipe_id)
 
         hil_flag = self._parse_bool(hil_enabled, default=False)
         start_flag = self._parse_bool(start_now, default=True)
@@ -127,7 +131,13 @@ class RunService:
                 except Exception:
                     pass
 
-    def create_from_payload(self, payload: Mapping[str, Any]) -> RunCreationResult:
+    def create_from_payload(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        recipe_id: Optional[str] = None,
+        recipe_defaults: Optional[Mapping[str, Any]] = None,
+    ) -> RunCreationResult:
         documents_raw = payload.get("documents")
         if not isinstance(documents_raw, list) or len(documents_raw) < 1:
             raise RunServiceError("documents must be a list (len>=1)")
@@ -137,12 +147,17 @@ class RunService:
             params = {"params": params}
 
         mode = payload.get("mode")
+        base_params = dict(recipe_defaults or {})
+        base_params.update(params)
         params = self._normalize_params(
-            base_params=params,
+            base_params=base_params,
             mode=mode,
             default_mode=None,
             default_summarize_ast=True,
         )
+        rid = recipe_id or payload.get("recipe_id")
+        if rid:
+            params["recipe_id"] = str(rid)
 
         request_text = payload.get("request_text") or ""
         hil_enabled = self._parse_bool(payload.get("hil_enabled"), default=False)
@@ -196,17 +211,23 @@ class RunService:
         hil_enabled: bool,
         mode: str,
         params_raw: Mapping[str, Any],
+        recipe_id: Optional[str] = None,
+        recipe_defaults: Optional[Mapping[str, Any]] = None,
     ) -> RunCreationResult:
         params = params_raw
         if not isinstance(params, dict):
             params = {"params": params}
 
+        base_params = dict(recipe_defaults or {})
+        base_params.update(params)
         params = self._normalize_params(
-            base_params=params,
+            base_params=base_params,
             mode=mode,
             default_mode="dummy",
             default_summarize_ast=True,
         )
+        if recipe_id:
+            params["recipe_id"] = str(recipe_id)
         self._inject_request_hil(params, request_text=request_text, hil_enabled=bool(hil_enabled))
 
         documents: list[dict[str, str]] = []

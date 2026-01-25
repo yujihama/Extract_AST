@@ -1,0 +1,25 @@
+{% if items %}
+  <div class="space-y-3">
+    {% for it in items %}
+      <div class="surface-soft p-3 flex items-center justify-between gap-4">
+        <div class="flex items-center gap-3 min-w-0">
+          <span class="badge badge-outline text-xs">{{ it.kind or "file" }}</span>
+          <div class="min-w-0">
+            <a href="/u/{{ usecase }}/runs/{{ run_id }}/artifacts/view/{{ it.rel }}"
+               class="link link-primary text-xs font-mono truncate block"
+               title="{{ it.rel }}">
+              {{ it.rel | truncate(46) }}
+            </a>
+            <div class="text-[11px] text-base-content/50">out配下の成果物のみ表示</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <a href="/u/{{ usecase }}/runs/{{ run_id }}/artifacts/view/{{ it.rel }}" class="btn btn-ghost btn-xs">表示</a>
+          <a href="/u/{{ usecase }}/runs/{{ run_id }}/artifacts/download/{{ it.rel }}" class="btn btn-primary btn-xs">DL</a>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="surface-soft p-4 text-sm text-base-content/60">成果物はまだありません。</div>
+{% endif %}

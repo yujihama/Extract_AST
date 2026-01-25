@@ -1,0 +1,57 @@
+{% set status = run.status %}
+{% set badge_class = "badge-outline" %}
+{% if status in ["queued"] %}
+  {% set badge_class = "badge-info" %}
+{% elif status in ["running"] %}
+  {% set badge_class = "badge-primary" %}
+{% elif status in ["waiting_user"] %}
+  {% set badge_class = "badge-warning" %}
+{% elif status in ["succeeded"] %}
+  {% set badge_class = "badge-success" %}
+{% elif status in ["failed"] %}
+  {% set badge_class = "badge-error" %}
+{% elif status in ["cancelled"] %}
+  {% set badge_class = "badge-ghost" %}
+{% endif %}
+
+<div class="space-y-4">
+  <div class="flex items-center justify-between">
+    <div class="text-sm font-medium text-base-content/70">ステータス</div>
+    <span class="badge {{ badge_class }} badge-sm uppercase">{{ status }}</span>
+  </div>
+
+{% if status in ["queued","running","waiting_user"] %}
+  {% if status == "queued" %}
+    {% set progress_value = 25 %}
+  {% elif status == "waiting_user" %}
+    {% set progress_value = 70 %}
+  {% else %}
+    {% set progress_value = 55 %}
+  {% endif %}
+  <progress class="progress progress-primary w-full" value="{{ progress_value }}" max="100"></progress>
+{% endif %}
+
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+    <div class="surface-soft p-3">
+      <div class="text-xs text-base-content/60">作成</div>
+      <div class="font-mono text-xs mt-1">{{ run.created_at.strftime('%Y-%m-%d %H:%M:%S') if run.created_at else '-' }}</div>
+    </div>
+    <div class="surface-soft p-3">
+      <div class="text-xs text-base-content/60">開始</div>
+      <div class="font-mono text-xs mt-1">{{ run.started_at.strftime('%Y-%m-%d %H:%M:%S') if run.started_at else '-' }}</div>
+    </div>
+    <div class="surface-soft p-3">
+      <div class="text-xs text-base-content/60">完了</div>
+      <div class="font-mono text-xs mt-1">{{ run.finished_at.strftime('%Y-%m-%d %H:%M:%S') if run.finished_at else '-' }}</div>
+    </div>
+  </div>
+
+  {% if run.error_message %}
+  <div class="alert alert-error shadow-sm">
+    <div>
+      <div class="font-bold">エラー</div>
+      <div class="text-sm">{{ run.error_message }}</div>
+    </div>
+  </div>
+  {% endif %}
+</div>
