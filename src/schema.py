@@ -61,6 +61,24 @@ class DirectDocumentAST(BaseModel):
 DirectDocumentNode.model_rebuild()
 DirectDocumentAST.model_rebuild()
 
+
+class LineSegmentationSection(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    insert_before_line: int = Field(..., description="見出しを挿入する対象行（1始まり）")
+    level: int = Field(..., description="見出しの階層レベル（1-6）")
+
+
+class LineSegmentationPlan(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    line_count: int = Field(..., description="入力テキストの総行数")
+    sections: List[LineSegmentationSection] = Field(default_factory=list, description="見出し挿入の計画")
+
+
+LineSegmentationSection.model_rebuild()
+LineSegmentationPlan.model_rebuild()
+
 class ValidationRules(BaseModel):
     """見出し抽出時の誤検知を防ぐための検証ルールセット。
 

@@ -25,16 +25,17 @@
 - **SQLiteイベント/Run保存**: `document_process_app/infra/sqlite_store.py`
   - DB: `data/document_process_app.db`（`schema_version`, `runs`, `run_events`, `artifacts`）
 - **Web UI（FastAPI + HTMX）**: `document_process_app/web/app.py`
-  - `GET /`（Run一覧）
-  - `GET /runs/new`（Run作成）
-  - `POST /runs`（upload→Run作成、任意でstart）
-  - `GET /runs/{run_id}`（Run詳細）
-  - `POST /runs/{run_id}/start`, `POST /runs/{run_id}/cancel`
-  - `GET /runs/{run_id}/events`（SSE）
-  - `GET /runs/{run_id}/template/{draft|filled}`（テンプレプレビュー）
+  - `GET /admin`（Run一覧）
+  - `GET /admin/runs/new`（Run作成）
+  - `POST /admin/runs`（upload→Run作成、任意でstart）
+  - `GET /admin/runs/{run_id}`（Run詳細）
+  - `POST /admin/runs/{run_id}/start`, `POST /admin/runs/{run_id}/cancel`
+  - `GET /admin/runs/{run_id}/events`（SSE）
+  - `GET /admin/runs/{run_id}/template/{draft|filled}`（テンプレプレビュー）
 - **JSON API（UI未実装でも使えるI/F）**: `document_process_app/web/app.py`
   - `GET /api/runs`, `GET /api/runs/{run_id}`
-  - `POST /api/runs/multi`（テキスト/ファイル指定でRun作成）
+  - `POST /api/runs`（テキスト/ファイル指定でRun作成）
+  - `POST /api/runs/{run_id}/start`, `POST /api/runs/{run_id}/cancel`
   - `GET /api/runs/{run_id}/events`（JSONイベント一覧）
   - `GET /api/runs/{run_id}/blueprint/{doc_id}` / `PUT /api/runs/{run_id}/blueprint/{doc_id}`
 - `GET /api/runs/{run_id}/blueprint/{doc_id}/preview`
@@ -147,16 +148,16 @@ MVPでは簡略化しても良いが、**最初に前提として決めておく
 
 ### 1.1 主要ページ
 
-- **Run一覧**: `GET /`
+- **Run一覧**: `GET /admin`
   - run_id / status / created_at / doc名 / 直近更新
   - 操作: 新規作成、詳細へ
 
-- **Run作成（ウィザードでも単ページでも可）**: `GET /runs/new`
+- **Run作成（ウィザードでも単ページでも可）**: `GET /admin/runs/new`
   - ドキュメントを複数選択またはアップロード（PDF/TXT、合計1件以上）
   - PDFの場合の変換設定
   - 実行開始ボタン（Run作成＋startを一括 or まず作成して後でstart）
 
-- **Run詳細（監視/閲覧の中心）**: `GET /runs/{run_id}`
+- **Run詳細（監視/閲覧の中心）**: `GET /admin/runs/{run_id}`
   - status / progress / current_step
   - 成果物一覧（input/work/out/log/cache）
   - イベントタイムライン（リアルタイム）
@@ -168,13 +169,13 @@ MVPでは簡略化しても良いが、**最初に前提として決めておく
 Run詳細は「常時更新される領域」と「手動で開く領域」を分けると実装しやすいです。
 
 - **statusカード**（数秒ポーリング or SSEトリガでhx-get）  
-  - `GET /runs/{run_id}/partials/status`
+  - `GET /admin/runs/{run_id}/partials/status`
 - **成果物一覧**（更新トリガ: artifact追加/更新イベント）  
-  - `GET /runs/{run_id}/partials/artifacts`
+  - `GET /admin/runs/{run_id}/partials/artifacts`
 - **テンプレプレビュー**（生成/更新イベントで再描画）  
-  - `GET /runs/{run_id}/partials/template?kind=draft|filled`
+  - `GET /admin/runs/{run_id}/partials/template?kind=draft|filled`
 - **イベントタイムライン**（SSEで追記）  
-  - `GET /runs/{run_id}/events`（SSE）
+  - `GET /admin/runs/{run_id}/events`（SSE）
   - HTMLポーリング用の `partials/events` は現状未実装
 
 ---
@@ -183,48 +184,48 @@ Run詳細は「常時更新される領域」と「手動で開く領域」を�
 
 ### 2.1 HTMLページ
 
-- `GET /`
-- `GET /runs/new`
-- `GET /runs/{run_id}`
+- `GET /admin`
+- `GET /admin/runs/new`
+- `GET /admin/runs/{run_id}`
 
 ### 2.2 HTMXフラグメント（HTML）
 
-- `GET /runs/{run_id}/partials/status`
-- `GET /runs/{run_id}/partials/artifacts`（実装済み: DB優先＋FS補完）
-- `GET /runs/{run_id}/partials/template?kind=draft|filled`（実装済み）
+- `GET /admin/runs/{run_id}/partials/status`
+- `GET /admin/runs/{run_id}/partials/artifacts`（実装済み: DB優先＋FS補完）
+- `GET /admin/runs/{run_id}/partials/template?kind=draft|filled`（実装済み）
 
 ### 2.3 コマンド（POST）
 
-- `POST /runs`  
+- `POST /admin/runs`  
   - フォーム送信: ドキュメント（複数）＋変換設定を受けてrun作成
-  - レスポンス: `303 See Other` で `/runs/{run_id}` へ
+  - レスポンス: `303 See Other` で `/admin/runs/{run_id}` へ
 
-- `POST /runs/{run_id}/start`  
+- `POST /admin/runs/{run_id}/start`  
   - Runを `queued`→`running` にし、バックグラウンド処理を起動
   - レスポンス: HTMXなら statusフラグメントを返す
 
-- `POST /runs/{run_id}/cancel`  
+- `POST /admin/runs/{run_id}/cancel`  
   - MVPは「キャンセル要求を記録して以後のステップ開始を止める」でも可
 
 ### 2.4 SSE（リアルタイム）
 
-- `GET /runs/{run_id}/events`（`text/event-stream`）
+- `GET /admin/runs/{run_id}/events`（`text/event-stream`）
   - UIは「新規イベントを追記」する
   - HTMX SSE拡張を使うか、素のEventSourceでもOK
 
 ### 2.5 成果物の閲覧/ダウンロード
 
-- `GET /runs/{run_id}/partials/artifacts`（一覧HTML, DB優先＋FS補完）
-- `GET /runs/{run_id}/artifacts/view/{rel_path}`（テキストプレビュー）
-- `GET /runs/{run_id}/artifacts/download/{rel_path}`（ダウンロード）
+- `GET /admin/runs/{run_id}/partials/artifacts`（一覧HTML, DB優先＋FS補完）
+- `GET /admin/runs/{run_id}/artifacts/view/{rel_path}`（テキストプレビュー）
+- `GET /admin/runs/{run_id}/artifacts/download/{rel_path}`（ダウンロード）
 
 ### 2.6 JSON API（UI未実装でも利用可能）
 
 UIで未実装の機能（例: AST検索/blueprint検証/テキスト貼り付け入力）も、先にAPIだけ提供しておく。
 
 - `GET /api/runs` / `GET /api/runs/{run_id}`
-- `POST /api/runs/multi`（テキスト/ファイル指定でRun作成）
-- `POST /api/runs/multi`（documentsで複数入力してRun作成）
+- `POST /api/runs`（テキスト/ファイル指定でRun作成）
+- `POST /api/runs/{run_id}/start` / `POST /api/runs/{run_id}/cancel`
 - `GET /api/runs/{run_id}/events`（SSEの代替: JSON取得）
 - `GET /api/runs/{run_id}/blueprint/{doc_id}` / `PUT /api/runs/{run_id}/blueprint/{doc_id}`
 - `GET /api/runs/{run_id}/blueprint/{doc_id}/preview`

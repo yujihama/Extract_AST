@@ -177,18 +177,13 @@ class RunExecutor:
                 run_id, docs[0].doc_hash, docs[1].doc_hash, run_dir_paths
             )
 
-        # paramsにrequest/hilを注入（UI/CLI共通）
-        merged_params = dict(params)
-        if request_text is not None and "request_text" not in merged_params:
-            merged_params["request_text"] = request_text
-        if hil_enabled is not None and "hil_enabled" not in merged_params:
-            merged_params["hil_enabled"] = bool(hil_enabled)
+        params_dict = dict(params)
 
         rec = RunRecord(
             run_id=run_id,
             status="queued",
             created_at=_utcnow(),
-            params=merged_params,
+            params=params_dict,
             workdir=run_dir_paths.get("run_dir"),
         )
         self.repo.create_run(rec)

@@ -393,63 +393,18 @@ class BuildBlueprintStep:
         llm_complex = build_llm(model=llm_complex_model) if llm_complex_model else build_llm()
 
         # data/input固定依存を避けるため、run入力（data/runs/{run_id}/input）を読む analyze_visual_contents を提供する
-        from langchain_core.messages import HumanMessage
-        from langchain_core.tools import tool
-        import base64
-        import fitz  # PyMuPDF
+        from document_process_app.tools.factories import make_analyze_visual_contents_tool
 
         input_dir = Path(ctx.paths["input_dir"])
-
-        def _get_pdf_page_as_image(pdf_path: Path, page_numbers: list[int], dpi: int = 150) -> list[dict]:
-            doc = fitz.open(str(pdf_path))
-            try:
-                out = []
-                for page_number in page_numbers:
-                    if page_number < 1 or page_number > len(doc):
-                        raise ValueError(f"invalid page {page_number} (total {len(doc)})")
-                    page = doc[page_number - 1]
-                    mat = fitz.Matrix(dpi / 72, dpi / 72)
-                    pix = page.get_pixmap(matrix=mat)
-                    img_bytes = pix.tobytes("png")
-                    b64_data = base64.b64encode(img_bytes).decode("utf-8")
-                    out.append({"page_number": page_number, "base64_data": b64_data})
-                return out
-            finally:
-                doc.close()
-
-        @tool
-        def analyze_visual_contents(document_name: str, page_numbers: list[int], prompt: str) -> str:
-            """
-            Run入力のPDF（data/runs/{run_id}/input）を対象に、指定ページを画像として分析して返す。
-            document_name が .txt/.ast.json の場合は .pdf に置換して探索する。
-            """
-            name = str(document_name or "").strip()
-            if name.endswith(".ast.json"):
-                name = name.replace(".ast.json", ".pdf")
-            elif name.endswith(".txt"):
-                name = name.replace(".txt", ".pdf")
-            p = Path(name)
-            if p.is_absolute() and p.exists():
-                pdf_path = p
-            else:
-                cand = input_dir / name
-                if cand.exists():
-                    pdf_path = cand
-                else:
-                    fallback = input_dir / f"doc_{which}.pdf"
-                    if fallback.exists():
-                        pdf_path = fallback
-                    else:
-                        return f"[analyze_visual_contents] pdf not found for: {document_name} (run has no PDF inputs)."
-
-            images = _get_pdf_page_as_image(pdf_path, page_numbers)
-            b64_data_list = [
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{item['base64_data']}"}}
-                for item in images
-            ]
-            message = HumanMessage(content=[{"type": "text", "text": prompt}, *b64_data_list])
-            response = llm.invoke([message])
-            return response.content
+        analyze_visual_contents = make_analyze_visual_contents_tool(
+            base_dir=input_dir,
+            llm=llm,
+            allow_any_pdf_fallback=False,
+            fallback_pdf_name=f"doc_{which}.pdf",
+            error_on_missing=False,
+            message_mode="single",
+            include_page_labels=False,
+        )
 
         tools_blueprint_builder = [read_text_segment, read_text_file, extract_regex_matches, get_file_length, analyze_visual_contents]
         tools_blueprint_validator = [
@@ -622,8 +577,9 @@ class BuildAstStep:
             from deepagents import create_deep_agent
             from deepagents.backends.utils import create_file_data
 
-            from src.prompt import direct_ast_builder_prompt
-            from src.schema import DirectDocumentAST
+            from src import line_segmenter, markdown_ast_builder
+            from src.prompt import line_segmenter_prompt
+            from src.schema import LineSegmentationPlan
             from src.utils import build_llm
 
             # UI向けイベント（tool_call/agentログ）
@@ -632,7 +588,12 @@ class BuildAstStep:
             except Exception:
                 EventSinkMiddleware = None  # type: ignore
 
-            model_name = str(ctx.params.get("ast_llm_direct_model") or ctx.params.get("llm_complex_model") or "").strip()
+            model_name = str(
+                ctx.params.get("ast_llm_segment_model")
+                or ctx.params.get("ast_llm_direct_model")
+                or ctx.params.get("llm_complex_model")
+                or ""
+            ).strip()
             llm = build_llm(model=model_name) if model_name else build_llm()
 
             middleware = []
@@ -642,49 +603,87 @@ class BuildAstStep:
                         run_id=ctx.run_id,
                         events=ctx.events,
                         cancellation=ctx.cancellation,
-                        agent_name=f"direct_ast_builder_{which}",
+                        agent_name=f"line_segmenter_{which}",
                     )
                 ]
 
             agent = create_deep_agent(
                 model=llm,
                 tools=[],
-                system_prompt=direct_ast_builder_prompt,
-                response_format=DirectDocumentAST,
+                system_prompt=line_segmenter_prompt,
+                response_format=LineSegmentationPlan,
                 middleware=middleware,
                 debug=False,
             )
 
-            txt_name = f"doc_{which}.txt"
-            files = {f"/{txt_name}": create_file_data(_safe_read_text(txt_path))}
-            query = f"ファイル '{txt_name}' を解析してASTを構築してください。"
-            config_lg = {"configurable": {"thread_id": f"{ctx.run_id}:{which}:direct_ast"}}
-            result = agent.invoke({"messages": [{"role": "user", "content": query}], "files": files}, config=config_lg)
-            if not isinstance(result, dict):
-                raise RuntimeError("direct AST agent returned non-dict result (structured_response unavailable)")
-            sr = result.get("structured_response")
-            if isinstance(sr, DirectDocumentAST):
-                ast_obj = sr
-            elif isinstance(sr, dict):
-                ast_obj = DirectDocumentAST(**sr)
+            raw_text = _safe_read_text(txt_path)
+            lines = line_segmenter.split_lines(raw_text)
+            line_count = len(lines)
+
+            if line_count == 0:
+                plan = LineSegmentationPlan(line_count=0, sections=[])
             else:
-                raise RuntimeError("direct AST agent returned no structured_response")
+                numbered_text = line_segmenter.add_line_numbers(lines)
+                txt_name = f"doc_{which}.txt"
+                files = {f"/{txt_name}": create_file_data(numbered_text)}
+                query = (
+                    f"ファイル '{txt_name}' を解析してください。"
+                    f"行数は {line_count} 行です。"
+                    "セクション境界のみをJSONで返してください。"
+                )
+                config_lg = {"configurable": {"thread_id": f"{ctx.run_id}:{which}:segmenter"}}
+                result = agent.invoke({"messages": [{"role": "user", "content": query}], "files": files}, config=config_lg)
+                if not isinstance(result, dict):
+                    raise RuntimeError("line segmenter returned non-dict result (structured_response unavailable)")
+                sr = result.get("structured_response")
+                if isinstance(sr, LineSegmentationPlan):
+                    plan = sr
+                elif isinstance(sr, dict):
+                    plan = LineSegmentationPlan(**sr)
+                else:
+                    last_text = _extract_last_ai_text(result)
+                    plan_data = _extract_json_from_text(last_text)
+                    plan = LineSegmentationPlan(**plan_data)
 
-            ast_data = ast_obj.model_dump()
-            if not ast_data.get("file_name"):
-                ast_data["file_name"] = os.path.basename(str(txt_path))
-            root = ast_data.get("root") or {}
-            if isinstance(root, dict) and not root.get("section_title"):
-                root["section_title"] = f"doc_{which}"
-                ast_data["root"] = root
+            line_segmenter.validate_plan(plan, line_count)
 
-            ast_data["__meta__"] = {
-                "rev": 0,
-                "updated_at": _utcnow_iso(),
-                "generated_from": "llm_direct",
-                "model": model_name,
-            }
+            plan_path = work_dir / f"segment_plan_{which}.json"
+            plan_path.write_text(json.dumps(plan.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+            rel = plan_path.relative_to(run_dir).as_posix()
+            ctx.events.emit(
+                ctx.run_id,
+                "artifact_updated",
+                {"ts": _utcnow_iso(), "kind": f"segment_plan_{which}", "path": rel},
+            )
 
+            md_text = line_segmenter.plan_to_markdown(lines, plan)
+            md_path = work_dir / f"doc_{which}.md"
+            md_path.write_text(md_text, encoding="utf-8")
+            rel = md_path.relative_to(run_dir).as_posix()
+            ctx.events.emit(
+                ctx.run_id,
+                "artifact_updated",
+                {"ts": _utcnow_iso(), "kind": f"md_{which}", "path": rel},
+            )
+
+            ast_data = markdown_ast_builder.build_ast_from_markdown(
+                text_content=md_text,
+                text_path=str(md_path),
+                root_title=f"doc_{which}",
+                max_content_chars_per_node=int(ctx.params.get("max_content_chars_per_node", 2000)),
+            )
+            meta = ast_data.get("__meta__")
+            if not isinstance(meta, dict):
+                meta = {}
+            meta.update(
+                {
+                    "rev": 0,
+                    "updated_at": _utcnow_iso(),
+                    "generated_from": "markdown_segmenter",
+                    "model": model_name,
+                }
+            )
+            ast_data["__meta__"] = meta
             out_ast.write_text(json.dumps(ast_data, ensure_ascii=False, indent=2), encoding="utf-8")
         else:
             if not bp_path.exists():

@@ -1,6 +1,7 @@
 from langchain_core.tools import tool
 import os
 import re
+from pathlib import Path
 from typing import Annotated, List, Optional
 from pydantic import BaseModel, Field
 import fitz  # PyMuPDF
@@ -1524,39 +1525,54 @@ def compare_specified_chunks_diff(
         indent=2,
     )
 
-def _get_pdf_page_as_image_impl(pdf_name: str, page_numbers: list[int], dpi: int = 150) -> List[dict]:
+def _get_pdf_page_as_image_impl(pdf_path: Path, page_numbers: list[int], dpi: int = 150) -> List[dict]:
     """PDFの指定ページを画像として取得する"""
-        
-    if not os.path.exists(os.path.join("data", "input", pdf_name)):
-        return f"エラー: ファイルが見つかりません: {pdf_name}"
-    
-    doc = fitz.open(os.path.join("data", "input", pdf_name))
-    result = []
-    for page_number in page_numbers:
-        if page_number < 1 or page_number > len(doc):
-            doc.close()
-            return f"エラー: ページ {page_number} は存在しません（総ページ数: {len(doc)}）"
-        
-        page = doc[page_number - 1]
-        
-        # ページを画像に変換
-        mat = fitz.Matrix(dpi / 72, dpi / 72)
-        pix = page.get_pixmap(matrix=mat)
-        
-        # PNG形式でbase64エンコード
-        img_bytes = pix.tobytes("png")
-        b64_data = base64.b64encode(img_bytes).decode("utf-8")
+    doc = fitz.open(str(pdf_path))
+    try:
+        result = []
+        for page_number in page_numbers:
+            if page_number < 1 or page_number > len(doc):
+                raise ValueError(f"ページ {page_number} は存在しません（総ページ数: {len(doc)}）")
 
-        result.append({
-            "page_number": page_number,
-            "base64_data": b64_data,    
-        })
-    
-    doc.close()
-    return result
+            page = doc[page_number - 1]
+
+            # ページを画像に変換
+            mat = fitz.Matrix(dpi / 72, dpi / 72)
+            pix = page.get_pixmap(matrix=mat)
+
+            # PNG形式でbase64エンコード
+            img_bytes = pix.tobytes("png")
+            b64_data = base64.b64encode(img_bytes).decode("utf-8")
+
+            result.append(
+                {
+                    "page_number": page_number,
+                    "base64_data": b64_data,
+                }
+            )
+        return result
+    finally:
+        doc.close()
+
+
+def _resolve_pdf_path(document_name: str, base_dir: Path) -> Optional[Path]:
+    name = str(document_name or "").strip()
+    if name.endswith(".ast.json"):
+        name = name.replace(".ast.json", ".pdf")
+    elif name.endswith(".txt"):
+        name = name.replace(".txt", ".pdf")
+
+    if name:
+        p = Path(name)
+        if p.is_absolute() and p.exists():
+            return p
+        cand = base_dir / name
+        if cand.exists():
+            return cand
+    return None
 
 @tool
-def analyze_visual_contents(document_name: str, page_numbers: list[int], prompt: str):
+def analyze_visual_contents(document_name: str, page_numbers: list[int], prompt: str, base_dir: str = "data/input") -> str:
     """
     ドキュメントの特定ページを画像として取得して分析して、プロンプトに従って結果を返す。
     以下のタグが付与されたページはこのツールで分析することが推奨されます。
@@ -1566,24 +1582,31 @@ def analyze_visual_contents(document_name: str, page_numbers: list[int], prompt:
         prompt: 分析するためのプロンプト
         document_name: ドキュメントファイル名（.txt/.ast.json/.pdf）
         page_numbers: ページ番号（1ベース）のリスト
+        base_dir: PDF探索の基準ディレクトリ（既定: data/input）
     
     戻り値:
         str: 分析結果
     """
     llm = build_llm()
-    
-    b64_data_list = []
-    if document_name and page_numbers:
-        if document_name.endswith(".ast.json"):
-            document_name = document_name.replace(".ast.json", ".pdf")
-        elif document_name.endswith(".txt"):
-            document_name = document_name.replace(".txt", ".pdf")
-        # PDFの特定ページを画像として取得（内部実装を直接呼び出す）
-        result = _get_pdf_page_as_image_impl(document_name, page_numbers)
-        b64_data_list = [{"type": "image_url", "image_url": {"url": f"data:image/png;base64,{item['base64_data']}"}} for item in result]
-    else:
-        return [{"type": "text", "text": "エラー: 画像ファイルまたはPDFファイルのパスが指定されていません。"}]
-    
+
+    if not document_name or not page_numbers:
+        return "エラー: document_name と page_numbers を指定してください。"
+
+    base_dir_path = Path(str(base_dir or "")).resolve() if str(base_dir or "").strip() else Path("data/input")
+    pdf_path = _resolve_pdf_path(document_name, base_dir_path)
+    if not pdf_path:
+        return f"エラー: ファイルが見つかりません: {document_name}"
+
+    try:
+        result = _get_pdf_page_as_image_impl(pdf_path, page_numbers)
+    except Exception as exc:
+        return f"エラー: {exc}"
+
+    b64_data_list = [
+        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{item['base64_data']}"}}
+        for item in result
+    ]
+
     message = HumanMessage(
         content=[
             {"type": "text", "text": prompt},
@@ -1591,7 +1614,7 @@ def analyze_visual_contents(document_name: str, page_numbers: list[int], prompt:
         ]
     )
     response = llm.invoke([message])
-    return response.content
+    return getattr(response, "content", None) or str(response)
 
 
 # --- Blueprint検証ツール（仮想ファイルシステム対応） ---

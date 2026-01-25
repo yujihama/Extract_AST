@@ -91,6 +91,24 @@ pip install -r requirements.txt
 
 ※ `document_process_app/` は起動時に `.env` を自動で読み込みます（UI/CLI共通）。
 
+### UI / API / CLI の違い（入口）と同一性（内部処理）
+
+このアプリは「実行方法」が3つありますが、**入口が違うだけで、内部では同じ処理（Run作成→開始→イベント/成果物記録）**を呼びます。
+
+- **UI（Web）**: ブラウザから `POST /admin/runs` 等へアクセス（フォーム/HTMX向け）
+- **API（JSON）**: プログラムから `POST /api/runs` 等を叩く（JSON入出力）
+- **CLI（コマンド）**: `python -m document_process_app.cli ...`（テスト/自動化向け）
+
+重要:
+- UIから実行しても **CLIプロセスを起動するわけではありません**。ブラウザ→FastAPIへHTTPリクエストが飛び、サーバ内で実行が始まります。
+- UI用エンドポイント（`/admin/...`）とAPI用（`/api/...`）は **別のURL** ですが、内部では共通のサービス層（`RunService`）→実行エンジン（`RunExecutor`）に集約されています。
+
+| 実行方法 | 何に向いているか | 入口の例 | 返り値/見え方 |
+| --- | --- | --- | --- |
+| UI（Web） | 手動で試す・進捗を見る | `GET /admin` / `POST /admin/runs` | 画面（SSEでイベントが増える） |
+| API（JSON） | 連携・スクリプト化 | `POST /api/runs` | JSON（run_idなど） |
+| CLI | 回帰テスト・自動実行 | `python -m document_process_app.cli ...` | JSONを標準出力（exit codeで成否） |
+
 ### CLI（同期実行・テスト向け）
 
 ```powershell
@@ -136,7 +154,7 @@ python -m document_process_app.cli execute <run_id>
 
 ### 成果物（Artifacts）の確認方法
 
-- **Web UI**: Run詳細（`/runs/{run_id}`）の「成果物」から `view` / `download`
+- **Web UI**: Run詳細（`/admin/runs/{run_id}`）の「成果物」から `view` / `download`
 - **CLI**:
   - 一覧: `python -m document_process_app.cli artifacts <run_id>`
   - 取得: `python -m document_process_app.cli export <run_id> --kind template_filled --out .\\template_filled.md`
@@ -149,12 +167,13 @@ python -m document_process_app.cli execute <run_id>
 uvicorn document_process_app.web.app:app --reload
 ```
 
-ブラウザで `http://127.0.0.1:8000` を開いてください。
+ブラウザで `http://127.0.0.1:8000/admin` を開いてください。
+（ポートを変えて起動している場合は例: `http://127.0.0.1:8001/admin`）
 
 主な画面:
-- Run一覧: `/`
-- Run作成: `/runs/new`（複数ドキュメント選択/アップロード）
-- ドキュメント一覧: `/documents`
+- Run一覧: `/admin`
+- Run作成: `/admin/runs/new`（複数ドキュメント選択/アップロード）
+- ドキュメント一覧: `/admin/documents`
 
 ---
 

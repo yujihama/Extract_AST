@@ -7,6 +7,7 @@ import sys
 import time
 
 from document_process_app.bootstrap import build_default_executor
+from document_process_app.service import RunService, RunServiceError
 
 
 def _print_json(obj) -> None:
@@ -54,6 +55,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     executor, repo, events, artifacts_repo = build_default_executor()
+    run_service = RunService(executor=executor)
 
     if args.cmd == "create":
         try:
@@ -62,34 +64,29 @@ def main(argv: list[str] | None = None) -> int:
             params = {}
         if not isinstance(params, dict):
             params = {"params": params}
-        params.setdefault("mode", args.mode)
-        # デフォルトで AST 枝サマリを有効化（run跨ぎで要約済みASTを確実に再利用するため）
-        # ※ dummy モードでは SummarizeAstStep 自体が実行されないので安全
-        params.setdefault("summarize_ast", True)
-        documents: list[dict[str, str]] = []
-        for p in args.doc:
-            documents.append({"path": str(p)})
-        for h in args.doc_hash:
-            documents.append({"doc_hash": str(h)})
-        if len(documents) < 1:
-            _print_json({"ok": False, "error": "documents must be >= 1 (use --doc/--doc-hash)"})
+        try:
+            result = run_service.create_from_cli(
+                doc_paths=args.doc,
+                doc_hashes=args.doc_hash,
+                request_text=str(args.request or ""),
+                hil_enabled=bool(args.hil),
+                mode=args.mode,
+                params_raw=params,
+            )
+        except RunServiceError as exc:
+            _print_json({"ok": False, "error": str(exc)})
             return 2
-        run = executor.create_run(
-            documents=documents,
-            request_text=str(args.request or ""),
-            hil_enabled=bool(args.hil),
-            params=params,
-        )
+        run = result.run
         _print_json({"run_id": run.run_id, "status": run.status, "created_at": run.created_at.isoformat()})
         return 0
 
     if args.cmd == "start":
-        job_id = executor.start(args.run_id)
+        job_id = run_service.start_run(args.run_id)
         _print_json({"ok": True, "run_id": args.run_id, "job_id": job_id})
         return 0
 
     if args.cmd == "cancel":
-        executor.request_cancel(args.run_id)
+        run_service.cancel_run(args.run_id)
         _print_json({"ok": True, "run_id": args.run_id})
         return 0
 

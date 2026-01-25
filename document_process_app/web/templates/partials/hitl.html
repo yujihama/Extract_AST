@@ -23,7 +23,7 @@
         </div>
       {% endif %}
 
-      <form class="mt-3" hx-post="/runs/{{ run.run_id }}/hitl/respond" hx-target="#hitl-panel" hx-swap="innerHTML">
+      <form class="mt-3" hx-post="/admin/runs/{{ run.run_id }}/hitl/respond" hx-target="#hitl-panel" hx-swap="innerHTML">
         <div class="form-control">
           <label class="label">
             <span class="label-text text-sm">回答</span>
@@ -32,7 +32,7 @@
         </div>
         <div class="mt-3 flex gap-2">
           <button type="submit" class="btn btn-sm btn-primary">回答して再開</button>
-          <button type="button" class="btn btn-sm btn-outline" hx-post="/runs/{{ run.run_id }}/start" hx-target="#status-panel" hx-swap="innerHTML">再開のみ（回答なし）</button>
+          <button type="button" class="btn btn-sm btn-outline" hx-post="/admin/runs/{{ run.run_id }}/start" hx-target="#status-panel" hx-swap="innerHTML">再開のみ（回答なし）</button>
         </div>
       </form>
     </div>

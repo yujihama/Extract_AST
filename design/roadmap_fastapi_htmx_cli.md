@@ -95,13 +95,13 @@
 ### 実装項目
 
 - ページ
-  - Run一覧: `GET /`
-  - Run作成: `GET /runs/new`, `POST /runs`
-  - Run詳細: `GET /runs/{run_id}`
+  - Run一覧: `GET /admin`
+  - Run作成: `GET /admin/runs/new`, `POST /admin/runs`
+  - Run詳細: `GET /admin/runs/{run_id}`
 - HTMXフラグメント
   - status / artifacts / template preview
 - SSE
-  - `GET /runs/{run_id}/events`
+  - `GET /admin/runs/{run_id}/events`
 
 ### 達成基準（受け入れ条件）
 

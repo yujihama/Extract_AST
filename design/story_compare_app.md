@@ -44,7 +44,7 @@
 ### フェーズB: 可視化を “ログファイル” ではなく “イベント” に寄せる
 
 - `EventSinkMiddleware` を実装し、deep_agent/subagent/tool の実行イベントを `run_events` に保存。
-- UIは `/runs/{run_id}/events`（SSE）で購読し、タイムライン表示する。
+- UIは `/admin/runs/{run_id}/events`（SSE）で購読し、タイムライン表示する。
 
 狙い:
 - 「後からJSONLをtail→DBへ取り込み」より、リアルタイム性と拡張性が高い。

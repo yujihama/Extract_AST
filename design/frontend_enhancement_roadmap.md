@@ -72,16 +72,15 @@ FastAPI + htmx のアーキテクチャを維持しつつ、Tailwind CSS + Daisy
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- htmx -->
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-  <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/sse.js"></script>
 </head>
 <body class="min-h-screen bg-base-200">
   <!-- ナビゲーション -->
   <div class="navbar bg-base-100 shadow-lg">
     <div class="flex-1">
-      <a href="/" class="btn btn-ghost text-xl">document_process_agent</a>
+      <a href="/admin" class="btn btn-ghost text-xl">document_process_agent</a>
     </div>
     <div class="flex-none">
-      <a href="/runs/new" class="btn btn-primary btn-sm">新規Run</a>
+      <a href="/admin/runs/new" class="btn btn-primary btn-sm">新規Run</a>
     </div>
   </div>
   <!-- メインコンテンツ -->
@@ -140,7 +139,7 @@ FastAPI + htmx のアーキテクチャを維持しつつ、Tailwind CSS + Daisy
 ```html
 <!-- ボタンにローディング表示 -->
 <button class="btn btn-primary" 
-        hx-post="/runs/{{ run_id }}/start" 
+        hx-post="/admin/runs/{{ run_id }}/start" 
         hx-target="#status-panel"
         hx-indicator="#start-loading">
   <span id="start-loading" class="htmx-indicator loading loading-spinner loading-sm"></span>
@@ -184,7 +183,7 @@ Run詳細画面にプログレスバーを追加（ステップ進捗を可視�
 
 ```html
 <button class="btn btn-error btn-outline"
-        hx-post="/runs/{{ run_id }}/cancel"
+        hx-post="/admin/runs/{{ run_id }}/cancel"
         hx-confirm="本当にキャンセルしますか？"
         hx-target="#status-panel">
   キャンセル
@@ -248,17 +247,17 @@ Run詳細画面にプログレスバーを追加（ステップ進捗を可視�
 ```html
 <div class="flex gap-2 mb-4">
   <button class="btn btn-sm btn-outline" 
-          hx-get="/runs/{{ run_id }}/partials/events?filter=step"
+          hx-get="/admin/runs/{{ run_id }}/partials/events?filter=step"
           hx-target="#events-container">
     Step
   </button>
   <button class="btn btn-sm btn-outline"
-          hx-get="/runs/{{ run_id }}/partials/events?filter=tool"
+          hx-get="/admin/runs/{{ run_id }}/partials/events?filter=tool"
           hx-target="#events-container">
     Tool
   </button>
   <button class="btn btn-sm btn-outline"
-          hx-get="/runs/{{ run_id }}/partials/events?filter=agent"
+          hx-get="/admin/runs/{{ run_id }}/partials/events?filter=agent"
           hx-target="#events-container">
     Agent
   </button>
@@ -293,17 +292,17 @@ Run詳細画面にプログレスバーを追加（ステップ進捗を可視�
 ```html
 <div role="tablist" class="tabs tabs-lifted">
   <a role="tab" class="tab tab-active"
-     hx-get="/runs/{{ run_id }}/partials/artifacts?category=input"
+     hx-get="/admin/runs/{{ run_id }}/partials/artifacts?category=input"
      hx-target="#artifacts-content">
     入力
   </a>
   <a role="tab" class="tab"
-     hx-get="/runs/{{ run_id }}/partials/artifacts?category=work"
+     hx-get="/admin/runs/{{ run_id }}/partials/artifacts?category=work"
      hx-target="#artifacts-content">
     中間生成物
   </a>
   <a role="tab" class="tab"
-     hx-get="/runs/{{ run_id }}/partials/artifacts?category=out"
+     hx-get="/admin/runs/{{ run_id }}/partials/artifacts?category=out"
      hx-target="#artifacts-content">
     成果物
   </a>

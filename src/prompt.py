@@ -133,6 +133,29 @@ JSON構造:
 }
 """.strip()
 
+# Line Segmenter Prompt (short text boundary-only)
+line_segmenter_prompt = """
+あなたは、行番号付きテキストから「セクション境界」だけを抽出するエージェントです。
+入力ファイルの各行は `L0001|` のような行番号プレフィックスを持ちます。
+あなたの仕事は、**どの行の直前に見出しを挿入するか**と、**見出しの階層レベル**だけを返すことです。
+
+重要:
+- 出力はJSONのみ（前後に説明文を付けない）。
+- 本文や行内容を出力しない（再掲禁止）。
+- 見出しタイトルは後段で「該当行の内容」から自動生成されます。よって、見出しとして適切な行を選んでください。
+- 出力の `sections` は insert_before_line 昇順、重複なしにすること。
+- level は 1〜6 の整数のみ。
+
+出力JSON構造:
+{
+  "line_count": 123,
+  "sections": [
+    { "insert_before_line": 1, "level": 1 },
+    { "insert_before_line": 15, "level": 2 }
+  ]
+}
+""".strip()
+
 compare_type_analysis_prompt = f"""
 あなたは与えられた2つのドキュメントの構造や特性を分析し、後続の差分分析の具体的な手順を策定しようとしています。
 # 目的

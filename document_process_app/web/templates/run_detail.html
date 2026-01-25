@@ -6,7 +6,7 @@
     <div class="card-body">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div class="flex items-center gap-2">
-          <a href="/" class="btn btn-ghost btn-sm">
+          <a href="/admin" class="btn btn-ghost btn-sm">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
@@ -18,7 +18,7 @@
         </div>
         <div class="flex gap-2">
           <button class="btn btn-primary btn-sm" 
-                  hx-post="/runs/{{ run.run_id }}/start" 
+                  hx-post="/admin/runs/{{ run.run_id }}/start" 
                   hx-target="#status-panel" 
                   hx-swap="innerHTML"
                   hx-indicator="#start-indicator">
@@ -29,7 +29,7 @@
             開始
           </button>
           <button class="btn btn-error btn-outline btn-sm" 
-                  hx-post="/runs/{{ run.run_id }}/cancel" 
+                  hx-post="/admin/runs/{{ run.run_id }}/cancel" 
                   hx-target="#status-panel" 
                   hx-swap="innerHTML"
                   hx-confirm="本当にキャンセルしますか？"
@@ -55,12 +55,12 @@
           </svg>
           ステータス
         </h2>
-        <div id="status-panel" hx-get="/runs/{{ run.run_id }}/partials/status" hx-trigger="load, refresh">
+        <div id="status-panel" hx-get="/admin/runs/{{ run.run_id }}/partials/status" hx-trigger="load, refresh">
           <div class="flex justify-center py-4">
             <span class="loading loading-spinner loading-md"></span>
           </div>
         </div>
-        <div id="hitl-panel" class="mt-4" hx-get="/runs/{{ run.run_id }}/partials/hitl" hx-trigger="load, refresh">
+        <div id="hitl-panel" class="mt-4" hx-get="/admin/runs/{{ run.run_id }}/partials/hitl" hx-trigger="load, refresh">
           <div class="flex justify-center py-2">
             <span class="loading loading-spinner loading-sm"></span>
           </div>
@@ -86,7 +86,7 @@
   <!-- 成果物＆テンプレート -->
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <!-- 成果物一覧 -->
-    <div class="card bg-base-100 shadow-xl" id="artifacts-panel" hx-get="/runs/{{ run.run_id }}/partials/artifacts" hx-trigger="load, refresh" hx-target="this">
+    <div class="card bg-base-100 shadow-xl" id="artifacts-panel" hx-get="/admin/runs/{{ run.run_id }}/partials/artifacts" hx-trigger="load, refresh" hx-target="this">
       <div class="card-body">
         <div class="flex justify-center py-8">
           <span class="loading loading-spinner loading-md"></span>
@@ -103,7 +103,7 @@
           </svg>
           テンプレ（Draft）
         </h2>
-        <div id="template-draft" hx-get="/runs/{{ run.run_id }}/partials/template?kind=draft" hx-trigger="load, refresh">
+        <div id="template-draft" hx-get="/admin/runs/{{ run.run_id }}/partials/template?kind=draft" hx-trigger="load, refresh">
           <div class="flex justify-center py-4">
             <span class="loading loading-spinner loading-sm"></span>
           </div>
@@ -120,7 +120,7 @@
           </svg>
           テンプレ（Filled）
         </h2>
-        <div id="template-filled" hx-get="/runs/{{ run.run_id }}/partials/template?kind=filled" hx-trigger="load, refresh">
+        <div id="template-filled" hx-get="/admin/runs/{{ run.run_id }}/partials/template?kind=filled" hx-trigger="load, refresh">
           <div class="flex justify-center py-4">
             <span class="loading loading-spinner loading-sm"></span>
           </div>
@@ -1045,7 +1045,7 @@
 
   // SSE接続
   hydrateFlowFromApi();
-  const source = new EventSource(`/runs/${runId}/events`);
+  const source = new EventSource(`/admin/runs/${runId}/events`);
   
   source.onmessage = handleSSEEvent;
   

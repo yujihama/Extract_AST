@@ -7,7 +7,7 @@
     <p class="text-base-content/60 mt-1">登録済みのドキュメント（入力ファイル）を管理します</p>
   </div>
   <div class="flex gap-2">
-    <a href="/runs/new" class="btn btn-primary">
+    <a href="/admin/runs/new" class="btn btn-primary">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
       </svg>
@@ -58,7 +58,7 @@
         <td>
           <button 
             class="btn btn-ghost btn-xs text-error"
-            hx-delete="/documents/{{ doc.doc_hash }}"
+            hx-delete="/admin/documents/{{ doc.doc_hash }}"
             hx-target="#doc-row-{{ doc.doc_hash }}"
             hx-swap="outerHTML"
             hx-confirm="「{{ doc.original_filename }}」を削除しますか？&#10;この操作は取り消せません。"
@@ -82,7 +82,7 @@
     <h2 class="card-title text-base-content/50">ドキュメントがありません</h2>
     <p class="text-base-content/40">新規Runを作成するとドキュメントが登録されます</p>
     <div class="card-actions mt-4">
-      <a href="/runs/new" class="btn btn-primary">新規Runを作成</a>
+      <a href="/admin/runs/new" class="btn btn-primary">新規Runを作成</a>
     </div>
   </div>
 </div>

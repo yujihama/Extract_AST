@@ -39,7 +39,7 @@
 
 - **アップロード**: PDF/TXT をアップロードして Run に紐付けて保存
 - **テキスト入力**: 直接貼り付け（小さいデータ用、任意）
-  - 現状は UI 未対応。JSON API（`POST /api/runs/multi`）で `documents[].text` として作成可能
+  - 現状は UI 未対応。JSON API（`POST /api/runs`）で `documents[].text` として作成可能
 - **前処理**:
   - PDF→txt 変換（高速モード / LLMモード）
   - txt はそのまま利用（エンコーディングは `errors=replace` 等で扱う）
@@ -195,16 +195,16 @@ SQLiteは「どのcacheを使ったか/統計」だけ持つのが現実的。
 
 ### 5.1 画面
 
-- `/` Run一覧（状態、入力、作成日時、直近更新、リンク）
-- `/runs/new` Run作成（アップロード→変換設定→開始）
-- `/runs/{run_id}` Run詳細
+- `/admin` Run一覧（状態、入力、作成日時、直近更新、リンク）
+- `/admin/runs/new` Run作成（アップロード→変換設定→開始）
+- `/admin/runs/{run_id}` Run詳細
   - ステータス、進捗、成果物一覧
   - 「イベントタイムライン」（SSEで自動更新）
   - 템プレ生成物/filled template のプレビュー（部分更新）
 
 ### 5.2 SSE（HTMXでリアルタイム）
 
-- `/runs/{run_id}/events`（text/event-stream）
+- `/admin/runs/{run_id}/events`（text/event-stream）
 - フロントは「新規イベントを追記表示」し、必要なら成果物プレビュー領域もhx-getで更新
 
 ---

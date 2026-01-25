@@ -5,7 +5,7 @@
   <div class="card bg-base-100 shadow-xl">
     <div class="card-body">
       <div class="flex items-center gap-2">
-        <a href="/" class="btn btn-ghost btn-sm">
+        <a href="/admin" class="btn btn-ghost btn-sm">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
           </svg>
@@ -17,7 +17,7 @@
   </div>
 
   <!-- フォーム -->
-  <form action="/runs" method="post" enctype="multipart/form-data" class="flex flex-col gap-6">
+  <form action="/admin/runs" method="post" enctype="multipart/form-data" class="flex flex-col gap-6">
     <!-- ドキュメント選択 -->
     <div class="card bg-base-100 shadow-xl">
       <div class="card-body">
@@ -84,7 +84,7 @@
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
           <span class="text-sm">
             既存ドキュメントを選択すると、AST/Blueprintが再利用され処理時間が短縮されます。
-            <a href="/documents" class="link link-primary">ドキュメント一覧を見る</a>
+            <a href="/admin/documents" class="link link-primary">ドキュメント一覧を見る</a>
           </span>
         </div>
         {% endif %}
@@ -342,7 +342,7 @@
     <div class="card bg-base-100 shadow-xl">
       <div class="card-body">
         <div class="flex flex-col sm:flex-row gap-4 justify-end">
-          <a href="/" class="btn btn-ghost">キャンセル</a>
+          <a href="/admin" class="btn btn-ghost">キャンセル</a>
           <button type="submit" class="btn btn-primary">
             <span class="htmx-indicator loading loading-spinner loading-sm"></span>
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
