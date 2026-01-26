@@ -7,32 +7,221 @@
   <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/cdn.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css">
+  <link id="hljs-light" rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css">
+  <link id="hljs-dark" rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css" disabled>
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
   <style>
+    [x-cloak] { display: none !important; }
+
     .htmx-indicator { display: none; }
     .htmx-request .htmx-indicator { display: inline-block; }
     .htmx-request.htmx-indicator { display: inline-block; }
 
+    /* Theme tokens (switch by html[data-theme]) */
+    :root[data-theme="dark"] {
+      --dp-surface-card-border: rgba(148, 163, 184, 0.12);
+      --dp-surface-card-bg: rgba(10, 15, 24, 0.88);
+      --dp-surface-card-shadow: 0 18px 40px rgba(2, 6, 23, 0.65), inset 0 0 0 1px rgba(59, 130, 246, 0.05);
+
+      --dp-surface-soft-border: rgba(94, 234, 212, 0.22);
+      --dp-surface-soft-bg: rgba(15, 23, 42, 0.55);
+
+      --dp-neo-panel-border: rgba(59, 130, 246, 0.2);
+      --dp-neo-panel-bg: rgba(7, 10, 18, 0.75);
+      --dp-neo-panel-shadow: 0 18px 36px rgba(0, 0, 0, 0.45);
+
+      --dp-node-map-bg: radial-gradient(circle at 30% 20%, rgba(30, 64, 175, 0.18), transparent 55%),
+                        radial-gradient(circle at 80% 10%, rgba(16, 185, 129, 0.12), transparent 50%),
+                        rgba(8, 11, 20, 0.9);
+      --dp-node-map-border: rgba(59, 130, 246, 0.18);
+
+      --dp-map-node-bg: rgba(15, 23, 42, 0.85);
+      --dp-map-node-border: rgba(148, 163, 184, 0.4);
+      --dp-map-node-text: rgba(226, 232, 240, 0.9);
+      --dp-map-node-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.25);
+    }
+
+    :root[data-theme="light"] {
+      --dp-surface-card-border: rgba(15, 23, 42, 0.12);
+      --dp-surface-card-bg: rgba(255, 255, 255, 0.92);
+      --dp-surface-card-shadow: 0 16px 32px rgba(15, 23, 42, 0.08), inset 0 0 0 1px rgba(59, 130, 246, 0.03);
+
+      --dp-surface-soft-border: rgba(14, 116, 144, 0.18);
+      --dp-surface-soft-bg: rgba(241, 245, 249, 0.9);
+
+      --dp-neo-panel-border: rgba(59, 130, 246, 0.14);
+      --dp-neo-panel-bg: rgba(248, 250, 252, 0.9);
+      --dp-neo-panel-shadow: 0 14px 28px rgba(15, 23, 42, 0.10);
+
+      --dp-node-map-bg: radial-gradient(circle at 30% 20%, rgba(59, 130, 246, 0.14), transparent 58%),
+                        radial-gradient(circle at 80% 10%, rgba(16, 185, 129, 0.10), transparent 55%),
+                        rgba(248, 250, 252, 0.96);
+      --dp-node-map-border: rgba(59, 130, 246, 0.12);
+
+      --dp-map-node-bg: rgba(255, 255, 255, 0.92);
+      --dp-map-node-border: rgba(15, 23, 42, 0.16);
+      --dp-map-node-text: rgba(15, 23, 42, 0.92);
+      --dp-map-node-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.04);
+    }
+
     .surface-card {
-      border: 1px solid hsl(var(--b2) / 0.7);
-      background: hsl(var(--b1) / 0.9);
+      border: 1px solid var(--dp-surface-card-border);
+      background: var(--dp-surface-card-bg);
       border-radius: 1.5rem;
-      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+      box-shadow: var(--dp-surface-card-shadow);
     }
 
     .surface-soft {
-      border: 1px dashed hsl(var(--b2) / 0.9);
-      background: hsl(var(--b2) / 0.4);
+      border: 1px dashed var(--dp-surface-soft-border);
+      background: var(--dp-surface-soft-bg);
       border-radius: 1rem;
+    }
+
+    .neo-panel {
+      border: 1px solid var(--dp-neo-panel-border);
+      background: var(--dp-neo-panel-bg);
+      box-shadow: var(--dp-neo-panel-shadow);
+      border-radius: 1.25rem;
+    }
+
+    .neo-glow {
+      box-shadow: 0 0 22px rgba(56, 189, 248, 0.35), 0 0 60px rgba(14, 116, 144, 0.25);
+    }
+
+    .neo-dot {
+      width: 0.55rem;
+      height: 0.55rem;
+      border-radius: 999px;
+      background: rgba(34, 211, 238, 0.85);
+      box-shadow: 0 0 8px rgba(34, 211, 238, 0.9);
+    }
+
+    .node-map {
+      position: relative;
+      border-radius: 1.5rem;
+      background: var(--dp-node-map-bg);
+      border: 1px solid var(--dp-node-map-border);
+      overflow: hidden;
+    }
+
+    .map-line {
+      stroke: rgba(148, 163, 184, 0.45);
+      stroke-dasharray: 4 6;
+      stroke-width: 1.2;
+      stroke-linecap: round;
+      shape-rendering: geometricPrecision;
+    }
+
+    .map-line.active {
+      stroke: rgba(56, 189, 248, 0.9);
+      stroke-width: 1.6;
+      stroke-dasharray: 2 4;
+    }
+
+    .map-line.subagent {
+      stroke: rgba(94, 234, 212, 0.6);
+      stroke-dasharray: 2 6;
+    }
+
+    .map-line.tool {
+      stroke: rgba(148, 163, 184, 0.2);
+    }
+
+    .map-line.artifact {
+      stroke: rgba(251, 191, 36, 0.6);
+    }
+
+    .map-node {
+      background: var(--dp-map-node-bg);
+      border-color: var(--dp-map-node-border);
+      color: var(--dp-map-node-text);
+      box-shadow: var(--dp-map-node-shadow);
+      transition: all 0.3s ease;
+    }
+
+    .map-node.running {
+      background: rgba(14, 116, 144, 0.85);
+      border-color: rgba(56, 189, 248, 0.9);
+      box-shadow: 0 0 18px rgba(34, 211, 238, 0.6);
+    }
+
+    .map-node.finished {
+      background: rgba(16, 185, 129, 0.7);
+      border-color: rgba(52, 211, 153, 0.9);
+      box-shadow: 0 0 16px rgba(16, 185, 129, 0.45);
+    }
+
+    .map-node.failed {
+      background: rgba(239, 68, 68, 0.7);
+      border-color: rgba(248, 113, 113, 0.9);
+      box-shadow: 0 0 16px rgba(248, 113, 113, 0.5);
+    }
+
+    .map-node.skipped {
+      background: rgba(234, 179, 8, 0.35);
+      border-color: rgba(250, 204, 21, 0.75);
+      box-shadow: 0 0 12px rgba(250, 204, 21, 0.4);
+    }
+
+    .map-node.core {
+      background: rgba(30, 58, 138, 0.9);
+      border-color: rgba(56, 189, 248, 0.9);
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.6);
+    }
+
+    .system-log {
+      max-height: 420px;
+      overflow: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    .log-row {
+      border-bottom: 1px dashed rgba(148, 163, 184, 0.15);
+    }
+
+    .log-row:last-child {
+      border-bottom: none;
+    }
+
+    /* Step connectors (left -> right) */
+    .step-card {
+      position: relative;
+    }
+
+    .step-card.has-next::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: -26px;
+      width: 26px;
+      height: 2px;
+      transform: translateY(-1px);
+      background: linear-gradient(90deg, rgba(56, 189, 248, 0.15), rgba(148, 163, 184, 0.55));
+      box-shadow: 0 0 18px rgba(56, 189, 248, 0.18);
+      pointer-events: none;
+    }
+
+    .step-card.has-next::before {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: -30px;
+      width: 8px;
+      height: 8px;
+      transform: translateY(-4px);
+      border-radius: 999px;
+      background: rgba(56, 189, 248, 0.35);
+      box-shadow: 0 0 14px rgba(56, 189, 248, 0.35);
+      pointer-events: none;
     }
   </style>
 </head>
-<body class="min-h-screen bg-gradient-to-br from-base-200 via-base-100 to-base-200">
-  <div class="navbar bg-base-100/80 backdrop-blur border-b border-base-200 sticky top-0 z-50">
+<body class="min-h-screen bg-base-200 text-base-content transition-colors">
+  <div class="navbar bg-base-100/70 backdrop-blur border-b border-base-300 sticky top-0 z-50">
     <div class="flex-1">
-      <a href="{{ home_url or '/u' }}" class="btn btn-ghost text-lg font-semibold tracking-tight gap-2">
+      <a href="{{ home_url or '/u' }}" class="btn btn-ghost text-lg font-semibold tracking-tight gap-2 text-base-content">
         <span class="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary font-bold">DP</span>
         document_process_agent
       </a>
@@ -41,7 +230,7 @@
       {% if usecase %}
       <a href="/u/{{ usecase }}" class="btn btn-ghost btn-sm">ユースケース</a>
       {% endif %}
-      <label class="swap swap-rotate btn btn-ghost btn-circle">
+      <label class="swap swap-rotate btn btn-ghost btn-circle text-base-content">
         <input type="checkbox" class="theme-controller" value="dark" />
         <svg class="swap-off h-5 w-5 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
           <path d="M21.64,13a1,1,0,0,0-1.05-.14,8.05,8.05,0,0,1-3.37.73A8.15,8.15,0,0,1,9.08,5.49a8.59,8.59,0,0,1,.25-2A1,1,0,0,0,8,2.36,10.14,10.14,0,1,0,22,14.05,1,1,0,0,0,21.64,13Zm-9.5,6.69A8.14,8.14,0,0,1,7.08,5.22v.27A10.15,10.15,0,0,0,17.22,15.63a9.79,9.79,0,0,0,2.1-.22A8.11,8.11,0,0,1,12.14,19.73Z"/>
@@ -58,16 +247,32 @@
   </main>
 
   <script>
-    const themeController = document.querySelector('.theme-controller');
-    if (localStorage.getItem('theme') === 'dark') {
-      themeController.checked = true;
-      document.documentElement.setAttribute('data-theme', 'dark');
+    function syncHljsTheme(theme) {
+      const light = document.getElementById('hljs-light');
+      const dark = document.getElementById('hljs-dark');
+      if (!light || !dark) return;
+      const isDark = theme === 'dark';
+      light.disabled = isDark;
+      dark.disabled = !isDark;
     }
-    themeController.addEventListener('change', (e) => {
-      const theme = e.target.checked ? 'dark' : 'light';
-      document.documentElement.setAttribute('data-theme', theme);
-      localStorage.setItem('theme', theme);
-    });
+
+    const themeController = document.querySelector('.theme-controller');
+    const storedTheme = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const initialTheme = storedTheme || (prefersDark ? 'dark' : 'light');
+
+    document.documentElement.setAttribute('data-theme', initialTheme);
+    syncHljsTheme(initialTheme);
+    if (themeController) themeController.checked = initialTheme === 'dark';
+
+    if (themeController) {
+      themeController.addEventListener('change', (e) => {
+        const theme = e.target.checked ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('theme', theme);
+        syncHljsTheme(theme);
+      });
+    }
   </script>
 </body>
 </html>

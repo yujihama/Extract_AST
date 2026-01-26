@@ -5,8 +5,8 @@
     <div class="card-body gap-6">
       <div class="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
         <div class="space-y-3">
-          <div class="badge badge-primary badge-outline">Usecase</div>
-          <h1 class="text-3xl md:text-4xl font-semibold tracking-tight">{{ recipe.title }}</h1>
+          <div class="badge badge-primary badge-outline text-xs">Usecase</div>
+          <h1 class="text-3xl md:text-4xl font-semibold tracking-tight text-base-content">{{ recipe.title }}</h1>
           <p class="text-base-content/70">{{ recipe.description }}</p>
           <div class="flex flex-wrap gap-2">
             <span class="badge badge-ghost">最小 {{ recipe.doc_constraints.get("min") }} 件</span>
@@ -15,7 +15,7 @@
         </div>
         <div class="flex flex-col items-start gap-3">
           <a href="/u/{{ recipe.recipe_id }}/runs/new" class="btn btn-primary btn-wide">このユースケースで開始</a>
-          <div class="text-xs text-base-content/50">{{ recipe.doc_constraints.get("notes") }}</div>
+          <div class="text-xs text-base-content/60">{{ recipe.doc_constraints.get("notes") }}</div>
         </div>
       </div>
 
@@ -23,16 +23,16 @@
 
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="surface-soft p-4">
-          <div class="text-sm font-semibold">1. ドキュメント</div>
-          <div class="text-xs text-base-content/60 mt-1">既存選択またはアップロード</div>
+          <div class="text-sm font-semibold text-base-content">1. ドキュメント</div>
+          <div class="text-xs text-base-content/70 mt-1">既存選択またはアップロード</div>
         </div>
         <div class="surface-soft p-4">
-          <div class="text-sm font-semibold">2. 依頼文</div>
-          <div class="text-xs text-base-content/60 mt-1">目的や観点を具体的に記載</div>
+          <div class="text-sm font-semibold text-base-content">2. 依頼文</div>
+          <div class="text-xs text-base-content/70 mt-1">目的や観点を具体的に記載</div>
         </div>
         <div class="surface-soft p-4">
-          <div class="text-sm font-semibold">3. 成果物</div>
-          <div class="text-xs text-base-content/60 mt-1">最終レポートを自動生成</div>
+          <div class="text-sm font-semibold text-base-content">3. 成果物</div>
+          <div class="text-xs text-base-content/70 mt-1">最終レポートを自動生成</div>
         </div>
       </div>
     </div>
@@ -40,18 +40,18 @@
 
   <section class="surface-card">
     <div class="card-body">
-      <h2 class="text-lg font-semibold">依頼文の書き方（例）</h2>
+      <h2 class="text-lg font-semibold text-base-content">依頼文の書き方（例）</h2>
       <div class="mockup-code text-xs mt-4">
         <pre data-prefix="$"><code>{{ recipe.request_text_template }}</code></pre>
       </div>
-      <div class="mt-4 text-xs text-base-content/50">この例をベースに、具体的な対象・観点・出力形式を追記してください。</div>
+      <div class="mt-4 text-xs text-base-content/60">この例をベースに、具体的な対象・観点・出力形式を追記してください。</div>
     </div>
   </section>
 
   <section class="surface-card">
     <div class="card-body">
       <div class="flex items-center justify-between">
-        <h2 class="text-lg font-semibold">最近の実行</h2>
+        <h2 class="text-lg font-semibold text-base-content">最近の実行</h2>
         <span class="badge badge-ghost text-xs">{{ recent_runs | length }} 件</span>
       </div>
 
@@ -70,12 +70,12 @@
           <tbody>
             {% for r in recent_runs %}
             <tr class="hover">
-              <td class="font-mono text-xs">{{ r.run_id_short }}...</td>
+              <td class="font-mono text-xs text-base-content/80">{{ r.run_id_short }}...</td>
               <td>
                 <span class="badge badge-outline badge-sm">{{ r.status }}</span>
               </td>
-              <td class="text-xs">{{ r.created_at.strftime('%Y-%m-%d %H:%M') if r.created_at else '-' }}</td>
-              <td class="text-xs">{{ r.finished_at.strftime('%Y-%m-%d %H:%M') if r.finished_at else '-' }}</td>
+              <td class="text-xs text-base-content/70">{{ r.created_at.strftime('%Y-%m-%d %H:%M') if r.created_at else '-' }}</td>
+              <td class="text-xs text-base-content/70">{{ r.finished_at.strftime('%Y-%m-%d %H:%M') if r.finished_at else '-' }}</td>
               <td class="flex flex-wrap gap-2">
                 <a href="/u/{{ recipe.recipe_id }}/runs/{{ r.run_id }}" class="btn btn-ghost btn-xs">詳細</a>
                 {% if r.has_output %}
@@ -88,7 +88,7 @@
         </table>
       </div>
       {% else %}
-      <div class="surface-soft p-4 mt-4 text-sm text-base-content/60">このユースケースの実行結果はまだありません。</div>
+      <div class="surface-soft p-4 mt-4 text-sm text-base-content/70">このユースケースの実行結果はまだありません。</div>
       {% endif %}
     </div>
   </section>

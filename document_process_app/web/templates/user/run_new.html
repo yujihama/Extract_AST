@@ -7,13 +7,13 @@
         <div class="flex items-center gap-2">
           <a href="/u/{{ recipe.recipe_id }}" class="btn btn-ghost btn-sm">戻る</a>
           <div>
-            <h1 class="text-2xl md:text-3xl font-semibold tracking-tight">新規Run作成</h1>
-            <p class="text-sm text-base-content/60">{{ recipe.title }}の実行を開始します。</p>
+            <h1 class="text-2xl md:text-3xl font-semibold tracking-tight text-base-content">新規Run作成</h1>
+            <p class="text-sm text-base-content/70">{{ recipe.title }}の実行を開始します。</p>
           </div>
         </div>
         <span class="badge badge-outline">{{ recipe.recipe_id }}</span>
       </div>
-      <div class="text-xs text-base-content/50">
+      <div class="text-xs text-base-content/60">
         入力→依頼文→（任意）詳細設定→作成 の順に1画面で完結します。
       </div>
     </div>
@@ -25,19 +25,19 @@
     <div class="surface-card">
       <div class="card-body">
         <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold">入力ドキュメント</h2>
+          <h2 class="text-lg font-semibold text-base-content">入力ドキュメント</h2>
           <span class="badge badge-ghost">Step 1</span>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
           <div class="form-control w-full">
             <label class="label">
-              <span class="label-text">既存ドキュメントから選択（複数可）</span>
+              <span class="label-text text-base-content/80">既存ドキュメントから選択（複数可）</span>
             </label>
             <div class="flex flex-wrap items-center gap-2 mb-2">
               <button type="button" class="btn btn-xs" onclick="docSelectAll('doc_hashes')">全選択</button>
               <button type="button" class="btn btn-xs btn-ghost" onclick="docSelectNone('doc_hashes')">選択解除</button>
               <button type="button" class="btn btn-xs btn-ghost" onclick="docSelectInvert('doc_hashes')">反転</button>
-              <span class="text-xs text-base-content/50">Ctrl+クリックで追加/解除</span>
+              <span class="text-xs text-base-content/60">Ctrl+クリックで追加/解除</span>
             </div>
             <select
               id="doc_hashes"
@@ -58,7 +58,7 @@
 
           <div class="form-control w-full">
             <label class="label">
-              <span class="label-text">または新規アップロード（複数可）</span>
+              <span class="label-text text-base-content/80">または新規アップロード（複数可）</span>
             </label>
             <div class="surface-soft p-4">
               <input
@@ -68,10 +68,10 @@
                 accept=".pdf,.txt,.md,.markdown"
                 multiple
               />
-              <div class="mt-2 text-xs text-base-content/50">PDF/TXT/Markdown をまとめて選択できます。</div>
+              <div class="mt-2 text-xs text-base-content/60">PDF/TXT/Markdown をまとめて選択できます。</div>
             </div>
             <label class="label">
-              <span class="label-text-alt text-base-content/50">合計1件以上のドキュメントが必要です。</span>
+              <span class="label-text-alt text-base-content/60">合計1件以上のドキュメントが必要です。</span>
             </label>
           </div>
         </div>
@@ -81,7 +81,7 @@
     <div class="surface-card">
       <div class="card-body">
         <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold">依頼文</h2>
+          <h2 class="text-lg font-semibold text-base-content">依頼文</h2>
           <span class="badge badge-ghost">Step 2</span>
         </div>
         <textarea
@@ -91,13 +91,13 @@
           placeholder="{{ recipe.request_text_template }}"
         ></textarea>
         <label class="label">
-          <span class="label-text-alt text-base-content/50">目的や評価観点を具体的に書くと精度が上がります。</span>
+          <span class="label-text-alt text-base-content/60">目的や評価観点を具体的に書くと精度が上がります。</span>
         </label>
         <label class="label cursor-pointer justify-start gap-4 mt-2">
           <input type="checkbox" name="start_now" checked class="checkbox checkbox-primary" />
           <div>
-            <span class="label-text font-medium">すぐに開始</span>
-            <p class="text-xs text-base-content/50">チェックを外すと作成のみ行います</p>
+            <span class="label-text font-medium text-base-content">すぐに開始</span>
+            <p class="text-xs text-base-content/60">チェックを外すと作成のみ行います</p>
           </div>
         </label>
       </div>

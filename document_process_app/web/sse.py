@@ -17,6 +17,7 @@ def stream_run_events(
     *,
     allowed_types: Optional[Set[str]] = None,
     sanitize: Optional[Callable[[str, dict[str, Any]], dict[str, Any]]] = None,
+    include_step_context: bool = False,
 ) -> StreamingResponse:
     last_id_hdr = request.headers.get("Last-Event-ID")
     try:
@@ -26,6 +27,7 @@ def stream_run_events(
 
     async def gen() -> AsyncGenerator[bytes, None]:
         nonlocal last_id
+        current_step: Optional[str] = None
         yield b": connected\n\n"
         while True:
             if await request.is_disconnected():
@@ -41,7 +43,20 @@ def stream_run_events(
                 last_id = ev.event_id
                 if allowed_types is not None and ev.event_type not in allowed_types:
                     continue
-                payload = ev.payload or {}
+                raw_payload = ev.payload or {}
+
+                # Keep track of latest step context (stateful, in-order)
+                if include_step_context and str(ev.event_type) in {"step_started", "step_waiting_user"}:
+                    try:
+                        step_name = str((raw_payload or {}).get("step") or "").strip()
+                    except Exception:
+                        step_name = ""
+                    if step_name:
+                        current_step = step_name
+
+                payload = dict(raw_payload) if isinstance(raw_payload, dict) else {"payload": raw_payload}
+                if include_step_context and current_step:
+                    payload["_step_ctx"] = current_step
                 if sanitize is not None:
                     try:
                         payload = sanitize(ev.event_type, payload) or {}

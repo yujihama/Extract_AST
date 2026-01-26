@@ -1,29 +1,108 @@
 {% extends "user/base.html" %}
 {% block content %}
-<div class="flex flex-col gap-8">
-  <div class="surface-card">
+<div class="flex flex-col gap-8" x-data="runInsight()" x-init="init()" x-cloak>
+  <section class="surface-card">
     <div class="card-body gap-6">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div class="flex items-center gap-2">
           <a href="/u/{{ recipe.recipe_id }}" class="btn btn-ghost btn-sm">戻る</a>
           <div>
-            <h1 class="text-2xl md:text-3xl font-semibold tracking-tight">Run詳細</h1>
-            <p class="text-sm text-base-content/60">{{ recipe.title }}</p>
-            <p class="font-mono text-xs text-base-content/50 mt-1">{{ run.run_id }}</p>
+            <h1 class="text-2xl md:text-3xl font-semibold tracking-tight text-base-content">Run詳細</h1>
+            <p class="text-sm text-base-content/70">{{ recipe.title }}</p>
+            <p class="font-mono text-xs text-base-content/60 mt-1">{{ run.run_id }}</p>
           </div>
         </div>
-        <div class="text-xs text-base-content/50">実行状況は数秒ごとに更新されます</div>
+        <div class="text-xs text-base-content/70 flex items-center gap-2">
+          <span class="neo-dot"></span>
+          System Online
+        </div>
       </div>
-
     </div>
-  </div>
+  </section>
 
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <section class="grid grid-cols-1 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-6">
+    <div class="surface-card">
+      <div class="card-body gap-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-lg font-semibold text-base-content">Mission Map</h2>
+            <p class="text-xs text-base-content/70">ステップ/エージェントの稼働状況</p>
+          </div>
+          <span class="badge badge-outline text-xs">LIVE</span>
+        </div>
+
+        <!-- Step flow: left -> right -->
+        <div class="neo-panel p-4 mt-2">
+          <div class="flex gap-4 overflow-x-auto pb-1">
+            <template x-for="(step, idx) in visibleSteps()" :key="`col-${step}`">
+              <div class="min-w-[260px] max-w-[300px] flex-shrink-0">
+                <!-- step header -->
+                <div :class="['surface-soft px-3 py-2 step-card', (idx < visibleSteps().length - 1) ? 'has-next' : '']">
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="text-xs font-semibold text-base-content" x-text="stepLabels[step]"></div>
+                    <span class="badge badge-xs"
+                          :class="badgeClass(stepStatus(step))"
+                          x-text="badgeLabel(stepStatus(step))"></span>
+                  </div>
+                  <div class="text-[10px] text-base-content/60 mt-1" x-text="step"></div>
+                </div>
+
+                <!-- hierarchy: show only when has children -->
+                <div class="mt-3 space-y-1" x-show="treeRows(step).length > 0">
+                  <template x-for="row in treeRows(step)" :key="row.key">
+                    <div class="surface-soft px-3 py-2 flex items-center gap-2"
+                         :style="`padding-left:${8 + row.depth * 14}px`"
+                         :title="row.title">
+                      <span class="badge badge-xs" :class="row.badgeClass" x-text="row.badgeText"></span>
+                      <div class="min-w-0">
+                        <div class="text-xs font-semibold text-base-content truncate" x-text="row.label"></div>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="surface-card">
+      <div class="card-body gap-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <span class="neo-dot"></span>
+            <div>
+              <div class="text-lg font-semibold text-base-content">System Log</div>
+              <div class="text-xs text-base-content/60">sanitized events</div>
+            </div>
+          </div>
+          <span class="badge badge-outline text-xs">stream</span>
+        </div>
+        <div class="neo-panel system-log mt-2" x-ref="logPanel">
+          <template x-if="logItems.length === 0">
+            <div class="p-4 text-xs text-base-content/70">ログ待機中…</div>
+          </template>
+          <template x-for="item in logItems" :key="item.id">
+            <div class="log-row px-4 py-3 flex gap-3" :class="logRowClass(item.level)">
+              <div class="text-[10px] text-base-content/60 w-14" x-text="item.time"></div>
+              <div class="flex-1">
+                <div class="text-[10px] uppercase tracking-widest text-base-content/60" x-text="item.type"></div>
+                <div class="text-xs" x-text="item.message"></div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
     <div class="surface-card">
       <div class="card-body">
         <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold">ステータス</h2>
-          <span class="badge badge-ghost">ライブ更新</span>
+          <h2 class="text-lg font-semibold text-base-content">ステータス</h2>
+          <span class="badge badge-outline text-xs">live</span>
         </div>
         <div id="status-panel" hx-get="/u/{{ recipe.recipe_id }}/runs/{{ run.run_id }}/partials/status" hx-trigger="load, refresh">
           <div class="flex justify-center py-4">
@@ -40,8 +119,8 @@
     <div class="surface-card">
       <div class="card-body">
         <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold">成果物一覧</h2>
-          <span class="badge badge-ghost">アウトプット</span>
+          <h2 class="text-lg font-semibold text-base-content">成果物一覧</h2>
+          <span class="badge badge-ghost text-xs">output</span>
         </div>
         <div id="artifacts-panel" hx-get="/u/{{ recipe.recipe_id }}/runs/{{ run.run_id }}/partials/artifacts" hx-trigger="load, refresh">
           <div class="flex justify-center py-4">
@@ -50,59 +129,13 @@
         </div>
       </div>
     </div>
-  </div>
+  </section>
 
-  <div class="surface-card">
+  <section class="surface-card">
     <div class="card-body">
       <div class="flex items-center justify-between">
-        <h2 class="text-lg font-semibold">Pipeline Mini-map</h2>
-        <span class="badge badge-outline">リアルタイム</span>
-      </div>
-
-      {% set step_labels = {
-        "ensure_text_all": "テキスト化",
-        "build_blueprint_all": "Blueprint",
-        "build_ast_all": "AST生成",
-        "summarize_ast_all": "AST要約",
-        "pre_analysis": "Pre分析",
-        "execute_analysis": "実行"
-      } %}
-      {% set step_order = [
-        "ensure_text_all",
-        "build_blueprint_all",
-        "build_ast_all",
-        "summarize_ast_all",
-        "pre_analysis",
-        "execute_analysis"
-      ] %}
-
-      <div id="pipeline-steps" class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mt-4">
-        {% for step in step_order %}
-        <div class="surface-soft p-3" data-step="{{ step }}" data-status="pending">
-          <div class="text-xs font-semibold">{{ step_labels[step] }}</div>
-          <div class="text-[10px] text-base-content/50">{{ step }}</div>
-          <div class="mt-2">
-            <span class="badge badge-ghost badge-xs" data-step-badge>待機</span>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-
-      <div class="divider my-4"></div>
-
-      <div class="flex items-center justify-between">
-        <div class="text-sm font-semibold">稼働中エージェント</div>
-        <div class="text-xs text-base-content/50">並列実行を可視化</div>
-      </div>
-      <div id="agent-lanes" class="mt-3 space-y-2"></div>
-    </div>
-  </div>
-
-  <div class="surface-card">
-    <div class="card-body">
-      <div class="flex items-center justify-between">
-        <h2 class="text-lg font-semibold">最終成果物</h2>
-        <span class="badge badge-outline">template_filled</span>
+        <h2 class="text-lg font-semibold text-base-content">最終成果物</h2>
+        <span class="badge badge-outline text-xs">template_filled</span>
       </div>
       <div id="output-panel" hx-get="/u/{{ recipe.recipe_id }}/runs/{{ run.run_id }}/partials/output" hx-trigger="load, refresh">
         <div class="flex justify-center py-4">
@@ -110,201 +143,421 @@
         </div>
       </div>
     </div>
-  </div>
+  </section>
 </div>
 
 <script>
-  const runId = "{{ run.run_id }}";
-  const usecaseId = "{{ recipe.recipe_id }}";
-
-  const stepOrder = [
-    "ensure_text_all",
-    "build_blueprint_all",
-    "build_ast_all",
-    "summarize_ast_all",
-    "pre_analysis",
-    "execute_analysis"
-  ];
-
-  const stepLabels = {
-    "ensure_text_all": "Text",
-    "build_blueprint_all": "BP",
-    "build_ast_all": "AST",
-    "summarize_ast_all": "Sum",
-    "pre_analysis": "Pre",
-    "execute_analysis": "Exec"
-  };
-
-  const statusMeta = {
-    pending: { label: "待機", badge: "badge-ghost" },
-    running: { label: "実行中", badge: "badge-primary" },
-    finished: { label: "完了", badge: "badge-success" },
-    failed: { label: "失敗", badge: "badge-error" },
-    skipped: { label: "スキップ", badge: "badge-warning" }
-  };
-
-  const stepStatus = {};
-  stepOrder.forEach((s) => stepStatus[s] = "pending");
-
-  let currentStep = null;
-  const statusPanel = document.getElementById("status-panel");
-  const hitlPanel = document.getElementById("hitl-panel");
-  const artifactsPanel = document.getElementById("artifacts-panel");
-  const outputPanel = document.getElementById("output-panel");
-  const agents = new Map();
-  let agentSeq = 0;
-
-  function triggerRefresh(panel, delayMs = 300) {
-    if (!panel || !window.htmx) return;
-    if (panel.dataset.refreshPending === "1") return;
-    panel.dataset.refreshPending = "1";
-    setTimeout(() => {
-      panel.dataset.refreshPending = "";
-      window.htmx.trigger(panel, "refresh");
-    }, delayMs);
-  }
-
-  function updateStep(step, status) {
-    if (!step || !stepStatus.hasOwnProperty(step)) return;
-    stepStatus[step] = status;
-    const node = document.querySelector(`[data-step="${step}"]`);
-    if (!node) return;
-    node.dataset.status = status;
-    const badge = node.querySelector("[data-step-badge]");
-    if (badge) {
-      const meta = statusMeta[status] || statusMeta.pending;
-      badge.textContent = meta.label;
-      badge.className = `badge badge-xs ${meta.badge}`;
-    }
-  }
-
-  function renderAgents() {
-    const container = document.getElementById("agent-lanes");
-    if (!container) return;
-    const list = Array.from(agents.values()).sort((a, b) => a.seq - b.seq);
-    if (list.length === 0) {
-      container.innerHTML = `<div class="surface-soft p-3 text-xs text-base-content/60">実行中のエージェントはありません。</div>`;
-      return;
-    }
-
-    const html = list.map((a) => {
-      const indent = Math.min(Number(a.depth || 0), 3) * 10;
-      const badge = a.status === "running" ? "badge-primary" : "badge-ghost";
-      const pulse = a.status === "running" ? "animate-pulse" : "";
-      const chips = stepOrder.map((s) => {
-        const cls = (s === a.step) ? "badge-primary" : "badge-ghost";
-        const label = stepLabels[s] || s;
-        return `<span class="badge badge-xs ${cls}">${label}</span>`;
-      }).join("");
-
-      return `
-        <div class="surface-soft p-3 flex items-center justify-between gap-4 ${pulse}">
-          <div class="flex items-center gap-2" style="margin-left:${indent}px">
-            <span class="badge badge-xs ${badge}">${a.status === "running" ? "running" : "done"}</span>
-            <div class="text-xs font-semibold">${a.is_subagent ? "Sub" : "Agent"}: ${a.name || "agent"}</div>
-          </div>
-          <div class="flex flex-wrap gap-1 justify-end">${chips}</div>
-        </div>
-      `;
-    }).join("");
-
-    container.innerHTML = html;
-  }
-
-  function handleEvent(payload) {
-    const eventType = payload.event_type;
-    const data = payload.payload || {};
-
-    switch (eventType) {
-      case "step_started":
-        currentStep = data.step;
-        updateStep(data.step, "running");
-        triggerRefresh(statusPanel);
-        break;
-      case "step_finished":
-        updateStep(data.step, "finished");
-        triggerRefresh(statusPanel);
-        triggerRefresh(artifactsPanel);
-        if (data.step === "execute_analysis") {
-          triggerRefresh(outputPanel);
+  function runInsight() {
+    return {
+      runId: "{{ run.run_id }}",
+      usecaseId: "{{ recipe.recipe_id }}",
+      runStatus: "queued",
+      logItems: [],
+      logLimit: 200,
+      stepOrder: [
+        "ensure_text_all",
+        "build_blueprint_all",
+        "build_ast_all",
+        "summarize_ast_all",
+        "pre_analysis",
+        "execute_analysis"
+      ],
+      stepLabels: {
+        "ensure_text_all": "Text",
+        "build_blueprint_all": "Blueprint",
+        "build_ast_all": "AST",
+        "summarize_ast_all": "Summary",
+        "pre_analysis": "Pre-analysis",
+        "execute_analysis": "Execute"
+      },
+      stepShorts: {
+        "ensure_text_all": "TXT",
+        "build_blueprint_all": "BP",
+        "build_ast_all": "AST",
+        "summarize_ast_all": "SUM",
+        "pre_analysis": "PRE",
+        "execute_analysis": "EXE"
+      },
+      steps: {},
+      agents: {},
+      toolsByAgent: {},
+      toolLimit: 10,
+      artifacts: [],
+      artifactLimit: 8,
+      currentStep: null,
+      init() {
+        this.stepOrder.forEach((step) => {
+          this.steps[step] = { status: "pending" };
+        });
+        this.connectSse();
+      },
+      isStepVisible(status) {
+        return ["running", "finished", "failed", "waiting"].includes(status);
+      },
+      visibleSteps() {
+        return this.stepOrder.filter((s) => this.isStepVisible(this.stepStatus(s)));
+      },
+      stepStatus(step) {
+        return (this.steps[step]?.status) || "pending";
+      },
+      badgeLabel(status) {
+        const map = {
+          pending: "待機",
+          running: "実行中",
+          finished: "完了",
+          failed: "失敗",
+          skipped: "SKIP",
+          waiting: "待機"
+        };
+        return map[status] || status;
+      },
+      badgeClass(status) {
+        const map = {
+          pending: "badge-ghost",
+          running: "badge-primary",
+          finished: "badge-success",
+          failed: "badge-error",
+          skipped: "badge-warning",
+          waiting: "badge-warning"
+        };
+        return map[status] || "badge-ghost";
+      },
+      treeRows(step) {
+        const rows = [];
+        const byParent = {};
+        const agentList = Object.values(this.agents || {});
+        for (const a of agentList) {
+          const pid = a.isSubagent ? (a.parentId || "__none__") : "__root__";
+          if (!byParent[pid]) byParent[pid] = [];
+          byParent[pid].push(a);
         }
-        break;
-      case "step_failed":
-        updateStep(data.step, "failed");
-        triggerRefresh(statusPanel);
-        break;
-      case "step_skipped":
-        updateStep(data.step, "skipped");
-        triggerRefresh(statusPanel);
-        break;
-      case "agent_start": {
-        const id = data.invocation_id || `agent-${Date.now()}`;
-        const existing = agents.get(id);
-        if (!existing) {
-          agents.set(id, {
-            id,
-            name: data.agent_name || "agent",
-            is_subagent: !!data.is_subagent,
-            depth: data.depth || 0,
-            step: currentStep,
-            status: "running",
-            seq: ++agentSeq,
+        // roots for this step
+        const roots = agentList.filter((a) => !a.isSubagent && (a.step || this.currentStep) === step);
+        const seen = new Set();
+
+        const mkRow = ({ key, badgeText, badgeClass, label, depth, title }) => {
+          rows.push({ key, badgeText, badgeClass, label, depth, title });
+        };
+
+        const mergeToolStatus = (a, b) => {
+          const rank = (s) => (s === "error" ? 3 : (s === "running" ? 2 : (s === "success" ? 1 : 0)));
+          return rank(b) > rank(a) ? b : a;
+        };
+
+        const walkAgent = (agent, depth) => {
+          if (!agent || !agent.id) return;
+          const guardKey = `a:${agent.id}`;
+          if (seen.has(guardKey)) return;
+          seen.add(guardKey);
+          const isSub = !!agent.isSubagent;
+          mkRow({
+            key: `agent-${agent.id}`,
+            badgeText: isSub ? "SUB" : "AG",
+            badgeClass: agent.status === "running" ? "badge-primary" : "badge-ghost",
+            label: agent.name || (isSub ? "subagent" : "agent"),
+            depth,
+            title: agent.id
           });
-        } else {
-          existing.status = "running";
-          existing.step = currentStep || existing.step;
-        }
-        renderAgents();
-        triggerRefresh(statusPanel);
-        break;
-      }
-      case "agent_end": {
-        const id = data.invocation_id;
-        if (id && agents.has(id)) {
-          const agent = agents.get(id);
-          agent.status = "done";
-          renderAgents();
-          setTimeout(() => {
-            if (agents.has(id) && agents.get(id).status === "done") {
-              agents.delete(id);
-              renderAgents();
+
+          // children subagents first
+          const kids = (byParent[agent.id] || []).slice().sort((a, b) => String(a.id).localeCompare(String(b.id)));
+          for (const c of kids) walkAgent(c, depth + 1);
+
+          // tools for this agent
+          const tools = (this.toolsByAgent[agent.id] || []);
+          let grp = null;
+          const flush = () => {
+            if (!grp) return;
+            const badgeClass =
+              grp.status === "error" ? "badge-error" :
+              (grp.status === "success" ? "badge-success" : "badge-primary");
+            mkRow({
+              key: `toolgrp-${agent.id}-${grp.firstId}-${grp.lastId}`,
+              badgeText: "TL",
+              badgeClass,
+              label: grp.count > 1 ? `${grp.name} ×${grp.count}` : grp.name,
+              depth: depth + 1,
+              title: grp.count > 1 ? `${grp.firstId} .. ${grp.lastId}` : grp.lastId
+            });
+            grp = null;
+          };
+          for (const t of tools) {
+            const name = (t.name || "tool");
+            if (!grp || grp.name !== name) {
+              flush();
+              grp = { name, count: 1, status: t.status, firstId: t.id, lastId: t.id };
+              continue;
             }
-          }, 8000);
+            grp.count += 1;
+            grp.status = mergeToolStatus(grp.status, t.status);
+            grp.lastId = t.id;
+          }
+          flush();
+        };
+
+        for (const r of roots) walkAgent(r, 0);
+
+        if (step === "execute_analysis") {
+          for (const a of (this.artifacts || [])) {
+            mkRow({
+              key: `artifact-${a.id}`,
+              badgeText: "AR",
+              badgeClass: "badge-warning",
+              label: a.name,
+              depth: 1,
+              title: a.path
+            });
+          }
         }
-        triggerRefresh(statusPanel);
-        break;
-      }
-      case "run_status_changed": {
-        triggerRefresh(statusPanel);
-        if (data.status === "waiting_user") {
-          triggerRefresh(hitlPanel);
+        return rows;
+      },
+      logRowClass(level) {
+        const map = {
+          info: "text-info",
+          success: "text-success",
+          warn: "text-warning",
+          error: "text-error"
+        };
+        return map[level] || "text-base-content/80";
+      },
+      connectSse() {
+        const source = new EventSource(`/u/${this.usecaseId}/runs/${this.runId}/events`);
+        const handler = (event) => {
+          try {
+            const payload = JSON.parse(event.data);
+            this.handleEvent(payload);
+          } catch (e) {
+            return;
+          }
+        };
+        source.onmessage = handler;
+        [
+          "step_started",
+          "step_finished",
+          "step_failed",
+          "step_skipped",
+          "step_waiting_user",
+          "agent_start",
+          "agent_end",
+          "tool_call_start",
+          "tool_call_result",
+          "tool_call_error",
+          "artifact_updated",
+          "artifact_created",
+          "run_status_changed"
+        ].forEach((name) => source.addEventListener(name, handler));
+      },
+      handleEvent(payload) {
+        const eventType = payload.event_type;
+        const data = payload.payload || {};
+        if (data.skip) return;
+        this.appendLog(payload);
+
+        switch (eventType) {
+          case "run_status_changed":
+            this.runStatus = data.status || this.runStatus;
+            if (data.status === "waiting_user" && this.currentStep) {
+              this.updateStep(this.currentStep, "waiting");
+            }
+            this.triggerRefresh("status-panel");
+            if (data.status === "waiting_user") this.triggerRefresh("hitl-panel");
+            if (data.status === "succeeded") this.triggerRefresh("output-panel");
+            break;
+          case "step_started":
+            this.currentStep = data.step;
+            this.updateStep(data.step, "running");
+            this.triggerRefresh("status-panel");
+            break;
+          case "step_finished":
+            this.updateStep(data.step, "finished");
+            this.triggerRefresh("status-panel");
+            this.triggerRefresh("artifacts-panel");
+            if (data.step === "execute_analysis") this.triggerRefresh("output-panel");
+            break;
+          case "step_failed":
+            this.updateStep(data.step, "failed");
+            this.triggerRefresh("status-panel");
+            break;
+          case "step_skipped":
+            this.updateStep(data.step, "skipped");
+            this.triggerRefresh("status-panel");
+            break;
+          case "step_waiting_user":
+            this.updateStep(data.step, "waiting");
+            this.triggerRefresh("status-panel");
+            break;
+          case "agent_start":
+            this.addAgent(data);
+            this.triggerRefresh("status-panel");
+            break;
+          case "agent_end":
+            this.endAgent(data);
+            this.triggerRefresh("status-panel");
+            break;
+          case "tool_call_start":
+            this.addTool(data, "running");
+            break;
+          case "tool_call_result":
+            this.addTool(data, "success");
+            break;
+          case "tool_call_error":
+            this.addTool(data, "error");
+            break;
+          case "artifact_updated":
+          case "artifact_created":
+            this.addArtifact(data);
+            this.triggerRefresh("artifacts-panel");
+            break;
         }
-        if (data.status === "succeeded") {
-          triggerRefresh(outputPanel);
+      },
+      updateStep(step, status) {
+        if (!step || !this.steps[step]) return;
+        this.steps[step].status = status;
+      },
+      addAgent(data) {
+        const id = data.invocation_id || `agent-${Date.now()}`;
+        const existing = this.agents[id];
+        const stepFromEvent = (data.step || "").toString().trim();
+        const rec = {
+          id,
+          name: data.agent_name || "agent",
+          isSubagent: !!data.is_subagent,
+          parentId: data.parent_invocation_id || null,
+          depth: data.depth || 0,
+          step: stepFromEvent || this.currentStep,
+          status: "running"
+        };
+        if (!existing) {
+          this.agents[id] = rec;
+        } else {
+          this.agents[id] = { ...existing, ...rec };
         }
-        break;
+      },
+      endAgent(data) {
+        const id = data.invocation_id;
+        if (!id || !this.agents[id]) return;
+        this.agents[id].status = "done";
+        // NOTE: 完了したagent/subagentも保持する（UIで履歴として参照するため）
+      },
+      addTool(data, status) {
+        const agentId = data.invocation_id;
+        if (!agentId) return;
+        if (!this.toolsByAgent[agentId]) this.toolsByAgent[agentId] = [];
+        const list = this.toolsByAgent[agentId];
+        const toolId = data.tool_call_id || `tool-${Date.now()}`;
+        const existing = list.find((t) => t.id === toolId);
+        if (existing) {
+          existing.status = status;
+          existing.updatedAt = Date.now();
+          if (!existing.name && data.tool_name) existing.name = data.tool_name;
+        } else {
+          list.push({
+            id: toolId,
+            name: data.tool_name || "tool",
+            status,
+            updatedAt: Date.now()
+          });
+        }
+        this.pruneTools(agentId);
+      },
+      pruneTools(agentId) {
+        const list = this.toolsByAgent[agentId] || [];
+        const running = list.filter((t) => t.status === "running");
+        const completed = list.filter((t) => t.status !== "running").sort((a, b) => b.updatedAt - a.updatedAt);
+        const trimmed = completed.slice(0, this.toolLimit);
+        this.toolsByAgent[agentId] = [...running, ...trimmed];
+      },
+      visibleTools(agentId) {
+        return this.toolsByAgent[agentId] || [];
+      },
+      addArtifact(data) {
+        const path = data.path || "";
+        if (!path) return;
+        const name = path.split("/").pop() || path;
+        const id = `${path}-${Date.now()}`;
+        const filtered = this.artifacts.filter((a) => a.path !== path);
+        filtered.push({ id, path, name, kind: data.kind || "artifact", ts: data.ts || "" });
+        this.artifacts = filtered.slice(-this.artifactLimit);
+      },
+      appendLog(payload) {
+        const summary = this.summarizeEvent(payload);
+        if (!summary) return;
+        const level = this.levelForEvent(payload);
+        const ts = payload.ts ? new Date(payload.ts) : new Date();
+        const item = {
+          id: payload.event_id || `${payload.event_type}-${Date.now()}`,
+          type: payload.event_type,
+          time: ts.toLocaleTimeString(),
+          message: summary,
+          level
+        };
+        this.logItems.push(item);
+        if (this.logItems.length > this.logLimit) {
+          this.logItems.shift();
+        }
+        this.$nextTick(() => {
+          if (this.$refs.logPanel) {
+            this.$refs.logPanel.scrollTop = this.$refs.logPanel.scrollHeight;
+          }
+        });
+      },
+      summarizeEvent(payload) {
+        const type = payload.event_type;
+        const data = payload.payload || {};
+        if (data.skip) return "";
+        if (type.startsWith("step_")) {
+          return `${type.replace("step_", "STEP ")}: ${data.step || "unknown"}`;
+        }
+        if (type.startsWith("agent_")) {
+          const name = data.agent_name || "agent";
+          return `${type.replace("agent_", "AGENT ")}: ${name}`;
+        }
+        if (type.startsWith("tool_call_")) {
+          const name = data.tool_name || "tool";
+          const suffix = type === "tool_call_error" ? "error" : (type === "tool_call_result" ? "done" : "start");
+          return `TOOL ${suffix.toUpperCase()}: ${name}`;
+        }
+        if (type.startsWith("artifact_")) {
+          const name = (data.path || "").split("/").pop() || data.path || "artifact";
+          return `ARTIFACT: ${name}`;
+        }
+        if (type === "run_status_changed") {
+          return `STATUS: ${data.status || "unknown"}`;
+        }
+        return type;
+      },
+      levelForEvent(payload) {
+        const type = payload.event_type;
+        const data = payload.payload || {};
+        if (type === "step_failed") return "error";
+        if (type === "step_skipped") return "warn";
+        if (type === "step_waiting_user") return "warn";
+        if (type === "step_finished") return "success";
+        if (type.startsWith("tool_call_")) {
+          if (type === "tool_call_error") return "error";
+          if (type === "tool_call_result") return "success";
+          return "info";
+        }
+        if (type.startsWith("artifact_")) return "success";
+        if (type === "run_status_changed") {
+          if (data.status === "failed") return "error";
+          if (data.status === "waiting_user") return "warn";
+          if (data.status === "succeeded") return "success";
+        }
+        return "info";
+      },
+      triggerRefresh(targetId, delayMs = 300) {
+        if (!window.htmx) return;
+        const panel = document.getElementById(targetId);
+        if (!panel) return;
+        if (panel.dataset.refreshPending === "1") return;
+        panel.dataset.refreshPending = "1";
+        setTimeout(() => {
+          panel.dataset.refreshPending = "";
+          window.htmx.trigger(panel, "refresh");
+        }, delayMs);
       }
     }
   }
-
-  const source = new EventSource(`/u/${usecaseId}/runs/${runId}/events`);
-  source.onmessage = (event) => {
-    try {
-      const payload = JSON.parse(event.data);
-      handleEvent(payload);
-    } catch (e) {
-      // ignore
-    }
-  };
-  ["step_started","step_finished","step_failed","step_skipped","agent_start","agent_end","run_status_changed"].forEach((name) => {
-    source.addEventListener(name, (event) => {
-      try {
-        const payload = JSON.parse(event.data);
-        handleEvent(payload);
-      } catch (e) {
-        // ignore
-      }
-    });
-  });
 </script>
 {% endblock %}

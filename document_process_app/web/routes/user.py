@@ -216,7 +216,7 @@ def runs_start(request: Request, usecase: str, run_id: str):
     run_service.start_run(run_id)
     run = _run_for_usecase(repo, run_id, usecase) or run
     return templates.TemplateResponse(
-        "partials/status.html",
+        "user/partials/status.html",
         {"request": request, "run": run, **ctx},
     )
 
@@ -266,8 +266,14 @@ async def runs_events(request: Request, usecase: str, run_id: str):
         "step_finished",
         "step_failed",
         "step_skipped",
+        "step_waiting_user",
         "agent_start",
         "agent_end",
+        "tool_call_start",
+        "tool_call_result",
+        "tool_call_error",
+        "artifact_updated",
+        "artifact_created",
     }
 
     def sanitize_payload(event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -280,6 +286,25 @@ async def runs_events(request: Request, usecase: str, run_id: str):
                 "invocation_id": payload.get("invocation_id"),
                 "parent_invocation_id": payload.get("parent_invocation_id"),
                 "depth": payload.get("depth"),
+                "step": payload.get("_step_ctx"),
+            }
+        if event_type.startswith("tool_call_"):
+            return {
+                "tool_name": payload.get("tool_name"),
+                "tool_call_id": payload.get("tool_call_id"),
+                "invocation_id": payload.get("invocation_id"),
+                "ts": payload.get("ts"),
+                "step": payload.get("_step_ctx"),
+            }
+        if event_type.startswith("artifact_"):
+            path = str(payload.get("path") or "").replace("\\", "/")
+            if not path or not path.startswith("out/"):
+                return {"skip": True}
+            return {
+                "kind": payload.get("kind"),
+                "path": path,
+                "ts": payload.get("ts"),
+                "step": payload.get("_step_ctx") or "execute_analysis",
             }
         if event_type == "run_status_changed":
             return {"status": payload.get("status")}
@@ -290,6 +315,7 @@ async def runs_events(request: Request, usecase: str, run_id: str):
         run_id,
         allowed_types=allowed,
         sanitize=sanitize_payload,
+        include_step_context=True,
     )
 
 
