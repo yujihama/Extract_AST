@@ -1,6 +1,7 @@
 # %%
 from pathlib import Path
 from openpyxl.drawing.image import Image as XLImage
+from openpyxl.styles import Alignment, Font
 import base64
 from typing import Any, Iterable, Optional
 from src.utils import build_llm
@@ -47,6 +48,32 @@ def render_pdf_to_png_pages(
     return out_paths
 
 
+def _pixel_y_to_excel_row(
+    pixel_y: int,
+    image_start_row: int,
+    image_height_px: int,
+    rows_for_image: int,
+) -> int:
+    """
+    画像内のピクセルY座標からExcelの行番号を計算する。
+
+    Args:
+        pixel_y: 画像内のY座標（ピクセル、上端=0）
+        image_start_row: 画像が配置されている開始行（1-indexed）
+        image_height_px: 画像の高さ（ピクセル）
+        rows_for_image: 画像が占めるExcel行数
+
+    Returns:
+        対応するExcel行番号（1-indexed）
+    """
+    if image_height_px <= 0:
+        return image_start_row
+    # 比率でマッピング
+    ratio = pixel_y / image_height_px
+    row_offset = int(ratio * rows_for_image)
+    return image_start_row + row_offset
+
+
 def add_capture_sheet_with_images(
     excel_path: str,
     images_dir: str = "data/input/sample_image",
@@ -60,6 +87,8 @@ def add_capture_sheet_with_images(
     annotate_max_iters: int = 3,
     pdf_dpi: int = 150,
     pdf_render_dir: Optional[str] = None,
+    annotation_column: str = "A",
+    image_column: str = "B",
 ) -> Path:
     """
     excel_path のExcelに sheet_name を作成し、images_dir 配下の画像をファイル名順に上から貼り付ける。
@@ -118,7 +147,10 @@ def add_capture_sheet_with_images(
 
     ws = wb.create_sheet(title=output_excel_sheet_name)
     ws.sheet_view.showGridLines = False
-    ws.column_dimensions["A"].width = 80
+    # アノテーション列（A列）の幅を設定
+    ws.column_dimensions[annotation_column].width = 40
+    # 画像列（B列）の幅を設定
+    ws.column_dimensions[image_column].width = 120
 
     # 画像を上から順に配置
     # かぶり防止のため、シート側のデフォルト行高を固定し、その前提で「画像高さ→必要行数」を見積もる。
@@ -130,25 +162,38 @@ def add_capture_sheet_with_images(
             continue
         start_row = row
         img_path_for_excel = image_path
+        annotation_result: Optional[AnnotationResult] = None
+
         if annotate_phrases and annotate_llm is not None:
-            img_path_for_excel = annotate_image_with_llm_red_boxes(
+            annotation_result = annotate_image_with_llm_red_boxes(
                 llm=annotate_llm,
                 image_path=image_path,
                 target_phrases=annotate_phrases.get(image_path.name, []),
                 output_dir=Path(annotate_output_dir),
                 max_iters=annotate_max_iters,
+                embed_text_in_image=False,  # 画像にはテキストを埋め込まない
             )
+            img_path_for_excel = annotation_result.image_path
 
         img = XLImage(str(img_path_for_excel))
 
+        # 元画像のサイズを取得（アノテーション位置計算用）
+        original_width = annotation_result.image_width if annotation_result else 0
+        original_height = annotation_result.image_height if annotation_result else 0
+        if original_height == 0:
+            with Image.open(image_path) as pil_im:
+                original_width, original_height = pil_im.size
+
         # 横幅が大きすぎる場合だけ縮小（貼り付け後の見栄え用）
         max_width_px = 900
+        scale = 1.0
         if getattr(img, "width", None) and img.width > max_width_px:
             scale = max_width_px / float(img.width)
             img.width = int(img.width * scale)
             img.height = int(img.height * scale)
 
-        ws.add_image(img, f"A{row}")
+        # 画像をB列（image_column）に配置
+        ws.add_image(img, f"{image_column}{row}")
 
         # 次の画像開始行を計算（px→pt を 96dpi 前提で換算）
         height_px = int(getattr(img, "height", 0) or 0)
@@ -158,6 +203,34 @@ def add_capture_sheet_with_images(
         # 行の高さを明示し、テンプレ側の行高差異によるズレを抑える
         for r in range(start_row, start_row + rows_needed):
             ws.row_dimensions[r].height = row_height_pt
+
+        # アノテーションをA列（annotation_column）に配置
+        if annotation_result and annotation_result.annotations:
+            for ann in annotation_result.annotations:
+                # ピクセルY座標からExcel行を計算（元画像の座標系を使用）
+                pixel_y = ann.box.y1
+                target_row = _pixel_y_to_excel_row(
+                    pixel_y=pixel_y,
+                    image_start_row=start_row,
+                    image_height_px=original_height,
+                    rows_for_image=rows_needed - margin_rows,  # マージン分を除く
+                )
+                # アノテーションテキストを作成
+                annotation_text = ann.phrase
+                if ann.reason:
+                    annotation_text += f"\n({ann.reason})"
+                # セルにテキストを設定
+                cell = ws[f"{annotation_column}{target_row}"]
+                cell.value = annotation_text
+                cell.alignment = Alignment(
+                    wrap_text=True,
+                    vertical="top",
+                )
+                # 赤色のフォントを設定
+                cell.font = Font(
+                    color="FF0000",
+                    bold=True,
+                )
 
         row += rows_needed
 
@@ -552,6 +625,24 @@ class BoundingBox(BaseModel):
     y2: int = Field(..., description="bottom (px)")
 
 
+class AnnotationInfo(BaseModel):
+    """アノテーション情報（Excelテキスト挿入用）。"""
+    phrase: str = Field(..., description="検出した文言")
+    reason: str = Field("", description="根拠")
+    box: BoundingBox = Field(..., description="バウンディングボックス")
+
+
+class AnnotationResult(BaseModel):
+    """annotate_image_with_llm_red_boxes の戻り値。"""
+    image_path: Path = Field(..., description="処理後の画像パス")
+    annotations: list[AnnotationInfo] = Field(default_factory=list, description="アノテーション情報のリスト")
+    image_width: int = Field(0, description="画像の幅（px）")
+    image_height: int = Field(0, description="画像の高さ（px）")
+
+    class Config:
+        arbitrary_types_allowed = True
+
+
 class PhraseMatch(BaseModel):
     phrase: str = Field(..., description="検出した文言（target_phrasesのうち最も近いもの）")
     box: BoundingBox
@@ -756,7 +847,8 @@ def annotate_image_with_llm_red_boxes(
     max_iters: int = 3,
     stroke_width: int = 6,
     padding_px: int = 6,
-) -> Path:
+    embed_text_in_image: bool = False,
+) -> AnnotationResult:
     """
     フロー:
     1) LLMで対象文言の有無を判定し、あればbboxを取得
@@ -777,7 +869,12 @@ def annotate_image_with_llm_red_boxes(
     # 1) 検出（定規付き画像を入力にする）
     det = llm_find_phrase_bounding_boxes(llm=llm, image_path=ruler_original_path, target_phrases=target_phrases)
     if not det.get("contains"):
-        return image_path
+        return AnnotationResult(
+            image_path=image_path,
+            annotations=[],
+            image_width=width,
+            image_height=height,
+        )
 
     boxes_raw = []
     annotations_raw = []  # 各BBに対応する注釈テキスト
@@ -799,7 +896,12 @@ def annotate_image_with_llm_red_boxes(
                     annotation = ""
                 annotations_raw.append(annotation)
     if not boxes_raw:
-        return image_path
+        return AnnotationResult(
+            image_path=image_path,
+            annotations=[],
+            image_width=width,
+            image_height=height,
+        )
 
     # 描画→検証→修正ループ
     #
@@ -840,7 +942,7 @@ def annotate_image_with_llm_red_boxes(
             target_phrases=target_phrases,
         )
         if bool(ver.get("ok")):
-            # OKになった断面を最終として採用（注釈なしの画像をそのまま使用）
+            # OKになった断面を最終として採用
             final_path = output_dir / f"{image_path.stem}__boxed_final.png"
             if final_path != iter_path:
                 final_im = Image.open(iter_path).convert("RGB")
@@ -849,23 +951,51 @@ def annotate_image_with_llm_red_boxes(
             # 定規付きfinalも保存（バウンディングボックス情報を渡す）
             final_ruler_path = output_dir / f"{image_path.stem}__boxed_final__ruler.png"
             _save_ruler_image(image_path=final_path, output_path=final_ruler_path, boxes=current_boxes)
-            # 注釈付きの最終画像を生成して返す（エクセルに貼る直前）
-            final_annotated_path = output_dir / f"{image_path.stem}__boxed_final_annotated.png"
-            final_annotations = []
+
+            # アノテーション情報を構築
+            result_annotations = []
             for j, box in enumerate(current_boxes):
-                if j < len(current_annotations):
-                    final_annotations.append(current_annotations[j])
-                else:
-                    final_annotations.append("")
-            final_annotated_im = _draw_red_boxes_on_image(
-                image_path,
-                current_boxes,
-                stroke_width=stroke_width,
-                padding_px=padding_px,
-                annotations=final_annotations,
+                annotation_text = current_annotations[j] if j < len(current_annotations) else ""
+                # annotation_textは "phrase\n(reason)" の形式なのでパース
+                parts = annotation_text.split('\n', 1)
+                phrase = parts[0] if parts else ""
+                reason = parts[1].strip("()") if len(parts) > 1 else ""
+                result_annotations.append(AnnotationInfo(
+                    phrase=phrase,
+                    reason=reason,
+                    box=BoundingBox(x1=box["x1"], y1=box["y1"], x2=box["x2"], y2=box["y2"]),
+                ))
+
+            # embed_text_in_image=Trueの場合は注釈付き画像を生成
+            if embed_text_in_image:
+                final_annotated_path = output_dir / f"{image_path.stem}__boxed_final_annotated.png"
+                final_annotations_text = []
+                for j, box in enumerate(current_boxes):
+                    if j < len(current_annotations):
+                        final_annotations_text.append(current_annotations[j])
+                    else:
+                        final_annotations_text.append("")
+                final_annotated_im = _draw_red_boxes_on_image(
+                    image_path,
+                    current_boxes,
+                    stroke_width=stroke_width,
+                    padding_px=padding_px,
+                    annotations=final_annotations_text,
+                )
+                _save_image_as_png(final_annotated_im, final_annotated_path)
+                return AnnotationResult(
+                    image_path=final_annotated_path,
+                    annotations=result_annotations,
+                    image_width=width,
+                    image_height=height,
+                )
+
+            return AnnotationResult(
+                image_path=final_path,
+                annotations=result_annotations,
+                image_width=width,
+                image_height=height,
             )
-            _save_image_as_png(final_annotated_im, final_annotated_path)
-            return final_annotated_path
 
         corrected: list[dict[str, int]] = []
         for b in (ver.get("corrected_boxes") or [])[:10]:
@@ -874,7 +1004,7 @@ def annotate_image_with_llm_red_boxes(
                 if cb is not None:
                     corrected.append(cb)
         if not corrected:
-            # 修正が取れないならこの断面を最終として採用（注釈なし）
+            # 修正が取れないならこの断面を最終として採用
             final_path = output_dir / f"{image_path.stem}__boxed_final.png"
             if last_iter_path and final_path != last_iter_path:
                 final_im = Image.open(last_iter_path).convert("RGB")
@@ -882,23 +1012,50 @@ def annotate_image_with_llm_red_boxes(
             final_ruler_path = output_dir / f"{image_path.stem}__boxed_final__ruler.png"
             if final_path.exists():
                 _save_ruler_image(image_path=final_path, output_path=final_ruler_path, boxes=current_boxes)
-            # 注釈付きの最終画像を生成して返す（エクセルに貼る直前）
-            final_annotated_path = output_dir / f"{image_path.stem}__boxed_final_annotated.png"
-            final_annotations = []
+
+            # アノテーション情報を構築
+            result_annotations = []
             for j, box in enumerate(current_boxes):
-                if j < len(current_annotations):
-                    final_annotations.append(current_annotations[j])
-                else:
-                    final_annotations.append("")
-            final_annotated_im = _draw_red_boxes_on_image(
-                image_path,
-                current_boxes,
-                stroke_width=stroke_width,
-                padding_px=padding_px,
-                annotations=final_annotations,
+                annotation_text = current_annotations[j] if j < len(current_annotations) else ""
+                parts = annotation_text.split('\n', 1)
+                phrase = parts[0] if parts else ""
+                reason = parts[1].strip("()") if len(parts) > 1 else ""
+                result_annotations.append(AnnotationInfo(
+                    phrase=phrase,
+                    reason=reason,
+                    box=BoundingBox(x1=box["x1"], y1=box["y1"], x2=box["x2"], y2=box["y2"]),
+                ))
+
+            # embed_text_in_image=Trueの場合は注釈付き画像を生成
+            if embed_text_in_image:
+                final_annotated_path = output_dir / f"{image_path.stem}__boxed_final_annotated.png"
+                final_annotations_text = []
+                for j, box in enumerate(current_boxes):
+                    if j < len(current_annotations):
+                        final_annotations_text.append(current_annotations[j])
+                    else:
+                        final_annotations_text.append("")
+                final_annotated_im = _draw_red_boxes_on_image(
+                    image_path,
+                    current_boxes,
+                    stroke_width=stroke_width,
+                    padding_px=padding_px,
+                    annotations=final_annotations_text,
+                )
+                _save_image_as_png(final_annotated_im, final_annotated_path)
+                return AnnotationResult(
+                    image_path=final_annotated_path,
+                    annotations=result_annotations,
+                    image_width=width,
+                    image_height=height,
+                )
+
+            return AnnotationResult(
+                image_path=final_path,
+                annotations=result_annotations,
+                image_width=width,
+                image_height=height,
             )
-            _save_image_as_png(final_annotated_im, final_annotated_path)
-            return final_annotated_path
 
         # corrected_boxes が「一部だけ修正」だった場合に、未修正のBBは維持する。
         # - correctedがcurrentより少ない: 近いBBだけ差し替え、残りはそのまま
@@ -940,35 +1097,62 @@ def annotate_image_with_llm_red_boxes(
         current_annotations = new_annotations[:10]  # 注釈も同様に制限
 
     # ここまで来たら「max_iters回の検証でokにならなかった」。
-    # 最後の修正案を反映した画像を final として保存（再検証はしない、注釈なし）。
+    # 最後の修正案を反映した画像を final として保存（再検証はしない）。
     final_path = output_dir / f"{image_path.stem}__boxed_final.png"
     boxed_im = _draw_red_boxes_on_image(
         image_path,
         current_boxes,
         stroke_width=stroke_width,
         padding_px=padding_px,
-        annotations=None,  # 注釈なし
+        annotations=None,  # 赤枠のみ
     )
     _save_image_as_png(boxed_im, final_path)
     final_ruler_path = output_dir / f"{image_path.stem}__boxed_final__ruler.png"
     _save_ruler_image(image_path=final_path, output_path=final_ruler_path, boxes=current_boxes)
-    # 注釈付きの最終画像を生成して返す（エクセルに貼る直前）
-    final_annotated_path = output_dir / f"{image_path.stem}__boxed_final_annotated.png"
-    final_annotations = []
+
+    # アノテーション情報を構築
+    result_annotations = []
     for j, box in enumerate(current_boxes):
-        if j < len(current_annotations):
-            final_annotations.append(current_annotations[j])
-        else:
-            final_annotations.append("")
-    final_annotated_im = _draw_red_boxes_on_image(
-        image_path,
-        current_boxes,
-        stroke_width=stroke_width,
-        padding_px=padding_px,
-        annotations=final_annotations,
+        annotation_text = current_annotations[j] if j < len(current_annotations) else ""
+        parts = annotation_text.split('\n', 1)
+        phrase = parts[0] if parts else ""
+        reason = parts[1].strip("()") if len(parts) > 1 else ""
+        result_annotations.append(AnnotationInfo(
+            phrase=phrase,
+            reason=reason,
+            box=BoundingBox(x1=box["x1"], y1=box["y1"], x2=box["x2"], y2=box["y2"]),
+        ))
+
+    # embed_text_in_image=Trueの場合は注釈付き画像を生成
+    if embed_text_in_image:
+        final_annotated_path = output_dir / f"{image_path.stem}__boxed_final_annotated.png"
+        final_annotations_text = []
+        for j, box in enumerate(current_boxes):
+            if j < len(current_annotations):
+                final_annotations_text.append(current_annotations[j])
+            else:
+                final_annotations_text.append("")
+        final_annotated_im = _draw_red_boxes_on_image(
+            image_path,
+            current_boxes,
+            stroke_width=stroke_width,
+            padding_px=padding_px,
+            annotations=final_annotations_text,
+        )
+        _save_image_as_png(final_annotated_im, final_annotated_path)
+        return AnnotationResult(
+            image_path=final_annotated_path,
+            annotations=result_annotations,
+            image_width=width,
+            image_height=height,
+        )
+
+    return AnnotationResult(
+        image_path=final_path,
+        annotations=result_annotations,
+        image_width=width,
+        image_height=height,
     )
-    _save_image_as_png(final_annotated_im, final_annotated_path)
-    return final_annotated_path
 
 # %%
 def capture_insert_sheet(
