@@ -61,6 +61,7 @@ embedding/
 runs/
 # 除外しないファイル・ディレクトリ
 !data/input/**
+data/output/**
 
 log/
 backup/

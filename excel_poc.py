@@ -6,13 +6,96 @@ import os
 import dotenv
 from langchain.agents import create_agent
 from langchain_core.tools import tool
-from src.utils import build_llm, print_message_logs, extract_message_logs
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from deepagents.middleware import SubAgentMiddleware
+import json
+import shutil
+
 
 # %%
 dotenv.load_dotenv()
+api_key = os.getenv("OPENAI_API_KEY")
+if not api_key:
+    raise ValueError("OPENAI_API_KEY is not set")
 
-# %%
+def build_llm(**kwargs):
+    model = kwargs.pop("model", "gpt-5-mini")  # 未指定時は gpt-5-mini を使用
+    from langchain_openai import ChatOpenAI
+    return ChatOpenAI(model=model, api_key=api_key, **kwargs)
+
+def print_message_logs(logs: list):
+    """
+    メッセージログをJSON形式で出力する。
+    
+    引数:
+        logs: extract_message_logs()の戻り値
+    """
+    for log in logs:
+        print(json.dumps(log, ensure_ascii=False, indent=2))
+        print("-" * 50)
+
+def extract_message_logs(result: dict) -> list:
+    """
+    LangChainエージェントの実行結果からメッセージログを抽出する。
+    
+    引数:
+        result: agent.invoke()の戻り値（messagesキーを含む辞書）
+    
+    戻り値:
+        メッセージログのリスト。各ログは以下の形式:
+        - human_message: {"type": "human_message", "index": int, "content": str}
+        - ai_thought: {"type": "ai_thought", "index": int, "content": str}
+        - tool_call: {"type": "tool_call", "index": int, "tool_name": str, "args": dict, 
+                      "tool_call_id": str, "ai_content": str, "output": str, "status": str}
+        - tool_result: {"type": "tool_result", "index": int, "tool_call_id": str, "status": str}
+    """
+    # tool_call_id -> ToolMessage
+    _tool_messages = {
+        m.tool_call_id: m for m in result["messages"] if isinstance(m, ToolMessage)
+    }
+    
+    all_logs = []
+    for idx, m in enumerate(result["messages"]):
+        if isinstance(m, HumanMessage):
+            all_logs.append({
+                "type": "human_message",
+                "index": idx,
+                "content": m.content,
+            })
+        elif isinstance(m, AIMessage):
+            # AIの思考プロセス（ツール呼び出しがない場合）
+            if not m.tool_calls:
+                all_logs.append({
+                    "type": "ai_thought",
+                    "index": idx,
+                    "content": m.content,
+                })
+            # ツール呼び出しがある場合
+            else:
+                for tc in m.tool_calls:
+                    tool_msg = _tool_messages.get(tc.get("id"))
+                    all_logs.append({
+                        "type": "tool_call",
+                        "index": idx,
+                        "tool_name": tc.get("name"),
+                        "args": tc.get("args"),
+                        "tool_call_id": tc.get("id"),
+                        "ai_content": m.content,  # AIの思考プロセスも含める
+                        "output": getattr(tool_msg, "content", None) if tool_msg else None,
+                        "status": getattr(tool_msg, "status", None) if tool_msg else None,
+                    })
+        elif isinstance(m, ToolMessage):
+            # ToolMessageは既にtool_callのログに含まれているので、必要に応じて追加
+            all_logs.append({
+                "type": "tool_result",
+                "index": idx,
+                "tool_call_id": m.tool_call_id,
+                # "content": m.content,
+                "status": getattr(m, "status", None),
+            })
+    
+    return all_logs
+
 llm = build_llm()
 llm_complex = build_llm(model="gpt-5.2")
 
@@ -270,9 +353,13 @@ agent = create_agent(
 # %%
 file_path_template = "data/input/複数シート型1_セクション別シート.xlsx"
 file_path_example = "data/input/複数シート型1_セクション別シート_記入例.xlsx"
+
+# templateを複製（リネーム）
+shutil.copy(file_path_template, os.path.join("data", "output", os.path.basename(file_path_template).replace(".xlsx", "_updated.xlsx")))
+file_path_template_updated = os.path.join("data", "output", os.path.basename(file_path_template).replace(".xlsx", "_updated.xlsx"))
 # %%
 prompt = f"""
-テンプレートのパス: {file_path_template}
+テンプレートのパス: {file_path_template_updated}
 記入例のパス: {file_path_example}
 """
 # %%
