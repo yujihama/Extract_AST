@@ -944,9 +944,18 @@ class FindPhraseBoundingBoxesOutput(BaseModel):
     matches: list[PhraseMatch] = Field(default_factory=list)
 
 
+class BoxAdjustment(BaseModel):
+    """各バウンディングボックスの相対調整（50px単位）"""
+    box_index: int  # どのBBを調整するか（0から始まるインデックス）
+    dx1: int = 0  # x1の調整量（負の値=左に拡張、正の値=右に縮小）
+    dy1: int = 0  # y1の調整量（負の値=上に拡張、正の値=下に縮小）
+    dx2: int = 0  # x2の調整量（正の値=右に拡張、負の値=左に縮小）
+    dy2: int = 0  # y2の調整量（正の値=下に拡張、負の値=上に縮小）
+
+
 class VerifyBoxesOutput(BaseModel):
     ok: bool
-    corrected_boxes: list[BoundingBox] = Field(default_factory=list)
+    adjustments: list[BoxAdjustment] = Field(default_factory=list)
 
 
 def _invoke_structured_output(llm: Any, schema: Any, messages: list[Any]) -> Any:
@@ -1066,7 +1075,7 @@ def llm_verify_boxes_on_annotated_image(
 ) -> dict[str, Any]:
     """
     original と boxed を比較し、赤枠が適切かをLLM(Vision)で検証する。
-    OKなら {"ok": true}、NGなら修正版のboxesを返す。
+    OKなら {"ok": true}、NGなら50px単位の相対調整を返す。
     """
     from langchain_core.messages import HumanMessage
 
@@ -1076,6 +1085,12 @@ def llm_verify_boxes_on_annotated_image(
     phrases_str = "\n".join([f"- {p}" for p in target_phrases])
     original_url = _encode_image_as_data_url(original_image_path)
     boxed_url = _encode_image_as_data_url(boxed_image_path)
+
+    # 現在のボックス情報をインデックス付きで表示
+    boxes_with_index = []
+    for i, box in enumerate(current_boxes):
+        boxes_with_index.append(f"  box_index={i}: x1={box['x1']}, y1={box['y1']}, x2={box['x2']}, y2={box['y2']}")
+    boxes_info = "\n".join(boxes_with_index)
 
     prompt = f"""
 あなたは画像を見て特定の情報が含まれるバウンディングボックスが正しく赤枠で囲われているかを評価するタスクを行っています。
@@ -1087,27 +1102,38 @@ Step1: 以下の情報が画像内に含まれているか確認してくださ�
 Step2: Step1で特定した情報が赤枠に全て囲われているかを評価してください。
 ※全ての情報が赤枠に入っていれば、余白が含まれていても厳密に指摘する必要はありません。
 
-Step3: Step2で評価した結果、対象の一部分しか赤枠で囲えていない箇所は、目盛りを参考に全ての情報が入るように調整してください。
-※50px単位で座標を調整してください。
+Step3: Step2で評価した結果、対象の一部分しか赤枠で囲えていない箇所は、50px単位で相対的な調整量を指定してください。
 
 # 対象の画像についての情報
 - 画像サイズ: width={width}, height={height}
 - 画像には「ピクセル定規」と「薄いグリッド」が重ねられています（上下左右=目盛り、200pxごとに数値ラベル、グリッドは50px間隔）。
-- 現在描画されている赤枠のバウンディングボックス:
-{json.dumps(current_boxes, indent=2)}
+- 現在描画されている赤枠のバウンディングボックス（インデックス付き）:
+{boxes_info}
 
 # 出力形式
 {{
   "ok": boolean,
-  "corrected_boxes": [
-    {{"x1": number, "y1": number, "x2": number, "y2": number}}
+  "adjustments": [
+    {{
+      "box_index": number,  // 調整対象のボックスのインデックス（0から始まる）
+      "dx1": number,  // x1の調整量（負の値=左に拡張、正の値=右に縮小）
+      "dy1": number,  // y1の調整量（負の値=上に拡張、正の値=下に縮小）
+      "dx2": number,  // x2の調整量（正の値=右に拡張、負の値=左に縮小）
+      "dy2": number   // y2の調整量（正の値=下に拡張、負の値=上に縮小）
+    }}
   ]
 }}
 
 ルール:
-- 十分に正しければ ok=true, corrected_boxes=[]
-- 不十分なら ok=false とし、正しい赤枠の座標（元画像のピクセル座標）を corrected_boxes に列挙
-- 修正不要な赤枠についても corrected_boxes に入れてください。
+- 十分に正しければ ok=true, adjustments=[]
+- 不十分なら ok=false とし、調整が必要なボックスの相対調整量を adjustments に列挙
+- 調整量は必ず50px単位で指定（例: -50, 0, 50, 100, -100 など）
+- 修正不要なボックスは adjustments に含めない（調整が必要なボックスのみ列挙）
+- 調整の例:
+  - 左に50px拡張したい場合: dx1=-50
+  - 右に100px拡張したい場合: dx2=100
+  - 上に50px拡張したい場合: dy1=-50
+  - 下を50px縮小したい場合: dy2=-50
 """.strip()
 
     msg = HumanMessage(
@@ -1289,13 +1315,12 @@ def annotate_image_with_llm_red_boxes(
                 image_height=height,
             )
 
-        corrected: list[dict[str, int]] = []
-        for b in (ver.get("corrected_boxes") or [])[:10]:
-            if isinstance(b, dict):
-                cb = _clamp_box(b, width, height)
-                if cb is not None:
-                    corrected.append(cb)
-        if not corrected:
+        # adjustmentsから相対調整を取得
+        adjustments: list[dict[str, Any]] = []
+        for adj in (ver.get("adjustments") or [])[:10]:
+            if isinstance(adj, dict) and "box_index" in adj:
+                adjustments.append(adj)
+        if not adjustments:
             # 修正が取れないならこの断面を最終として採用
             final_path = output_dir / f"{image_path.stem}__boxed_final.png"
             if last_iter_path and final_path != last_iter_path:
@@ -1351,44 +1376,30 @@ def annotate_image_with_llm_red_boxes(
                 image_height=height,
             )
 
-        # corrected_boxes が「一部だけ修正」だった場合に、未修正のBBは維持する。
-        # - correctedがcurrentより少ない: 近いBBだけ差し替え、残りはそのまま
-        # - correctedがcurrent以上: 近いBBを差し替え、余りは追加（最大10）
-        def _center(b: dict[str, int]) -> tuple[float, float]:
-            return ((b["x1"] + b["x2"]) / 2.0, (b["y1"] + b["y2"]) / 2.0)
-
-        def _dist2(a: dict[str, int], b: dict[str, int]) -> float:
-            ax, ay = _center(a)
-            bx, by = _center(b)
-            dx = ax - bx
-            dy = ay - by
-            return dx * dx + dy * dy
-
+        # adjustmentsを適用: box_indexで指定されたボックスに相対調整を適用
         new_boxes = list(current_boxes)
-        new_annotations = list(current_annotations)  # 注釈も同様に更新
-        used_idx: set[int] = set()
-        for cb in corrected:
-            # もっとも近い既存BBを1つだけ置換（既に使ったBBは避ける）
-            best_j = None
-            best_d = None
-            for j, ob in enumerate(new_boxes):
-                if j in used_idx:
-                    continue
-                d = _dist2(cb, ob)
-                if best_d is None or d < best_d:
-                    best_d = d
-                    best_j = j
-            if best_j is not None:
-                new_boxes[best_j] = cb
-                # 注釈は維持（修正後のboxでも元の注釈を使用）
-                used_idx.add(best_j)
-            else:
-                # 置換先がないなら追加（注釈は空文字列）
-                new_boxes.append(cb)
-                new_annotations.append("")
+        for adj in adjustments:
+            box_idx = adj.get("box_index", -1)
+            if 0 <= box_idx < len(new_boxes):
+                # 相対調整を適用（50px単位）
+                dx1 = adj.get("dx1", 0)
+                dy1 = adj.get("dy1", 0)
+                dx2 = adj.get("dx2", 0)
+                dy2 = adj.get("dy2", 0)
 
-        current_boxes = new_boxes[:10]
-        current_annotations = new_annotations[:10]  # 注釈も同様に制限
+                old_box = new_boxes[box_idx]
+                adjusted_box = {
+                    "x1": old_box["x1"] + dx1,
+                    "y1": old_box["y1"] + dy1,
+                    "x2": old_box["x2"] + dx2,
+                    "y2": old_box["y2"] + dy2,
+                }
+                # clampして範囲内に収める
+                clamped = _clamp_box(adjusted_box, width, height)
+                if clamped is not None:
+                    new_boxes[box_idx] = clamped
+
+        current_boxes = new_boxes
 
     # ここまで来たら「max_iters回の検証でokにならなかった」。
     # 最後の修正案を反映した画像を final として保存（再検証はしない）。
