@@ -11,6 +11,10 @@ from pydantic import BaseModel, Field
 import dotenv
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import zipfile
+import shutil
+import os
+from xml.etree import ElementTree as ET
 
 dotenv.load_dotenv()
 
@@ -47,6 +51,182 @@ def render_pdf_to_png_pages(
         doc.close()
 
     return out_paths
+
+
+# %%
+# --- Excelシェイプオーバーレイ機能 ---
+# 名前空間定義
+_EXCEL_DRAWING_NAMESPACES = {
+    '': 'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing',
+    'a': 'http://schemas.openxmlformats.org/drawingml/2006/main',
+    'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
+}
+
+# 名前空間を登録
+for _prefix, _uri in _EXCEL_DRAWING_NAMESPACES.items():
+    ET.register_namespace(_prefix, _uri)
+
+
+def _add_rectangle_shape_to_drawing_xml(
+    xml_content: str,
+    shape_id: int,
+    name: str,
+    from_col: int,
+    from_col_off: int,
+    from_row: int,
+    from_row_off: int,
+    to_col: int,
+    to_col_off: int,
+    to_row: int,
+    to_row_off: int,
+    line_width_emu: int = 38100,
+    line_color: str = 'FF0000',
+) -> str:
+    """
+    drawing1.xmlにrectangleシェイプを追加する。
+
+    Args:
+        xml_content: 元のdrawing XMLコンテンツ
+        shape_id: シェイプID（ユニーク）
+        name: シェイプ名
+        from_col, from_col_off, from_row, from_row_off: 開始位置（列、列オフセットEMU、行、行オフセットEMU）
+        to_col, to_col_off, to_row, to_row_off: 終了位置
+        line_width_emu: 線の太さ（EMU単位、9525 = 約0.75pt, 38100 = 約3pt）
+        line_color: 線の色（RGB hex、例: 'FF0000'=赤）
+
+    Returns:
+        更新されたXMLコンテンツ
+    """
+    root = ET.fromstring(xml_content)
+    wsdr_ns = _EXCEL_DRAWING_NAMESPACES['']
+    a_ns = _EXCEL_DRAWING_NAMESPACES['a']
+
+    # twoCellAnchorを作成
+    twoCellAnchor = ET.SubElement(root, '{%s}twoCellAnchor' % wsdr_ns)
+    twoCellAnchor.set('editAs', 'oneCell')
+
+    # from
+    from_elem = ET.SubElement(twoCellAnchor, '{%s}from' % wsdr_ns)
+    ET.SubElement(from_elem, '{%s}col' % wsdr_ns).text = str(from_col)
+    ET.SubElement(from_elem, '{%s}colOff' % wsdr_ns).text = str(from_col_off)
+    ET.SubElement(from_elem, '{%s}row' % wsdr_ns).text = str(from_row)
+    ET.SubElement(from_elem, '{%s}rowOff' % wsdr_ns).text = str(from_row_off)
+
+    # to
+    to_elem = ET.SubElement(twoCellAnchor, '{%s}to' % wsdr_ns)
+    ET.SubElement(to_elem, '{%s}col' % wsdr_ns).text = str(to_col)
+    ET.SubElement(to_elem, '{%s}colOff' % wsdr_ns).text = str(to_col_off)
+    ET.SubElement(to_elem, '{%s}row' % wsdr_ns).text = str(to_row)
+    ET.SubElement(to_elem, '{%s}rowOff' % wsdr_ns).text = str(to_row_off)
+
+    # sp (shape)
+    sp = ET.SubElement(twoCellAnchor, '{%s}sp' % wsdr_ns)
+
+    # nvSpPr
+    nvSpPr = ET.SubElement(sp, '{%s}nvSpPr' % wsdr_ns)
+    cNvPr = ET.SubElement(nvSpPr, '{%s}cNvPr' % wsdr_ns)
+    cNvPr.set('id', str(shape_id))
+    cNvPr.set('name', name)
+    ET.SubElement(nvSpPr, '{%s}cNvSpPr' % wsdr_ns)
+
+    # spPr
+    spPr = ET.SubElement(sp, '{%s}spPr' % wsdr_ns)
+
+    # prstGeom (rect)
+    prstGeom = ET.SubElement(spPr, '{%s}prstGeom' % a_ns)
+    prstGeom.set('prst', 'rect')
+    ET.SubElement(prstGeom, '{%s}avLst' % a_ns)
+
+    # noFill
+    ET.SubElement(spPr, '{%s}noFill' % a_ns)
+
+    # ln (line)
+    ln = ET.SubElement(spPr, '{%s}ln' % a_ns)
+    ln.set('w', str(line_width_emu))
+    solidFill = ET.SubElement(ln, '{%s}solidFill' % a_ns)
+    srgbClr = ET.SubElement(solidFill, '{%s}srgbClr' % a_ns)
+    srgbClr.set('val', line_color)
+
+    # clientData
+    ET.SubElement(twoCellAnchor, '{%s}clientData' % wsdr_ns)
+
+    return ET.tostring(root, encoding='unicode')
+
+
+def _add_shapes_to_excel(
+    excel_path: Path,
+    shapes: list[dict],
+    output_path: Optional[Path] = None,
+) -> Path:
+    """
+    Excelファイルにシェイプを追加する（XMLを直接操作）。
+
+    Args:
+        excel_path: 入力Excelファイルパス
+        shapes: シェイプ情報のリスト。各シェイプは以下のキーを持つdict:
+            - from_col, from_col_off, from_row, from_row_off: 開始位置
+            - to_col, to_col_off, to_row, to_row_off: 終了位置
+            - line_width_emu: 線の太さ（EMU、オプション、デフォルト38100）
+            - line_color: 線の色（RGB hex、オプション、デフォルト'FF0000'）
+        output_path: 出力パス（Noneの場合は入力ファイルを上書き）
+
+    Returns:
+        出力Excelファイルパス
+    """
+    excel_path = Path(excel_path)
+    output_path = Path(output_path) if output_path else excel_path
+
+    if not shapes:
+        if output_path != excel_path:
+            shutil.copy(excel_path, output_path)
+        return output_path
+
+    # 一時ディレクトリに展開
+    temp_dir = excel_path.parent / f".{excel_path.stem}_temp_shape"
+    if temp_dir.exists():
+        shutil.rmtree(temp_dir)
+
+    with zipfile.ZipFile(excel_path, 'r') as zf:
+        zf.extractall(temp_dir)
+
+    # drawing1.xmlを編集
+    drawing_path = temp_dir / 'xl' / 'drawings' / 'drawing1.xml'
+    if drawing_path.exists():
+        with open(drawing_path, 'r', encoding='utf-8') as f:
+            xml_content = f.read()
+
+        # 各シェイプを追加
+        for i, shape in enumerate(shapes):
+            xml_content = _add_rectangle_shape_to_drawing_xml(
+                xml_content,
+                shape_id=1000 + i,  # 他のオブジェクトとかぶらないID
+                name=f'Annotation Rectangle {i+1}',
+                from_col=shape['from_col'],
+                from_col_off=shape.get('from_col_off', 0),
+                from_row=shape['from_row'],
+                from_row_off=shape.get('from_row_off', 0),
+                to_col=shape['to_col'],
+                to_col_off=shape.get('to_col_off', 0),
+                to_row=shape['to_row'],
+                to_row_off=shape.get('to_row_off', 0),
+                line_width_emu=shape.get('line_width_emu', 38100),
+                line_color=shape.get('line_color', 'FF0000'),
+            )
+
+        with open(drawing_path, 'w', encoding='utf-8') as f:
+            f.write(xml_content)
+
+    # ZIPに再圧縮
+    with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for root, dirs, files in os.walk(temp_dir):
+            for file in files:
+                file_path = Path(root) / file
+                arc_name = file_path.relative_to(temp_dir)
+                zf.write(file_path, arc_name)
+
+    # 一時ディレクトリを削除
+    shutil.rmtree(temp_dir)
+    return output_path
 
 
 def _pixel_y_to_excel_row(
@@ -91,10 +271,17 @@ def add_capture_sheet_with_images(
     annotation_column: str = "A",
     image_column: str = "B",
     max_workers: int = 3,
+    use_shape_overlay: bool = False,
 ) -> Path:
     """
     excel_path のExcelに sheet_name を作成し、images_dir 配下の画像をファイル名順に上から貼り付ける。
     既に同名シートがある場合は削除して作り直す。
+
+    Args:
+        use_shape_overlay: Trueの場合、画像に赤枠を埋め込む代わりに、
+                          元画像をExcelに貼り付けてExcelの図形で赤枠をオーバーレイする。
+                          LLMでの評価は既存通り画像に赤枠を埋め込んで行い、
+                          確定後にExcel出力時に元画像+図形オーバーレイの方式に切り替える。
 
     NOTE:
     - 画像貼り付けには Pillow が必要です（未インストールの場合は `pip install pillow`）。
@@ -199,6 +386,9 @@ def add_capture_sheet_with_images(
             print(f"[並列処理] 完了")
 
     # --- Excelへの書き込み（直列処理） ---
+    # シェイプオーバーレイ用の情報を収集
+    shape_overlay_info: list[dict] = []  # シェイプ情報のリスト
+
     row = 1
     for image_path in image_paths:
         if not Path(image_path).exists():
@@ -209,7 +399,12 @@ def add_capture_sheet_with_images(
         annotation_result: Optional[AnnotationResult] = annotation_results.get(image_path)
 
         if annotation_result is not None:
-            img_path_for_excel = annotation_result.image_path
+            if use_shape_overlay and annotation_result.original_image_path:
+                # シェイプオーバーレイモード：元画像を使用
+                img_path_for_excel = annotation_result.original_image_path
+            else:
+                # 通常モード：赤枠付き画像を使用
+                img_path_for_excel = annotation_result.image_path
 
         img = XLImage(str(img_path_for_excel))
 
@@ -268,6 +463,58 @@ def add_capture_sheet_with_images(
                     bold=True,
                 )
 
+                # シェイプオーバーレイモードの場合、シェイプ情報を収集
+                if use_shape_overlay:
+                    # ピクセル座標をExcelセル座標に変換
+                    # 画像列（B列=列インデックス1）からの相対位置を計算
+                    # EMU (English Metric Units): 1ピクセル ≒ 9525 EMU (96dpi基準)
+                    EMU_PER_PIXEL = 9525
+
+                    # 画像のスケーリングを考慮
+                    box_x1 = int(ann.box.x1 * scale)
+                    box_y1 = int(ann.box.y1 * scale)
+                    box_x2 = int(ann.box.x2 * scale)
+                    box_y2 = int(ann.box.y2 * scale)
+
+                    # 画像列のインデックス（B=1, C=2, ...）
+                    image_col_idx = ord(image_column.upper()) - ord('A')
+
+                    # Y座標をExcel行に変換
+                    from_row_idx = _pixel_y_to_excel_row(
+                        pixel_y=box_y1,
+                        image_start_row=start_row,
+                        image_height_px=height_px,
+                        rows_for_image=rows_needed - margin_rows,
+                    ) - 1  # 0-indexed
+                    to_row_idx = _pixel_y_to_excel_row(
+                        pixel_y=box_y2,
+                        image_start_row=start_row,
+                        image_height_px=height_px,
+                        rows_for_image=rows_needed - margin_rows,
+                    ) - 1  # 0-indexed
+
+                    # X座標をオフセットとして計算（同一セル内のオフセット）
+                    from_col_off = box_x1 * EMU_PER_PIXEL
+                    to_col_off = box_x2 * EMU_PER_PIXEL
+
+                    # 行内のY位置オフセットを計算
+                    row_height_emu = int(row_height_pt * 12700)  # 1pt = 12700 EMU
+                    from_row_off = 0  # 簡易化：行の先頭から
+                    to_row_off = 0
+
+                    shape_overlay_info.append({
+                        'from_col': image_col_idx,
+                        'from_col_off': from_col_off,
+                        'from_row': from_row_idx,
+                        'from_row_off': from_row_off,
+                        'to_col': image_col_idx,
+                        'to_col_off': to_col_off,
+                        'to_row': to_row_idx,
+                        'to_row_off': to_row_off,
+                        'line_color': 'FF0000',  # 赤
+                        'line_width_emu': 38100,  # 約3pt
+                    })
+
         row += rows_needed
 
     save_path = Path(output_excel_path) if output_excel_path else excel_path_p
@@ -282,11 +529,17 @@ def add_capture_sheet_with_images(
         try:
             fallback.parent.mkdir(parents=True, exist_ok=True)
             wb.save(fallback)
-            return fallback
+            save_path = fallback
         except Exception:
             raise PermissionError(
                 f"Excelファイルの保存に失敗しました。Excelで '{excel_path_p.name}' を開いている場合は閉じてから再実行してください: {excel_path_p}"
             ) from e
+
+    # シェイプオーバーレイモードの場合、保存後にシェイプを追加
+    if use_shape_overlay and shape_overlay_info:
+        print(f"[シェイプオーバーレイ] {len(shape_overlay_info)}個のシェイプを追加中...")
+        _add_shapes_to_excel(save_path, shape_overlay_info, save_path)
+        print(f"[シェイプオーバーレイ] 完了")
 
     return save_path
 
@@ -670,7 +923,8 @@ class AnnotationInfo(BaseModel):
 
 class AnnotationResult(BaseModel):
     """annotate_image_with_llm_red_boxes の戻り値。"""
-    image_path: Path = Field(..., description="処理後の画像パス")
+    image_path: Path = Field(..., description="処理後の画像パス（赤枠付き）")
+    original_image_path: Optional[Path] = Field(None, description="元画像パス（赤枠なし）")
     annotations: list[AnnotationInfo] = Field(default_factory=list, description="アノテーション情報のリスト")
     image_width: int = Field(0, description="画像の幅（px）")
     image_height: int = Field(0, description="画像の高さ（px）")
@@ -905,6 +1159,7 @@ def annotate_image_with_llm_red_boxes(
     if not det.get("contains"):
         return AnnotationResult(
             image_path=image_path,
+            original_image_path=image_path,
             annotations=[],
             image_width=width,
             image_height=height,
@@ -932,6 +1187,7 @@ def annotate_image_with_llm_red_boxes(
     if not boxes_raw:
         return AnnotationResult(
             image_path=image_path,
+            original_image_path=image_path,
             annotations=[],
             image_width=width,
             image_height=height,
@@ -1019,6 +1275,7 @@ def annotate_image_with_llm_red_boxes(
                 _save_image_as_png(final_annotated_im, final_annotated_path)
                 return AnnotationResult(
                     image_path=final_annotated_path,
+                    original_image_path=image_path,
                     annotations=result_annotations,
                     image_width=width,
                     image_height=height,
@@ -1026,6 +1283,7 @@ def annotate_image_with_llm_red_boxes(
 
             return AnnotationResult(
                 image_path=final_path,
+                original_image_path=image_path,
                 annotations=result_annotations,
                 image_width=width,
                 image_height=height,
@@ -1079,6 +1337,7 @@ def annotate_image_with_llm_red_boxes(
                 _save_image_as_png(final_annotated_im, final_annotated_path)
                 return AnnotationResult(
                     image_path=final_annotated_path,
+                    original_image_path=image_path,
                     annotations=result_annotations,
                     image_width=width,
                     image_height=height,
@@ -1086,6 +1345,7 @@ def annotate_image_with_llm_red_boxes(
 
             return AnnotationResult(
                 image_path=final_path,
+                original_image_path=image_path,
                 annotations=result_annotations,
                 image_width=width,
                 image_height=height,
@@ -1176,6 +1436,7 @@ def annotate_image_with_llm_red_boxes(
         _save_image_as_png(final_annotated_im, final_annotated_path)
         return AnnotationResult(
             image_path=final_annotated_path,
+            original_image_path=image_path,
             annotations=result_annotations,
             image_width=width,
             image_height=height,
@@ -1183,6 +1444,7 @@ def annotate_image_with_llm_red_boxes(
 
     return AnnotationResult(
         image_path=final_path,
+        original_image_path=image_path,
         annotations=result_annotations,
         image_width=width,
         image_height=height,
@@ -1198,6 +1460,7 @@ def capture_insert_sheet(
     output_excel_path: Optional[str] = None,
     output_excel_sheet_name: str = "キャプチャ",
     max_workers: int = 3,
+    use_shape_overlay: bool = False,
 ) -> Path:
     """
     画像をExcelに貼り付け、LLMでアノテーションを検出してA列にテキストを挿入する。
@@ -1211,6 +1474,8 @@ def capture_insert_sheet(
         output_excel_path: 出力Excelパス（Noneなら入力ファイルを上書き）
         output_excel_sheet_name: 出力シート名
         max_workers: 並列処理のワーカー数（デフォルト3）
+        use_shape_overlay: Trueの場合、画像に赤枠を埋め込む代わりに、
+                          元画像をExcelに貼り付けてExcelの図形で赤枠をオーバーレイする。
     """
     llm_complex = build_llm(model="gpt-5.2")
     output_path = add_capture_sheet_with_images(
@@ -1222,6 +1487,7 @@ def capture_insert_sheet(
         output_excel_path=output_excel_path,
         output_excel_sheet_name=output_excel_sheet_name,
         max_workers=max_workers,
+        use_shape_overlay=use_shape_overlay,
     )
     print(f"キャプチャ付きExcelを出力しました: {output_path}")
 
