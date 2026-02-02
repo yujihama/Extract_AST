@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel, Field
 import dotenv
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 dotenv.load_dotenv()
 
@@ -89,6 +90,7 @@ def add_capture_sheet_with_images(
     pdf_render_dir: Optional[str] = None,
     annotation_column: str = "A",
     image_column: str = "B",
+    max_workers: int = 3,
 ) -> Path:
     """
     excel_path のExcelに sheet_name を作成し、images_dir 配下の画像をファイル名順に上から貼り付ける。
@@ -155,6 +157,48 @@ def add_capture_sheet_with_images(
     # 画像を上から順に配置
     # かぶり防止のため、シート側のデフォルト行高を固定し、その前提で「画像高さ→必要行数」を見積もる。
     ws.sheet_format.defaultRowHeight = row_height_pt
+
+    # --- 並列処理: LLMアノテーションを事前に並列実行 ---
+    annotation_results: dict[Path, AnnotationResult] = {}
+    if annotate_phrases and annotate_llm is not None:
+        # アノテーション対象の画像を特定
+        images_to_annotate = [
+            img_p for img_p in image_paths
+            if Path(img_p).exists() and annotate_phrases.get(img_p.name, [])
+        ]
+
+        def _process_single_image(img_p: Path) -> tuple[Path, AnnotationResult]:
+            """1画像のアノテーション処理（並列実行用）"""
+            result = annotate_image_with_llm_red_boxes(
+                llm=annotate_llm,
+                image_path=img_p,
+                target_phrases=annotate_phrases.get(img_p.name, []),
+                output_dir=Path(annotate_output_dir),
+                max_iters=annotate_max_iters,
+                embed_text_in_image=False,
+            )
+            return (img_p, result)
+
+        # 並列実行（max_workers で並列数を制御）
+        if images_to_annotate:
+            effective_workers = min(max_workers, len(images_to_annotate))
+            print(f"[並列処理] {len(images_to_annotate)}画像を{effective_workers}並列で処理中...")
+            with ThreadPoolExecutor(max_workers=effective_workers) as executor:
+                futures = {
+                    executor.submit(_process_single_image, img_p): img_p
+                    for img_p in images_to_annotate
+                }
+                for future in as_completed(futures):
+                    img_p = futures[future]
+                    try:
+                        path, result = future.result()
+                        annotation_results[path] = result
+                        print(f"[完了] {path.name}")
+                    except Exception as e:
+                        print(f"[エラー] {img_p.name}: {e}")
+            print(f"[並列処理] 完了")
+
+    # --- Excelへの書き込み（直列処理） ---
     row = 1
     for image_path in image_paths:
         if not Path(image_path).exists():
@@ -162,17 +206,9 @@ def add_capture_sheet_with_images(
             continue
         start_row = row
         img_path_for_excel = image_path
-        annotation_result: Optional[AnnotationResult] = None
+        annotation_result: Optional[AnnotationResult] = annotation_results.get(image_path)
 
-        if annotate_phrases and annotate_llm is not None:
-            annotation_result = annotate_image_with_llm_red_boxes(
-                llm=annotate_llm,
-                image_path=image_path,
-                target_phrases=annotate_phrases.get(image_path.name, []),
-                output_dir=Path(annotate_output_dir),
-                max_iters=annotate_max_iters,
-                embed_text_in_image=False,  # 画像にはテキストを埋め込まない
-            )
+        if annotation_result is not None:
             img_path_for_excel = annotation_result.image_path
 
         img = XLImage(str(img_path_for_excel))
@@ -761,7 +797,7 @@ JSON schema:
         print(out.model_dump())
         return out.model_dump()
     if isinstance(out, dict):
-        print(out.model_dump())
+        print(out)
         return out
     raise ValueError(f"structured output の戻り値が想定外です: type={type(out).__name__}, content={out!r}")
 
@@ -830,10 +866,8 @@ Step3: Step2で評価した結果、対象の一部分しか赤枠で囲えて�
 
     out = _invoke_structured_output(llm, VerifyBoxesOutput, [msg])
     if isinstance(out, BaseModel):
-        print(out.model_dump())
         return out.model_dump()
     if isinstance(out, dict):
-        print(out)
         return out
     raise ValueError(f"structured output の戻り値が想定外です: type={type(out).__name__}, content={out!r}")
 
@@ -1163,7 +1197,21 @@ def capture_insert_sheet(
     margin_rows: int = 2,
     output_excel_path: Optional[str] = None,
     output_excel_sheet_name: str = "キャプチャ",
+    max_workers: int = 3,
 ) -> Path:
+    """
+    画像をExcelに貼り付け、LLMでアノテーションを検出してA列にテキストを挿入する。
+
+    Args:
+        excel_path: 入力Excelファイルパス
+        images_dir: 画像フォルダ
+        phrases_to_box: 画像ファイル名→検出対象フレーズのマッピング
+        row_height_pt: 行の高さ（pt）
+        margin_rows: 画像間のマージン行数
+        output_excel_path: 出力Excelパス（Noneなら入力ファイルを上書き）
+        output_excel_sheet_name: 出力シート名
+        max_workers: 並列処理のワーカー数（デフォルト3）
+    """
     llm_complex = build_llm(model="gpt-5.2")
     output_path = add_capture_sheet_with_images(
         excel_path,
@@ -1173,6 +1221,7 @@ def capture_insert_sheet(
         annotate_max_iters=3,
         output_excel_path=output_excel_path,
         output_excel_sheet_name=output_excel_sheet_name,
+        max_workers=max_workers,
     )
     print(f"キャプチャ付きExcelを出力しました: {output_path}")
 
