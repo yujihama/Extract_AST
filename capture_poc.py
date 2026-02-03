@@ -921,6 +921,21 @@ def _crop_image_to_boxes(
     return output_path, crop_info
 
 
+# バウンディングボックス用の色パレット（判別しやすい色）
+BOX_COLOR_PALETTE = [
+    (255, 0, 0),      # 赤
+    (0, 0, 255),      # 青
+    (0, 128, 0),      # 緑
+    (255, 165, 0),    # オレンジ
+    (128, 0, 128),    # 紫
+    (0, 128, 128),    # ティール
+    (255, 0, 255),    # マゼンタ
+    (139, 69, 19),    # 茶
+    (255, 215, 0),    # ゴールド
+    (0, 191, 255),    # ディープスカイブルー
+]
+
+
 def _draw_red_boxes_on_image(
     image_path: Path,
     boxes: Iterable[dict[str, int]],
@@ -928,16 +943,19 @@ def _draw_red_boxes_on_image(
     stroke_width: int = 6,
     padding_px: int = 6,
     annotations: Optional[list[str]] = None,
+    show_box_index: bool = True,
 ) -> Image.Image:
     """
-    画像に赤いバウンディングボックスと注釈を描画する。
-    
+    画像にバウンディングボックスと注釈を描画する。
+    各ボックスは判別しやすいよう異なる色で描画される。
+
     Args:
         image_path: 画像パス
         boxes: バウンディングボックスのリスト [{"x1": int, "y1": int, "x2": int, "y2": int}, ...]
         stroke_width: 枠線の太さ
         padding_px: パディング（px）
         annotations: 各BBに対応する注釈テキストのリスト（Noneの場合は注釈なし）
+        show_box_index: 各ボックスの左上にインデックス番号を表示するか（デフォルトTrue）
     """
     im = Image.open(image_path).convert("RGB")
     draw = ImageDraw.Draw(im)
@@ -976,30 +994,92 @@ def _draw_red_boxes_on_image(
     
     boxes_list = list(boxes)
     annotations_list = annotations if annotations else [None] * len(boxes_list)
-    
+
+    # box index用の小さいフォント
+    index_font_size = 20
+    index_font = None
+    for font_path, font_index in japanese_fonts:
+        try:
+            if font_index is not None:
+                index_font = ImageFont.truetype(font_path, index_font_size, index=font_index)
+            else:
+                index_font = ImageFont.truetype(font_path, index_font_size)
+            break
+        except Exception:
+            continue
+    if index_font is None:
+        try:
+            index_font = ImageFont.truetype("arial.ttf", index_font_size)
+        except Exception:
+            try:
+                index_font = ImageFont.truetype("DejaVuSans.ttf", index_font_size)
+            except Exception:
+                index_font = ImageFont.load_default()
+
     for idx, b in enumerate(boxes_list):
+        # 各boxに異なる色を使用（パレットを循環）
+        box_color = BOX_COLOR_PALETTE[idx % len(BOX_COLOR_PALETTE)]
+        box_color_with_alpha = (*box_color, 255)
+
         x1 = max(0, b["x1"] - padding_px)
         y1 = max(0, b["y1"] - padding_px)
         x2 = min(im.width - 1, b["x2"] + padding_px)
         y2 = min(im.height - 1, b["y2"] + padding_px)
         # Pillowのrectangleはoutlineのwidth指定が使える
-        draw.rectangle([x1, y1, x2, y2], outline=(255, 0, 0), width=stroke_width)
-        
+        draw.rectangle([x1, y1, x2, y2], outline=box_color, width=stroke_width)
+
+        # box indexを左上に表示
+        if show_box_index:
+            index_text = f"[{idx}]"
+            # indexラベルの位置：枠の左上内側
+            index_x = x1 + 4
+            index_y = y1 + 4
+
+            # indexラベルのサイズを計算
+            try:
+                idx_bbox = draw.textbbox((index_x, index_y), index_text, font=index_font)
+                idx_width = idx_bbox[2] - idx_bbox[0]
+                idx_height = idx_bbox[3] - idx_bbox[1]
+            except AttributeError:
+                idx_width, idx_height = draw.textsize(index_text, font=index_font)
+
+            # 背景を描画（半透明の白背景）
+            idx_bg_padding = 3
+            idx_bg_x1 = index_x - idx_bg_padding
+            idx_bg_y1 = index_y - idx_bg_padding
+            idx_bg_x2 = index_x + idx_width + idx_bg_padding
+            idx_bg_y2 = index_y + idx_height + idx_bg_padding
+
+            # 半透明の背景を描画
+            overlay = Image.new("RGBA", im.size, (0, 0, 0, 0))
+            overlay_draw = ImageDraw.Draw(overlay)
+            overlay_draw.rectangle(
+                [idx_bg_x1, idx_bg_y1, idx_bg_x2, idx_bg_y2],
+                fill=(255, 255, 255, 220),
+                outline=box_color_with_alpha,
+                width=2,
+            )
+            im = Image.alpha_composite(im.convert("RGBA"), overlay).convert("RGB")
+            draw = ImageDraw.Draw(im)
+
+            # indexテキストを描画
+            draw.text((index_x, index_y), index_text, fill=box_color, font=index_font)
+
         # 注釈テキストを描画
         if idx < len(annotations_list) and annotations_list[idx]:
             annotation_text = annotations_list[idx]
             # 注釈の位置：BBの左上の少し上（上にスペースがない場合はBBの内側）
             text_x = x1
             text_y = max(0, y1 - 35)  # BBの上35px（フォントサイズが大きくなったので調整）
-            
+
             # 改行で分割
             lines = annotation_text.split('\n')
             line_height = 27  # 行の高さ（px、フォントサイズ24に合わせて1.5倍）
-            
+
             # 各行の幅と高さを計算
             max_text_width = 0
             total_text_height = len(lines) * line_height
-            
+
             for line in lines:
                 try:
                     bbox = draw.textbbox((text_x, text_y), line, font=font)
@@ -1008,39 +1088,39 @@ def _draw_red_boxes_on_image(
                     # textbboxが使えない場合はtextsizeを使用（古いPillow）
                     line_width, _ = draw.textsize(line, font=font)
                 max_text_width = max(max_text_width, line_width)
-            
+
             # 背景を描画（半透明の白背景）
             bg_padding = 4
             bg_x1 = text_x - bg_padding
             bg_y1 = text_y - bg_padding
             bg_x2 = text_x + max_text_width + bg_padding
             bg_y2 = text_y + total_text_height + bg_padding
-            
+
             # 背景が画像外に出ないように調整
             bg_x1 = max(0, bg_x1)
             bg_y1 = max(0, bg_y1)
             bg_x2 = min(im.width - 1, bg_x2)
             bg_y2 = min(im.height - 1, bg_y2)
-            
+
             # 半透明の背景を描画（RGBAモードで描画してから合成）
             overlay = Image.new("RGBA", im.size, (0, 0, 0, 0))
             overlay_draw = ImageDraw.Draw(overlay)
             overlay_draw.rectangle(
                 [bg_x1, bg_y1, bg_x2, bg_y2],
                 fill=(255, 255, 255, 220),  # 半透明の白
-                outline=(255, 0, 0, 255),  # 赤い枠線
+                outline=box_color_with_alpha,  # boxの色に合わせた枠線
                 width=2,
             )
             im = Image.alpha_composite(im.convert("RGBA"), overlay).convert("RGB")
             draw = ImageDraw.Draw(im)
-            
-            # テキストを各行ごとに描画（赤色）
+
+            # テキストを各行ごとに描画（boxの色）
             current_y = text_y
             for line in lines:
                 if line.strip():  # 空行はスキップ
-                    draw.text((text_x, current_y), line, fill=(255, 0, 0), font=font)
+                    draw.text((text_x, current_y), line, fill=box_color, font=font)
                 current_y += line_height
-    
+
     return im
 
 
@@ -1258,12 +1338,29 @@ class FindPhraseBoundingBoxesOutput(BaseModel):
 
 
 class BoxAdjustment(BaseModel):
-    """各バウンディングボックスの相対調整（50px単位）"""
+    """各バウンディングボックスの相対調整（50px単位）
+
+    調整量は各辺の移動方向を表す:
+    - 正の値: 座標が増加する方向（右/下）に移動
+    - 負の値: 座標が減少する方向（左/上）に移動
+
+    枠を広げる場合:
+    - 左に広げる → dx1を負に (例: dx1=-50)
+    - 右に広げる → dx2を正に (例: dx2=50)
+    - 上に広げる → dy1を負に (例: dy1=-50)
+    - 下に広げる → dy2を正に (例: dy2=50)
+
+    枠を縮める場合:
+    - 左辺を右に → dx1を正に (例: dx1=50)
+    - 右辺を左に → dx2を負に (例: dx2=-50)
+    - 上辺を下に → dy1を正に (例: dy1=50)
+    - 下辺を上に → dy2を負に (例: dy2=-50)
+    """
     box_index: int  # どのBBを調整するか（0から始まるインデックス）
-    dx1: int = 0  # x1の調整量（負の値=左に拡張、正の値=右に縮小）
-    dy1: int = 0  # y1の調整量（負の値=上に拡張、正の値=下に縮小）
-    dx2: int = 0  # x2の調整量（正の値=右に拡張、負の値=左に縮小）
-    dy2: int = 0  # y2の調整量（正の値=下に拡張、負の値=上に縮小）
+    dx1: int = 0  # 左辺の移動量（正=右へ、負=左へ）
+    dy1: int = 0  # 上辺の移動量（正=下へ、負=上へ）
+    dx2: int = 0  # 右辺の移動量（正=右へ、負=左へ）
+    dy2: int = 0  # 下辺の移動量（正=下へ、負=上へ）
 
 
 class VerifyBoxesOutput(BaseModel):
@@ -1406,21 +1503,22 @@ def llm_verify_boxes_on_annotated_image(
     boxes_info = "\n".join(boxes_with_index)
 
     prompt = f"""
-あなたは画像を見て特定の情報が含まれるバウンディングボックスが正しく赤枠で囲われているかを評価するタスクを行っています。
+あなたは画像を見て特定の情報が含まれるバウンディングボックスが正しく枠で囲われているかを評価するタスクを行っています。
 # 作業ステップ
 Step1: 以下の情報が画像内に含まれているか確認してください。
 - 対象情報:
 {phrases_str}
 
-Step2: Step1で特定した情報が赤枠に全て囲われているかを評価してください。
-※全ての情報が赤枠に入っていれば、余白が含まれていても厳密に指摘する必要はありません。
+Step2: Step1で特定した情報が枠に全て囲われているかを評価してください。
+※全ての情報が枠に入っていれば、余白が含まれていても厳密に指摘する必要はありません。
 
-Step3: Step2で評価した結果、対象の一部分しか赤枠で囲えていない箇所は、50px単位で相対的な調整量を指定してください。
+Step3: Step2で評価した結果、対象の一部分しか枠で囲えていない箇所は、50px単位で相対的な調整量を指定してください。
 
 # 対象の画像についての情報
 - 画像サイズ: width={width}, height={height}
 - 画像には「ピクセル定規」と「薄いグリッド」が重ねられています（上下左右=目盛り、200pxごとに数値ラベル、グリッドは50px間隔）。
-- 現在描画されている赤枠のバウンディングボックス（インデックス付き）:
+- 各ボックスは異なる色で描画され、左上に[0], [1]のようなインデックス番号が表示されています。
+- 現在描画されているバウンディングボックス（インデックス付き）:
 {boxes_info}
 
 # 出力形式
@@ -1428,11 +1526,11 @@ Step3: Step2で評価した結果、対象の一部分しか赤枠で囲えて�
   "ok": boolean,
   "adjustments": [
     {{
-      "box_index": number,  // 調整対象のボックスのインデックス（0から始まる）
-      "dx1": number,  // x1の調整量（負の値=左に拡張、正の値=右に縮小）
-      "dy1": number,  // y1の調整量（負の値=上に拡張、正の値=下に縮小）
-      "dx2": number,  // x2の調整量（正の値=右に拡張、負の値=左に縮小）
-      "dy2": number   // y2の調整量（正の値=下に拡張、負の値=上に縮小）
+      "box_index": number,  // 調整対象のボックスのインデックス（画像左上の[N]に対応）
+      "dx1": number,  // 左辺の移動量（正=右へ、負=左へ）
+      "dy1": number,  // 上辺の移動量（正=下へ、負=上へ）
+      "dx2": number,  // 右辺の移動量（正=右へ、負=左へ）
+      "dy2": number   // 下辺の移動量（正=下へ、負=上へ）
     }}
   ]
 }}
@@ -1442,11 +1540,14 @@ Step3: Step2で評価した結果、対象の一部分しか赤枠で囲えて�
 - 不十分なら ok=false とし、調整が必要なボックスの相対調整量を adjustments に列挙
 - 調整量は必ず50px単位で指定（例: -50, 0, 50, 100, -100 など）
 - 修正不要なボックスは adjustments に含めない（調整が必要なボックスのみ列挙）
-- 調整の例:
-  - 左に50px拡張したい場合: dx1=-50
-  - 右に100px拡張したい場合: dx2=100
-  - 上に50px拡張したい場合: dy1=-50
-  - 下を50px縮小したい場合: dy2=-50
+- 調整の例（枠を広げたい場合）:
+  - 左に50px広げたい → dx1=-50（左辺を左へ移動）
+  - 右に100px広げたい → dx2=100（右辺を右へ移動）
+  - 上に50px広げたい → dy1=-50（上辺を上へ移動）
+  - 下に50px広げたい → dy2=50（下辺を下へ移動）
+- 調整の例（枠を縮めたい場合）:
+  - 左側を50px縮めたい → dx1=50（左辺を右へ移動）
+  - 右側を50px縮めたい → dx2=-50（右辺を左へ移動）
 """.strip()
 
     msg = HumanMessage(
