@@ -824,6 +824,98 @@ def _clamp_box(box: dict[str, Any], width: int, height: int) -> Optional[dict[st
     return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
 
 
+def _boxes_overlap(box1: dict[str, int], box2: dict[str, int]) -> bool:
+    """2つのボックスが重複しているかどうかを判定する。"""
+    return not (
+        box1["x2"] < box2["x1"] or  # box1が左
+        box2["x2"] < box1["x1"] or  # box2が左
+        box1["y2"] < box2["y1"] or  # box1が上
+        box2["y2"] < box1["y1"]     # box2が上
+    )
+
+
+def _merge_two_boxes(box1: dict[str, int], box2: dict[str, int]) -> dict[str, int]:
+    """2つのボックスを包含する最小のボックスを返す。"""
+    return {
+        "x1": min(box1["x1"], box2["x1"]),
+        "y1": min(box1["y1"], box2["y1"]),
+        "x2": max(box1["x2"], box2["x2"]),
+        "y2": max(box1["y2"], box2["y2"]),
+    }
+
+
+def _merge_overlapping_boxes(
+    boxes: list[dict[str, int]],
+    annotations: Optional[list[str]] = None,
+) -> tuple[list[dict[str, int]], list[str]]:
+    """
+    重複した枠を包含した一つの大きな枠に統合する。
+
+    Args:
+        boxes: バウンディングボックスのリスト
+        annotations: 各ボックスに対応する注釈テキストのリスト（None可）
+
+    Returns:
+        統合後のボックスリストと注釈リストのタプル
+    """
+    if not boxes:
+        return [], annotations if annotations else []
+
+    # 注釈リストを準備
+    anns = list(annotations) if annotations else [""] * len(boxes)
+    while len(anns) < len(boxes):
+        anns.append("")
+
+    # Union-Findのような手法でクラスタを構築
+    n = len(boxes)
+    parent = list(range(n))
+
+    def find(x: int) -> int:
+        if parent[x] != x:
+            parent[x] = find(parent[x])
+        return parent[x]
+
+    def union(x: int, y: int) -> None:
+        px, py = find(x), find(y)
+        if px != py:
+            parent[px] = py
+
+    # 重複するボックスをグループ化
+    for i in range(n):
+        for j in range(i + 1, n):
+            if _boxes_overlap(boxes[i], boxes[j]):
+                union(i, j)
+
+    # クラスタごとに統合
+    clusters: dict[int, list[int]] = {}
+    for i in range(n):
+        root = find(i)
+        if root not in clusters:
+            clusters[root] = []
+        clusters[root].append(i)
+
+    # 各クラスタを統合
+    merged_boxes: list[dict[str, int]] = []
+    merged_annotations: list[str] = []
+    for indices in clusters.values():
+        # ボックスを統合
+        merged = boxes[indices[0]]
+        for idx in indices[1:]:
+            merged = _merge_two_boxes(merged, boxes[idx])
+        merged_boxes.append(merged)
+        # 注釈を結合（重複を除去）
+        unique_anns = []
+        seen = set()
+        for idx in indices:
+            ann = anns[idx]
+            if ann and ann not in seen:
+                unique_anns.append(ann)
+                seen.add(ann)
+        merged_annotations.append("\n".join(unique_anns) if unique_anns else "")
+
+    return merged_boxes, merged_annotations
+
+
 class CropInfo(BaseModel):
     """トリミング情報を保持するクラス。元画像座標とトリミング画像座標の変換に使用。"""
     crop_x1: int = Field(..., description="トリミング領域の左上X座標（元画像基準）")
@@ -1183,9 +1275,13 @@ def _add_pixel_ruler_overlay(
         except Exception:
             large_font = font
 
-    # バウンディングボックスを完全に含む200px単位のグリッド線を特定
-    highlighted_x_lines: set[int] = set()
-    highlighted_y_lines: set[int] = set()
+    # バウンディングボックス関連のグリッド線を特定
+    # - 200px単位の主要グリッド線（赤）: ボックスを含む範囲
+    # - 50px単位の境界グリッド線（オレンジ）: ボックスの各辺に最も近い50px単位の線
+    highlighted_x_lines: set[int] = set()  # 200px単位（赤）
+    highlighted_y_lines: set[int] = set()  # 200px単位（赤）
+    boundary_x_lines: set[int] = set()  # 50px単位の境界線（オレンジ）
+    boundary_y_lines: set[int] = set()  # 50px単位の境界線（オレンジ）
     if boxes:
         for box in boxes:
             x1 = box.get("x1", 0)
@@ -1204,6 +1300,20 @@ def _add_pixel_ruler_overlay(
             for y in range(y_min, y_max + 1, major_step_px):
                 if 0 <= y < h:
                     highlighted_y_lines.add(y)
+            # 50px単位の境界グリッド線を追加（ボックスの各辺に最も近い50px単位の線）
+            # 左辺と右辺
+            for coord in [x1, x2]:
+                snapped = round(coord / tick_step_px) * tick_step_px
+                if 0 <= snapped < w:
+                    boundary_x_lines.add(snapped)
+            # 上辺と下辺
+            for coord in [y1, y2]:
+                snapped = round(coord / tick_step_px) * tick_step_px
+                if 0 <= snapped < h:
+                    boundary_y_lines.add(snapped)
+        # 200px単位のグリッド線はboundaryから除外（赤で描画するため）
+        boundary_x_lines -= highlighted_x_lines
+        boundary_y_lines -= highlighted_y_lines
 
     # 薄いグリッド（内容を隠さないよう薄く）
     for x in range(0, w, grid_step_px):
@@ -1219,6 +1329,12 @@ def _add_pixel_ruler_overlay(
     for y in highlighted_y_lines:
         draw.line([(0, y), (w - 1, y)], fill=(255, 0, 0, 200), width=2)
 
+    # バウンディングボックスの境界に近い50px単位のグリッド線をオレンジで描画
+    for x in boundary_x_lines:
+        draw.line([(x, 0), (x, h - 1)], fill=(255, 140, 0, 180), width=2)
+    for y in boundary_y_lines:
+        draw.line([(0, y), (w - 1, y)], fill=(255, 140, 0, 180), width=2)
+
     # 半透明の帯（上・下・左・右）
     band_fill = (255, 255, 255, 170)
     draw.rectangle([0, 0, w - 1, band_px], fill=band_fill)  # top
@@ -1230,36 +1346,82 @@ def _add_pixel_ruler_overlay(
     for x in range(0, w, tick_step_px):
         is_major = (x % major_step_px) == 0
         is_highlighted = x in highlighted_x_lines
+        is_boundary = x in boundary_x_lines
         tick_len = band_px - 6 if is_major else (band_px // 2)
-        tick_color = (255, 0, 0, 255) if is_highlighted else (0, 0, 0, 255)
-        tick_width = 3 if is_highlighted else (2 if is_major else 1)
+        # 強調された目盛りは長くする
+        if is_highlighted or is_boundary:
+            tick_len = band_px - 4
+        # 色とスタイルを決定
+        if is_highlighted:
+            tick_color = (255, 0, 0, 255)  # 赤
+            tick_width = 3
+        elif is_boundary:
+            tick_color = (255, 140, 0, 255)  # オレンジ
+            tick_width = 2
+        elif is_major:
+            tick_color = (0, 0, 0, 255)
+            tick_width = 2
+        else:
+            tick_color = (0, 0, 0, 255)
+            tick_width = 1
         # top
         y0 = band_px - tick_len
         draw.line([(x, y0), (x, band_px)], fill=tick_color, width=tick_width)
         # bottom
         y1 = h - band_px
         draw.line([(x, y1), (x, y1 + tick_len)], fill=tick_color, width=tick_width)
-        if is_major:
-            text_font = large_font if is_highlighted else font
-            text_color = (255, 0, 0, 255) if is_highlighted else (0, 0, 0, 255)
+        # ラベル表示（200px単位 or 境界線）
+        if is_major or is_boundary:
+            if is_highlighted:
+                text_font = large_font
+                text_color = (255, 0, 0, 255)
+            elif is_boundary:
+                text_font = font
+                text_color = (255, 140, 0, 255)
+            else:
+                text_font = font
+                text_color = (0, 0, 0, 255)
             draw.text((x + 2, 2), str(x), fill=text_color, font=text_font)
             draw.text((x + 2, h - band_px + 2), str(x), fill=text_color, font=text_font)
 
     for y in range(0, h, tick_step_px):
         is_major = (y % major_step_px) == 0
         is_highlighted = y in highlighted_y_lines
+        is_boundary = y in boundary_y_lines
         tick_len = band_px - 6 if is_major else (band_px // 2)
-        tick_color = (255, 0, 0, 255) if is_highlighted else (0, 0, 0, 255)
-        tick_width = 3 if is_highlighted else (2 if is_major else 1)
+        # 強調された目盛りは長くする
+        if is_highlighted or is_boundary:
+            tick_len = band_px - 4
+        # 色とスタイルを決定
+        if is_highlighted:
+            tick_color = (255, 0, 0, 255)  # 赤
+            tick_width = 3
+        elif is_boundary:
+            tick_color = (255, 140, 0, 255)  # オレンジ
+            tick_width = 2
+        elif is_major:
+            tick_color = (0, 0, 0, 255)
+            tick_width = 2
+        else:
+            tick_color = (0, 0, 0, 255)
+            tick_width = 1
         # left
         x0 = band_px - tick_len
         draw.line([(x0, y), (band_px, y)], fill=tick_color, width=tick_width)
         # right
         x1 = w - band_px
         draw.line([(x1, y), (x1 + tick_len, y)], fill=tick_color, width=tick_width)
-        if is_major:
-            text_font = large_font if is_highlighted else font
-            text_color = (255, 0, 0, 255) if is_highlighted else (0, 0, 0, 255)
+        # ラベル表示（200px単位 or 境界線）
+        if is_major or is_boundary:
+            if is_highlighted:
+                text_font = large_font
+                text_color = (255, 0, 0, 255)
+            elif is_boundary:
+                text_font = font
+                text_color = (255, 140, 0, 255)
+            else:
+                text_font = font
+                text_color = (0, 0, 0, 255)
             draw.text((2, y + 2), str(y), fill=text_color, font=text_font)
             draw.text((w - band_px + 2, y + 2), str(y), fill=text_color, font=text_font)
 
@@ -1355,17 +1517,31 @@ class BoxAdjustment(BaseModel):
     - 右辺を左に → dx2を負に (例: dx2=-50)
     - 上辺を下に → dy1を正に (例: dy1=50)
     - 下辺を上に → dy2を負に (例: dy2=-50)
+
+    削除する場合:
+    - delete=True にすると、このボックスは削除される
     """
     box_index: int  # どのBBを調整するか（0から始まるインデックス）
     dx1: int = 0  # 左辺の移動量（正=右へ、負=左へ）
     dy1: int = 0  # 上辺の移動量（正=下へ、負=上へ）
     dx2: int = 0  # 右辺の移動量（正=右へ、負=左へ）
     dy2: int = 0  # 下辺の移動量（正=下へ、負=上へ）
+    delete: bool = False  # このボックスを削除するか
+
+
+class NewBox(BaseModel):
+    """新しく追加するバウンディングボックス（50px単位）"""
+    x1: int  # 左端（px）
+    y1: int  # 上端（px）
+    x2: int  # 右端（px）
+    y2: int  # 下端（px）
+    phrase: str = ""  # この枠が囲む対象のフレーズ
 
 
 class VerifyBoxesOutput(BaseModel):
     ok: bool
     adjustments: list[BoxAdjustment] = Field(default_factory=list)
+    new_boxes: list[NewBox] = Field(default_factory=list)  # 新規追加するボックス
 
 
 def _invoke_structured_output(llm: Any, schema: Any, messages: list[Any]) -> Any:
@@ -1512,7 +1688,10 @@ Step1: 以下の情報が画像内に含まれているか確認してくださ�
 Step2: Step1で特定した情報が枠に全て囲われているかを評価してください。
 ※全ての情報が枠に入っていれば、余白が含まれていても厳密に指摘する必要はありません。
 
-Step3: Step2で評価した結果、対象の一部分しか枠で囲えていない箇所は、50px単位で相対的な調整量を指定してください。
+Step3: Step2で評価した結果:
+- 対象の一部分しか枠で囲えていない箇所は、50px単位で相対的な調整量を指定してください
+- 不要な枠がある場合は、その枠をdelete=trueで削除してください
+- 対象情報が囲まれていない箇所がある場合は、new_boxesで新しい枠を追加してください
 
 # 対象の画像についての情報
 - 画像サイズ: width={width}, height={height}
@@ -1530,16 +1709,28 @@ Step3: Step2で評価した結果、対象の一部分しか枠で囲えてい�
       "dx1": number,  // 左辺の移動量（正=右へ、負=左へ）
       "dy1": number,  // 上辺の移動量（正=下へ、負=上へ）
       "dx2": number,  // 右辺の移動量（正=右へ、負=左へ）
-      "dy2": number   // 下辺の移動量（正=下へ、負=上へ）
+      "dy2": number,  // 下辺の移動量（正=下へ、負=上へ）
+      "delete": boolean  // このボックスを削除する場合はtrue
+    }}
+  ],
+  "new_boxes": [
+    {{
+      "x1": number,  // 左端（50px単位）
+      "y1": number,  // 上端（50px単位）
+      "x2": number,  // 右端（50px単位）
+      "y2": number,  // 下端（50px単位）
+      "phrase": string  // この枠が囲む対象のフレーズ
     }}
   ]
 }}
 
 ルール:
-- 十分に正しければ ok=true, adjustments=[]
-- 不十分なら ok=false とし、調整が必要なボックスの相対調整量を adjustments に列挙
-- 調整量は必ず50px単位で指定（例: -50, 0, 50, 100, -100 など）
-- 修正不要なボックスは adjustments に含めない（調整が必要なボックスのみ列挙）
+- 十分に正しければ ok=true, adjustments=[], new_boxes=[]
+- 不十分なら ok=false とし、必要な操作を指定
+- 座標と調整量は必ず50px単位で指定（例: -50, 0, 50, 100, -100 など）
+- 修正不要なボックスは adjustments に含めない（調整または削除が必要なボックスのみ列挙）
+- ボックスの削除: 不要なボックスはdelete=trueを指定（調整量dx1,dy1,dx2,dy2は0でOK）
+- ボックスの追加: 対象情報が囲まれていない箇所はnew_boxesに新しい枠を追加
 - 調整の例（枠を広げたい場合）:
   - 左に50px広げたい → dx1=-50（左辺を左へ移動）
   - 右に100px広げたい → dx2=100（右辺を右へ移動）
@@ -1548,6 +1739,8 @@ Step3: Step2で評価した結果、対象の一部分しか枠で囲えてい�
 - 調整の例（枠を縮めたい場合）:
   - 左側を50px縮めたい → dx1=50（左辺を右へ移動）
   - 右側を50px縮めたい → dx2=-50（右辺を左へ移動）
+- 削除の例:
+  - ボックス[2]を削除したい → {{"box_index": 2, "delete": true}}
 """.strip()
 
     msg = HumanMessage(
@@ -1578,6 +1771,7 @@ def annotate_image_with_llm_red_boxes(
     embed_text_in_image: bool = False,
     crop_for_verification: bool = True,
     crop_margin_px: int = 100,
+    merge_overlapping: bool = False,
 ) -> AnnotationResult:
     """
     フロー:
@@ -1598,6 +1792,7 @@ def annotate_image_with_llm_red_boxes(
         embed_text_in_image: 注釈テキストを画像に埋め込むか
         crop_for_verification: 検証時にトリミング画像を使用するか
         crop_margin_px: トリミング時のマージン（px）
+        merge_overlapping: 重複した枠を一つの大きな枠に統合するか
     """
     image_path = Path(image_path)
     output_dir = Path(output_dir)
@@ -1648,6 +1843,10 @@ def annotate_image_with_llm_red_boxes(
             image_width=width,
             image_height=height,
         )
+
+    # 重複した枠を統合（merge_overlapping=True時）
+    if merge_overlapping:
+        boxes_raw, annotations_raw = _merge_overlapping_boxes(boxes_raw, annotations_raw)
 
     # トリミング処理: 検証時にトリミング画像を使用する場合
     crop_info: Optional[CropInfo] = None
@@ -1851,10 +2050,21 @@ def annotate_image_with_llm_red_boxes(
                 image_height=height,
             )
 
-        # adjustmentsを適用: box_indexで指定されたボックスに相対調整を適用
-        new_boxes = list(current_boxes)
+        # adjustmentsを適用: box_indexで指定されたボックスに相対調整/削除を適用
+        # 削除対象のインデックスを収集
+        delete_indices: set[int] = set()
         for adj in adjustments:
             box_idx = adj.get("box_index", -1)
+            if adj.get("delete", False) and 0 <= box_idx < len(current_boxes):
+                delete_indices.add(box_idx)
+
+        # 調整を適用（削除対象以外）
+        new_boxes = list(current_boxes)
+        new_annotations = list(current_annotations)
+        for adj in adjustments:
+            box_idx = adj.get("box_index", -1)
+            if box_idx in delete_indices:
+                continue  # 削除対象は調整不要
             if 0 <= box_idx < len(new_boxes):
                 # 相対調整を適用（50px単位）
                 dx1 = adj.get("dx1", 0)
@@ -1874,7 +2084,30 @@ def annotate_image_with_llm_red_boxes(
                 if clamped is not None:
                     new_boxes[box_idx] = clamped
 
+        # 削除処理: インデックス降順で削除（インデックスずれを防ぐ）
+        for idx in sorted(delete_indices, reverse=True):
+            del new_boxes[idx]
+            if idx < len(new_annotations):
+                del new_annotations[idx]
+
+        # 新規ボックスの追加
+        new_boxes_to_add = ver.get("new_boxes", [])
+        for new_box in new_boxes_to_add:
+            if isinstance(new_box, dict):
+                box_coords = {
+                    "x1": new_box.get("x1", 0),
+                    "y1": new_box.get("y1", 0),
+                    "x2": new_box.get("x2", 0),
+                    "y2": new_box.get("y2", 0),
+                }
+                clamped = _clamp_box(box_coords, verification_width, verification_height)
+                if clamped is not None:
+                    new_boxes.append(clamped)
+                    phrase = new_box.get("phrase", "")
+                    new_annotations.append(phrase)
+
         current_boxes = new_boxes
+        current_annotations = new_annotations
 
     # ここまで来たら「max_iters回の検証でokにならなかった」。
     # 最後の修正案を反映した画像を final として保存（再検証はしない）。
