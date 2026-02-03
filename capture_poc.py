@@ -153,10 +153,160 @@ def _add_rectangle_shape_to_drawing_xml(
     return ET.tostring(root, encoding='unicode')
 
 
+def _add_textbox_shape_to_drawing_xml(
+    xml_content: str,
+    shape_id: int,
+    name: str,
+    from_col: int,
+    from_col_off: int,
+    from_row: int,
+    from_row_off: int,
+    to_col: int,
+    to_col_off: int,
+    to_row: int,
+    to_row_off: int,
+    text: str,
+    font_size_pt: int = 10,
+    font_color: str = 'FF0000',
+    fill_color: Optional[str] = 'FFFFCC',
+    line_color: Optional[str] = '000000',
+    line_width_emu: int = 9525,
+) -> str:
+    """
+    drawing1.xmlにテキストボックスシェイプを追加する。
+
+    Args:
+        xml_content: 元のdrawing XMLコンテンツ
+        shape_id: シェイプID（ユニーク）
+        name: シェイプ名
+        from_col, from_col_off, from_row, from_row_off: 開始位置
+        to_col, to_col_off, to_row, to_row_off: 終了位置
+        text: テキストボックス内のテキスト
+        font_size_pt: フォントサイズ（ポイント）
+        font_color: フォント色（RGB hex、例: 'FF0000'=赤）
+        fill_color: 背景色（RGB hex、Noneで透明）
+        line_color: 枠線色（RGB hex、Noneで枠線なし）
+        line_width_emu: 枠線の太さ（EMU単位）
+
+    Returns:
+        更新されたXMLコンテンツ
+    """
+    root = ET.fromstring(xml_content)
+    wsdr_ns = _EXCEL_DRAWING_NAMESPACES['']
+    a_ns = _EXCEL_DRAWING_NAMESPACES['a']
+
+    # twoCellAnchorを作成
+    twoCellAnchor = ET.SubElement(root, '{%s}twoCellAnchor' % wsdr_ns)
+    twoCellAnchor.set('editAs', 'oneCell')
+
+    # from
+    from_elem = ET.SubElement(twoCellAnchor, '{%s}from' % wsdr_ns)
+    ET.SubElement(from_elem, '{%s}col' % wsdr_ns).text = str(from_col)
+    ET.SubElement(from_elem, '{%s}colOff' % wsdr_ns).text = str(from_col_off)
+    ET.SubElement(from_elem, '{%s}row' % wsdr_ns).text = str(from_row)
+    ET.SubElement(from_elem, '{%s}rowOff' % wsdr_ns).text = str(from_row_off)
+
+    # to
+    to_elem = ET.SubElement(twoCellAnchor, '{%s}to' % wsdr_ns)
+    ET.SubElement(to_elem, '{%s}col' % wsdr_ns).text = str(to_col)
+    ET.SubElement(to_elem, '{%s}colOff' % wsdr_ns).text = str(to_col_off)
+    ET.SubElement(to_elem, '{%s}row' % wsdr_ns).text = str(to_row)
+    ET.SubElement(to_elem, '{%s}rowOff' % wsdr_ns).text = str(to_row_off)
+
+    # sp (shape)
+    sp = ET.SubElement(twoCellAnchor, '{%s}sp' % wsdr_ns)
+    sp.set('macro', '')
+    sp.set('textlink', '')
+
+    # nvSpPr
+    nvSpPr = ET.SubElement(sp, '{%s}nvSpPr' % wsdr_ns)
+    cNvPr = ET.SubElement(nvSpPr, '{%s}cNvPr' % wsdr_ns)
+    cNvPr.set('id', str(shape_id))
+    cNvPr.set('name', name)
+    cNvSpPr = ET.SubElement(nvSpPr, '{%s}cNvSpPr' % wsdr_ns)
+    cNvSpPr.set('txBox', '1')
+
+    # spPr
+    spPr = ET.SubElement(sp, '{%s}spPr' % wsdr_ns)
+
+    # prstGeom (rect)
+    prstGeom = ET.SubElement(spPr, '{%s}prstGeom' % a_ns)
+    prstGeom.set('prst', 'rect')
+    ET.SubElement(prstGeom, '{%s}avLst' % a_ns)
+
+    # 背景色
+    if fill_color:
+        solidFill = ET.SubElement(spPr, '{%s}solidFill' % a_ns)
+        srgbClr = ET.SubElement(solidFill, '{%s}srgbClr' % a_ns)
+        srgbClr.set('val', fill_color)
+    else:
+        ET.SubElement(spPr, '{%s}noFill' % a_ns)
+
+    # 枠線
+    ln = ET.SubElement(spPr, '{%s}ln' % a_ns)
+    ln.set('w', str(line_width_emu))
+    if line_color:
+        solidFillLn = ET.SubElement(ln, '{%s}solidFill' % a_ns)
+        srgbClrLn = ET.SubElement(solidFillLn, '{%s}srgbClr' % a_ns)
+        srgbClrLn.set('val', line_color)
+    else:
+        ET.SubElement(ln, '{%s}noFill' % a_ns)
+
+    # txBody (テキスト本体)
+    txBody = ET.SubElement(sp, '{%s}txBody' % wsdr_ns)
+
+    # bodyPr
+    bodyPr = ET.SubElement(txBody, '{%s}bodyPr' % a_ns)
+    bodyPr.set('vertOverflow', 'clip')
+    bodyPr.set('horzOverflow', 'clip')
+    bodyPr.set('wrap', 'square')
+    bodyPr.set('lIns', '91440')  # 左余白 (EMU)
+    bodyPr.set('tIns', '45720')  # 上余白 (EMU)
+    bodyPr.set('rIns', '91440')  # 右余白 (EMU)
+    bodyPr.set('bIns', '45720')  # 下余白 (EMU)
+    bodyPr.set('anchor', 't')  # 上揃え
+
+    # lstStyle
+    ET.SubElement(txBody, '{%s}lstStyle' % a_ns)
+
+    # テキストを改行で分割して各行をパラグラフとして追加
+    lines = text.split('\n')
+    for line in lines:
+        p = ET.SubElement(txBody, '{%s}p' % a_ns)
+        pPr = ET.SubElement(p, '{%s}pPr' % a_ns)
+        pPr.set('algn', 'l')  # 左揃え
+
+        r = ET.SubElement(p, '{%s}r' % a_ns)
+        rPr = ET.SubElement(r, '{%s}rPr' % a_ns)
+        rPr.set('lang', 'ja-JP')
+        rPr.set('sz', str(font_size_pt * 100))  # フォントサイズ（100分の1ポイント）
+        rPr.set('b', '1')  # 太字
+
+        # フォント色
+        solidFillText = ET.SubElement(rPr, '{%s}solidFill' % a_ns)
+        srgbClrText = ET.SubElement(solidFillText, '{%s}srgbClr' % a_ns)
+        srgbClrText.set('val', font_color)
+
+        # フォント指定
+        latin = ET.SubElement(rPr, '{%s}latin' % a_ns)
+        latin.set('typeface', 'Meiryo UI')
+        ea = ET.SubElement(rPr, '{%s}ea' % a_ns)
+        ea.set('typeface', 'Meiryo UI')
+
+        t = ET.SubElement(r, '{%s}t' % a_ns)
+        t.text = line
+
+    # clientData
+    ET.SubElement(twoCellAnchor, '{%s}clientData' % wsdr_ns)
+
+    return ET.tostring(root, encoding='unicode')
+
+
 def _add_shapes_to_excel(
     excel_path: Path,
     shapes: list[dict],
     output_path: Optional[Path] = None,
+    textboxes: Optional[list[dict]] = None,
 ) -> Path:
     """
     Excelファイルにシェイプを追加する（XMLを直接操作）。
@@ -169,14 +319,23 @@ def _add_shapes_to_excel(
             - line_width_emu: 線の太さ（EMU、オプション、デフォルト38100）
             - line_color: 線の色（RGB hex、オプション、デフォルト'FF0000'）
         output_path: 出力パス（Noneの場合は入力ファイルを上書き）
+        textboxes: テキストボックス情報のリスト。各テキストボックスは以下のキーを持つdict:
+            - from_col, from_col_off, from_row, from_row_off: 開始位置
+            - to_col, to_col_off, to_row, to_row_off: 終了位置
+            - text: テキスト内容
+            - font_size_pt: フォントサイズ（オプション、デフォルト10）
+            - font_color: フォント色（オプション、デフォルト'FF0000'）
+            - fill_color: 背景色（オプション、デフォルト'FFFFCC'）
+            - line_color: 枠線色（オプション、デフォルト'000000'）
 
     Returns:
         出力Excelファイルパス
     """
     excel_path = Path(excel_path)
     output_path = Path(output_path) if output_path else excel_path
+    textboxes = textboxes or []
 
-    if not shapes:
+    if not shapes and not textboxes:
         if output_path != excel_path:
             shutil.copy(excel_path, output_path)
         return output_path
@@ -211,6 +370,27 @@ def _add_shapes_to_excel(
                 to_row_off=shape.get('to_row_off', 0),
                 line_width_emu=shape.get('line_width_emu', 38100),
                 line_color=shape.get('line_color', 'FF0000'),
+            )
+
+        # 各テキストボックスを追加
+        for j, textbox in enumerate(textboxes):
+            xml_content = _add_textbox_shape_to_drawing_xml(
+                xml_content,
+                shape_id=2000 + j,  # シェイプとかぶらないID
+                name=f'Annotation Textbox {j+1}',
+                from_col=textbox['from_col'],
+                from_col_off=textbox.get('from_col_off', 0),
+                from_row=textbox['from_row'],
+                from_row_off=textbox.get('from_row_off', 0),
+                to_col=textbox['to_col'],
+                to_col_off=textbox.get('to_col_off', 0),
+                to_row=textbox['to_row'],
+                to_row_off=textbox.get('to_row_off', 0),
+                text=textbox['text'],
+                font_size_pt=textbox.get('font_size_pt', 10),
+                font_color=textbox.get('font_color', 'FF0000'),
+                fill_color=textbox.get('fill_color', 'FFFFCC'),
+                line_color=textbox.get('line_color', '000000'),
             )
 
         with open(drawing_path, 'w', encoding='utf-8') as f:
@@ -272,6 +452,7 @@ def add_capture_sheet_with_images(
     image_column: str = "B",
     max_workers: int = 3,
     use_shape_overlay: bool = False,
+    use_textbox_annotation: bool = False,
 ) -> Path:
     """
     excel_path のExcelに sheet_name を作成し、images_dir 配下の画像をファイル名順に上から貼り付ける。
@@ -282,6 +463,8 @@ def add_capture_sheet_with_images(
                           元画像をExcelに貼り付けてExcelの図形で赤枠をオーバーレイする。
                           LLMでの評価は既存通り画像に赤枠を埋め込んで行い、
                           確定後にExcel出力時に元画像+図形オーバーレイの方式に切り替える。
+        use_textbox_annotation: Trueの場合、アノテーションをセルに直接書き込む代わりに、
+                               テキストボックス図形として配置する。
 
     NOTE:
     - 画像貼り付けには Pillow が必要です（未インストールの場合は `pip install pillow`）。
@@ -388,6 +571,7 @@ def add_capture_sheet_with_images(
     # --- Excelへの書き込み（直列処理） ---
     # シェイプオーバーレイ用の情報を収集
     shape_overlay_info: list[dict] = []  # シェイプ情報のリスト
+    textbox_info: list[dict] = []  # テキストボックス情報のリスト
 
     row = 1
     for image_path in image_paths:
@@ -450,18 +634,47 @@ def add_capture_sheet_with_images(
                 annotation_text = ann.phrase
                 if ann.reason:
                     annotation_text += f"\n({ann.reason})"
-                # セルにテキストを設定
-                cell = ws[f"{annotation_column}{target_row}"]
-                cell.value = annotation_text
-                cell.alignment = Alignment(
-                    wrap_text=True,
-                    vertical="top",
-                )
-                # 赤色のフォントを設定
-                cell.font = Font(
-                    color="FF0000",
-                    bold=True,
-                )
+
+                if use_textbox_annotation:
+                    # テキストボックスモード：テキストボックス情報を収集
+                    EMU_PER_PIXEL = 9525
+                    # アノテーション列のインデックス（A=0）
+                    ann_col_idx = ord(annotation_column.upper()) - ord('A')
+                    # テキストボックスの高さ（行数）を計算
+                    # テキスト行数に応じて高さを調整
+                    text_lines = annotation_text.count('\n') + 1
+                    textbox_rows = max(3, text_lines + 1)  # 最低3行分の高さ
+                    # テキストボックスの幅（EMU）：列幅を基準に設定
+                    textbox_width_emu = int(250 * 9525)  # 約250px幅
+
+                    textbox_info.append({
+                        'from_col': ann_col_idx,
+                        'from_col_off': 0,
+                        'from_row': target_row - 1,  # 0-indexed
+                        'from_row_off': 0,
+                        'to_col': ann_col_idx,
+                        'to_col_off': textbox_width_emu,
+                        'to_row': target_row - 1 + textbox_rows,  # 0-indexed
+                        'to_row_off': 0,
+                        'text': annotation_text,
+                        'font_size_pt': 10,
+                        'font_color': 'FF0000',
+                        'fill_color': 'FFFFCC',
+                        'line_color': '000000',
+                    })
+                else:
+                    # 通常モード：セルにテキストを設定
+                    cell = ws[f"{annotation_column}{target_row}"]
+                    cell.value = annotation_text
+                    cell.alignment = Alignment(
+                        wrap_text=True,
+                        vertical="top",
+                    )
+                    # 赤色のフォントを設定
+                    cell.font = Font(
+                        color="FF0000",
+                        bold=True,
+                    )
 
                 # シェイプオーバーレイモードの場合、シェイプ情報を収集
                 if use_shape_overlay:
@@ -535,11 +748,14 @@ def add_capture_sheet_with_images(
                 f"Excelファイルの保存に失敗しました。Excelで '{excel_path_p.name}' を開いている場合は閉じてから再実行してください: {excel_path_p}"
             ) from e
 
-    # シェイプオーバーレイモードの場合、保存後にシェイプを追加
-    if use_shape_overlay and shape_overlay_info:
-        print(f"[シェイプオーバーレイ] {len(shape_overlay_info)}個のシェイプを追加中...")
-        _add_shapes_to_excel(save_path, shape_overlay_info, save_path)
-        print(f"[シェイプオーバーレイ] 完了")
+    # シェイプオーバーレイモードまたはテキストボックスモードの場合、保存後に図形を追加
+    if shape_overlay_info or textbox_info:
+        if shape_overlay_info:
+            print(f"[シェイプオーバーレイ] {len(shape_overlay_info)}個のシェイプを追加中...")
+        if textbox_info:
+            print(f"[テキストボックス] {len(textbox_info)}個のテキストボックスを追加中...")
+        _add_shapes_to_excel(save_path, shape_overlay_info, save_path, textboxes=textbox_info)
+        print(f"[図形追加] 完了")
 
     return save_path
 
@@ -1472,6 +1688,7 @@ def capture_insert_sheet(
     output_excel_sheet_name: str = "キャプチャ",
     max_workers: int = 3,
     use_shape_overlay: bool = False,
+    use_textbox_annotation: bool = False,
 ) -> Path:
     """
     画像をExcelに貼り付け、LLMでアノテーションを検出してA列にテキストを挿入する。
@@ -1487,6 +1704,8 @@ def capture_insert_sheet(
         max_workers: 並列処理のワーカー数（デフォルト3）
         use_shape_overlay: Trueの場合、画像に赤枠を埋め込む代わりに、
                           元画像をExcelに貼り付けてExcelの図形で赤枠をオーバーレイする。
+        use_textbox_annotation: Trueの場合、アノテーションをセルに直接書き込む代わりに、
+                               テキストボックス図形として配置する。
     """
     llm_complex = build_llm(model="gpt-5.2")
     output_path = add_capture_sheet_with_images(
@@ -1499,6 +1718,7 @@ def capture_insert_sheet(
         output_excel_sheet_name=output_excel_sheet_name,
         max_workers=max_workers,
         use_shape_overlay=use_shape_overlay,
+        use_textbox_annotation=use_textbox_annotation,
     )
     print(f"キャプチャ付きExcelを出力しました: {output_path}")
 
