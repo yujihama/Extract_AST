@@ -824,6 +824,103 @@ def _clamp_box(box: dict[str, Any], width: int, height: int) -> Optional[dict[st
     return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
 
 
+class CropInfo(BaseModel):
+    """トリミング情報を保持するクラス。元画像座標とトリミング画像座標の変換に使用。"""
+    crop_x1: int = Field(..., description="トリミング領域の左上X座標（元画像基準）")
+    crop_y1: int = Field(..., description="トリミング領域の左上Y座標（元画像基準）")
+    crop_x2: int = Field(..., description="トリミング領域の右下X座標（元画像基準）")
+    crop_y2: int = Field(..., description="トリミング領域の右下Y座標（元画像基準）")
+    original_width: int = Field(..., description="元画像の幅")
+    original_height: int = Field(..., description="元画像の高さ")
+
+    def to_cropped_coords(self, box: dict[str, int]) -> dict[str, int]:
+        """元画像座標をトリミング画像座標に変換する。"""
+        return {
+            "x1": box["x1"] - self.crop_x1,
+            "y1": box["y1"] - self.crop_y1,
+            "x2": box["x2"] - self.crop_x1,
+            "y2": box["y2"] - self.crop_y1,
+        }
+
+    def to_original_coords(self, box: dict[str, int]) -> dict[str, int]:
+        """トリミング画像座標を元画像座標に変換する。"""
+        return {
+            "x1": box["x1"] + self.crop_x1,
+            "y1": box["y1"] + self.crop_y1,
+            "x2": box["x2"] + self.crop_x1,
+            "y2": box["y2"] + self.crop_y1,
+        }
+
+
+def _crop_image_to_boxes(
+    image_path: Path,
+    boxes: list[dict[str, int]],
+    output_path: Path,
+    *,
+    margin_px: int = 100,
+    snap_to_grid: int = 50,
+) -> tuple[Path, CropInfo]:
+    """
+    バウンディングボックスを含む領域で画像をトリミングする。
+
+    Args:
+        image_path: 元画像パス
+        boxes: バウンディングボックスのリスト [{"x1": int, "y1": int, "x2": int, "y2": int}, ...]
+        output_path: トリミング画像の出力パス
+        margin_px: トリミング領域のマージン（px）
+        snap_to_grid: トリミング座標をこの単位にスナップする（50px単位など）
+
+    Returns:
+        tuple[Path, CropInfo]: トリミング画像のパスとトリミング情報
+    """
+    im = Image.open(image_path).convert("RGB")
+    width, height = im.size
+
+    if not boxes:
+        # ボックスがない場合は元画像をそのまま保存
+        im.save(output_path, format="PNG")
+        return output_path, CropInfo(
+            crop_x1=0, crop_y1=0, crop_x2=width, crop_y2=height,
+            original_width=width, original_height=height,
+        )
+
+    # すべてのボックスを含む最小外接矩形を計算
+    min_x1 = min(b["x1"] for b in boxes)
+    min_y1 = min(b["y1"] for b in boxes)
+    max_x2 = max(b["x2"] for b in boxes)
+    max_y2 = max(b["y2"] for b in boxes)
+
+    # マージンを追加
+    crop_x1 = min_x1 - margin_px
+    crop_y1 = min_y1 - margin_px
+    crop_x2 = max_x2 + margin_px
+    crop_y2 = max_y2 + margin_px
+
+    # グリッドにスナップ（50px単位に切り捨て/切り上げ）
+    if snap_to_grid > 0:
+        crop_x1 = (crop_x1 // snap_to_grid) * snap_to_grid
+        crop_y1 = (crop_y1 // snap_to_grid) * snap_to_grid
+        crop_x2 = ((crop_x2 + snap_to_grid - 1) // snap_to_grid) * snap_to_grid
+        crop_y2 = ((crop_y2 + snap_to_grid - 1) // snap_to_grid) * snap_to_grid
+
+    # 画像範囲内にクランプ
+    crop_x1 = max(0, crop_x1)
+    crop_y1 = max(0, crop_y1)
+    crop_x2 = min(width, crop_x2)
+    crop_y2 = min(height, crop_y2)
+
+    # トリミング
+    cropped_im = im.crop((crop_x1, crop_y1, crop_x2, crop_y2))
+    cropped_im.save(output_path, format="PNG")
+
+    crop_info = CropInfo(
+        crop_x1=crop_x1, crop_y1=crop_y1, crop_x2=crop_x2, crop_y2=crop_y2,
+        original_width=width, original_height=height,
+    )
+
+    return output_path, crop_info
+
+
 def _draw_red_boxes_on_image(
     image_path: Path,
     boxes: Iterable[dict[str, int]],
@@ -1378,12 +1475,28 @@ def annotate_image_with_llm_red_boxes(
     stroke_width: int = 6,
     padding_px: int = 6,
     embed_text_in_image: bool = False,
+    crop_for_verification: bool = True,
+    crop_margin_px: int = 100,
 ) -> AnnotationResult:
     """
     フロー:
     1) LLMで対象文言の有無を判定し、あればbboxを取得
-    2) bboxに赤枠を描画してPNGとして保存
-    3) LLMで赤枠の妥当性を再確認し、NGなら修正bboxで描き直し
+    2) bboxを含む領域で画像をトリミング（crop_for_verification=True時）
+    3) トリミング画像に赤枠を描画してPNGとして保存
+    4) LLMで赤枠の妥当性を再確認し、NGなら修正bboxで描き直し
+    5) 最終画像は元画像に赤枠を描画して保存
+
+    Args:
+        llm: LLMインスタンス
+        image_path: 入力画像パス
+        target_phrases: 検出対象フレーズのリスト
+        output_dir: 出力ディレクトリ
+        max_iters: 検証の最大イテレーション回数
+        stroke_width: 赤枠の太さ
+        padding_px: 赤枠のパディング
+        embed_text_in_image: 注釈テキストを画像に埋め込むか
+        crop_for_verification: 検証時にトリミング画像を使用するか
+        crop_margin_px: トリミング時のマージン（px）
     """
     image_path = Path(image_path)
     output_dir = Path(output_dir)
@@ -1435,6 +1548,36 @@ def annotate_image_with_llm_red_boxes(
             image_height=height,
         )
 
+    # トリミング処理: 検証時にトリミング画像を使用する場合
+    crop_info: Optional[CropInfo] = None
+    cropped_image_path: Optional[Path] = None
+    if crop_for_verification:
+        cropped_image_path = output_dir / f"{image_path.stem}__cropped.png"
+        cropped_image_path, crop_info = _crop_image_to_boxes(
+            image_path=image_path,
+            boxes=boxes_raw,
+            output_path=cropped_image_path,
+            margin_px=crop_margin_px,
+            snap_to_grid=50,
+        )
+        # トリミング画像用の定規付き画像を作成
+        cropped_ruler_path = output_dir / f"{image_path.stem}__cropped__ruler.png"
+        _save_ruler_image(image_path=cropped_image_path, output_path=cropped_ruler_path)
+
+    # 検証用の画像パスとボックス座標を決定
+    verification_image_path = cropped_image_path if crop_info else image_path
+    verification_ruler_path = output_dir / f"{image_path.stem}__cropped__ruler.png" if crop_info else ruler_original_path
+
+    # 検証用のボックス座標（トリミング画像基準）
+    if crop_info:
+        current_boxes = [crop_info.to_cropped_coords(b) for b in boxes_raw]
+        verification_width = crop_info.crop_x2 - crop_info.crop_x1
+        verification_height = crop_info.crop_y2 - crop_info.crop_y1
+    else:
+        current_boxes = boxes_raw
+        verification_width = width
+        verification_height = height
+
     # 描画→検証→修正ループ
     #
     # 目的:
@@ -1444,7 +1587,6 @@ def annotate_image_with_llm_red_boxes(
     # 保存先:
     # - <stem>__boxed_iter01.png, <stem>__boxed_iter02.png, ...
     # - <stem>__boxed_final.png（最後の採用結果）
-    current_boxes = boxes_raw
     current_annotations = annotations_raw  # 注釈情報も保持
     iters = max(1, int(max_iters))
 
@@ -1452,8 +1594,9 @@ def annotate_image_with_llm_red_boxes(
     for i in range(iters):
         iter_path = output_dir / f"{image_path.stem}__boxed_iter{i+1:02}.png"
         # 検証ループ中は注釈なしで描画（ノイズを避けるため）
+        # トリミング画像に赤枠を描画
         boxed_im = _draw_red_boxes_on_image(
-            image_path,
+            verification_image_path,
             current_boxes,
             stroke_width=stroke_width,
             padding_px=padding_px,
@@ -1469,24 +1612,32 @@ def annotate_image_with_llm_red_boxes(
         ver = llm_verify_boxes_on_annotated_image(
             llm=llm,
             current_boxes=current_boxes,
-            original_image_path=ruler_original_path,
+            original_image_path=verification_ruler_path,
             boxed_image_path=iter_ruler_path,
             target_phrases=target_phrases,
         )
         if bool(ver.get("ok")):
-            # OKになった断面を最終として採用
+            # OKになった → 元画像に赤枠を描画して最終画像を生成
+            # トリミング座標を元画像座標に変換
+            final_boxes = [crop_info.to_original_coords(b) for b in current_boxes] if crop_info else current_boxes
+
             final_path = output_dir / f"{image_path.stem}__boxed_final.png"
-            if final_path != iter_path:
-                final_im = Image.open(iter_path).convert("RGB")
-                _save_image_as_png(final_im, final_path)
+            final_im = _draw_red_boxes_on_image(
+                image_path,  # 元画像に描画
+                final_boxes,
+                stroke_width=stroke_width,
+                padding_px=padding_px,
+                annotations=None,
+            )
+            _save_image_as_png(final_im, final_path)
 
             # 定規付きfinalも保存（バウンディングボックス情報を渡す）
             final_ruler_path = output_dir / f"{image_path.stem}__boxed_final__ruler.png"
-            _save_ruler_image(image_path=final_path, output_path=final_ruler_path, boxes=current_boxes)
+            _save_ruler_image(image_path=final_path, output_path=final_ruler_path, boxes=final_boxes)
 
-            # アノテーション情報を構築
+            # アノテーション情報を構築（元画像座標）
             result_annotations = []
-            for j, box in enumerate(current_boxes):
+            for j, box in enumerate(final_boxes):
                 annotation_text = current_annotations[j] if j < len(current_annotations) else ""
                 # annotation_textは "phrase\n(reason)" の形式なのでパース
                 parts = annotation_text.split('\n', 1)
@@ -1502,14 +1653,14 @@ def annotate_image_with_llm_red_boxes(
             if embed_text_in_image:
                 final_annotated_path = output_dir / f"{image_path.stem}__boxed_final_annotated.png"
                 final_annotations_text = []
-                for j, box in enumerate(current_boxes):
+                for j, box in enumerate(final_boxes):
                     if j < len(current_annotations):
                         final_annotations_text.append(current_annotations[j])
                     else:
                         final_annotations_text.append("")
                 final_annotated_im = _draw_red_boxes_on_image(
                     image_path,
-                    current_boxes,
+                    final_boxes,
                     stroke_width=stroke_width,
                     padding_px=padding_px,
                     annotations=final_annotations_text,
@@ -1537,18 +1688,25 @@ def annotate_image_with_llm_red_boxes(
             if isinstance(adj, dict) and "box_index" in adj:
                 adjustments.append(adj)
         if not adjustments:
-            # 修正が取れないならこの断面を最終として採用
-            final_path = output_dir / f"{image_path.stem}__boxed_final.png"
-            if last_iter_path and final_path != last_iter_path:
-                final_im = Image.open(last_iter_path).convert("RGB")
-                _save_image_as_png(final_im, final_path)
-            final_ruler_path = output_dir / f"{image_path.stem}__boxed_final__ruler.png"
-            if final_path.exists():
-                _save_ruler_image(image_path=final_path, output_path=final_ruler_path, boxes=current_boxes)
+            # 修正が取れないなら現在のボックスで最終画像を生成
+            # トリミング座標を元画像座標に変換
+            final_boxes = [crop_info.to_original_coords(b) for b in current_boxes] if crop_info else current_boxes
 
-            # アノテーション情報を構築
+            final_path = output_dir / f"{image_path.stem}__boxed_final.png"
+            final_im = _draw_red_boxes_on_image(
+                image_path,  # 元画像に描画
+                final_boxes,
+                stroke_width=stroke_width,
+                padding_px=padding_px,
+                annotations=None,
+            )
+            _save_image_as_png(final_im, final_path)
+            final_ruler_path = output_dir / f"{image_path.stem}__boxed_final__ruler.png"
+            _save_ruler_image(image_path=final_path, output_path=final_ruler_path, boxes=final_boxes)
+
+            # アノテーション情報を構築（元画像座標）
             result_annotations = []
-            for j, box in enumerate(current_boxes):
+            for j, box in enumerate(final_boxes):
                 annotation_text = current_annotations[j] if j < len(current_annotations) else ""
                 parts = annotation_text.split('\n', 1)
                 phrase = parts[0] if parts else ""
@@ -1563,14 +1721,14 @@ def annotate_image_with_llm_red_boxes(
             if embed_text_in_image:
                 final_annotated_path = output_dir / f"{image_path.stem}__boxed_final_annotated.png"
                 final_annotations_text = []
-                for j, box in enumerate(current_boxes):
+                for j, box in enumerate(final_boxes):
                     if j < len(current_annotations):
                         final_annotations_text.append(current_annotations[j])
                     else:
                         final_annotations_text.append("")
                 final_annotated_im = _draw_red_boxes_on_image(
                     image_path,
-                    current_boxes,
+                    final_boxes,
                     stroke_width=stroke_width,
                     padding_px=padding_px,
                     annotations=final_annotations_text,
@@ -1610,8 +1768,8 @@ def annotate_image_with_llm_red_boxes(
                     "x2": old_box["x2"] + dx2,
                     "y2": old_box["y2"] + dy2,
                 }
-                # clampして範囲内に収める
-                clamped = _clamp_box(adjusted_box, width, height)
+                # clampして範囲内に収める（トリミング画像サイズを使用）
+                clamped = _clamp_box(adjusted_box, verification_width, verification_height)
                 if clamped is not None:
                     new_boxes[box_idx] = clamped
 
@@ -1619,21 +1777,24 @@ def annotate_image_with_llm_red_boxes(
 
     # ここまで来たら「max_iters回の検証でokにならなかった」。
     # 最後の修正案を反映した画像を final として保存（再検証はしない）。
+    # トリミング座標を元画像座標に変換
+    final_boxes = [crop_info.to_original_coords(b) for b in current_boxes] if crop_info else current_boxes
+
     final_path = output_dir / f"{image_path.stem}__boxed_final.png"
     boxed_im = _draw_red_boxes_on_image(
-        image_path,
-        current_boxes,
+        image_path,  # 元画像に描画
+        final_boxes,
         stroke_width=stroke_width,
         padding_px=padding_px,
         annotations=None,  # 赤枠のみ
     )
     _save_image_as_png(boxed_im, final_path)
     final_ruler_path = output_dir / f"{image_path.stem}__boxed_final__ruler.png"
-    _save_ruler_image(image_path=final_path, output_path=final_ruler_path, boxes=current_boxes)
+    _save_ruler_image(image_path=final_path, output_path=final_ruler_path, boxes=final_boxes)
 
-    # アノテーション情報を構築
+    # アノテーション情報を構築（元画像座標）
     result_annotations = []
-    for j, box in enumerate(current_boxes):
+    for j, box in enumerate(final_boxes):
         annotation_text = current_annotations[j] if j < len(current_annotations) else ""
         parts = annotation_text.split('\n', 1)
         phrase = parts[0] if parts else ""
@@ -1648,14 +1809,14 @@ def annotate_image_with_llm_red_boxes(
     if embed_text_in_image:
         final_annotated_path = output_dir / f"{image_path.stem}__boxed_final_annotated.png"
         final_annotations_text = []
-        for j, box in enumerate(current_boxes):
+        for j, box in enumerate(final_boxes):
             if j < len(current_annotations):
                 final_annotations_text.append(current_annotations[j])
             else:
                 final_annotations_text.append("")
         final_annotated_im = _draw_red_boxes_on_image(
             image_path,
-            current_boxes,
+            final_boxes,
             stroke_width=stroke_width,
             padding_px=padding_px,
             annotations=final_annotations_text,
