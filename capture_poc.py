@@ -1572,6 +1572,518 @@ def _invoke_structured_output(llm: Any, schema: Any, messages: list[Any]) -> Any
         raise RuntimeError("structured output の初期化に失敗しました") from e
 
 
+# ---------------------------------------------------------------------------
+# Agent-based annotation: ツール定義 + create_agent
+# ---------------------------------------------------------------------------
+
+def _build_annotation_agent_tools(
+    *,
+    image_path: Path,
+    output_dir: Path,
+    stroke_width: int = 6,
+    padding_px: int = 6,
+    crop_for_verification: bool = True,
+    crop_margin_px: int = 100,
+    merge_overlapping: bool = False,
+):
+    """
+    annotate_image_with_llm_red_boxes 用のエージェントツールを構築する。
+
+    ツール間で共有する可変状態を closure 内に保持し、
+    エージェントが自律的にバウンディングボックスの検出→描画→検証→調整→完了を行えるようにする。
+    """
+    from langchain_core.tools import tool
+
+    # --- closure 内の共有状態 ---
+    with Image.open(image_path) as _im:
+        _width, _height = _im.size
+
+    _state: dict[str, Any] = {
+        "current_boxes": [],          # 現在のバウンディングボックス (検証画像座標)
+        "current_annotations": [],    # 各ボックスに対応する注釈テキスト
+        "crop_info": None,            # CropInfo (トリミング情報)
+        "iteration": 0,              # 現在のイテレーション
+        "finalized": False,          # 完了フラグ
+        "verification_image_path": image_path,
+        "verification_ruler_path": None,
+        "verification_width": _width,
+        "verification_height": _height,
+    }
+
+    # 定規付き元画像を準備
+    ruler_original_path = output_dir / f"{image_path.stem}__ruler.png"
+    _save_ruler_image(image_path=image_path, output_path=ruler_original_path)
+
+    @tool
+    def detect_phrases(target_phrases: list[str]) -> str:
+        """画像内の対象フレーズを検出するための定規付き画像情報を返す。
+        最初に必ずこのツールを呼んでください。
+        返されたdata URLの画像を確認し、対象フレーズの位置を特定してください。
+
+        Args:
+            target_phrases: 検出対象のフレーズリスト
+        """
+        data_url = _encode_image_as_data_url(ruler_original_path)
+
+        return json.dumps({
+            "status": "image_ready",
+            "image_data_url": data_url,
+            "image_width": _width,
+            "image_height": _height,
+            "instruction": (
+                "この定規付き画像を確認し、対象フレーズの位置を50px単位のピクセル座標で特定してください。"
+                "座標は画像のピクセル座標（左上原点）です。"
+                "定規の目盛りとグリッド線を参考にしてください（200pxごとに数値ラベル、50px間隔のグリッド）。"
+                "特定できたら draw_and_verify ツールを呼んで赤枠を描画・検証してください。"
+                "対象フレーズが画像内に見つからない場合はその旨を回答してください。"
+            ),
+        }, ensure_ascii=False)
+
+    @tool
+    def draw_and_verify(
+        boxes_json: str,
+        annotations_json: str,
+        target_phrases: list[str],
+    ) -> str:
+        """バウンディングボックスを描画し、定規付き検証画像を生成する。
+        結果画像のdata URLが返されるので、赤枠が正しいか確認してください。
+
+        Args:
+            boxes_json: ボックス座標のJSON配列。例: [{"x1":100,"y1":200,"x2":300,"y2":400}]
+            annotations_json: 各ボックスの注釈テキストのJSON配列。例: ["フレーズ1","フレーズ2"]
+            target_phrases: 検出対象のフレーズリスト
+        """
+        try:
+            boxes_input = json.loads(boxes_json)
+        except json.JSONDecodeError as e:
+            return json.dumps({"error": f"boxes_json のパースに失敗: {e}"}, ensure_ascii=False)
+        try:
+            annotations_input = json.loads(annotations_json)
+        except json.JSONDecodeError as e:
+            return json.dumps({"error": f"annotations_json のパースに失敗: {e}"}, ensure_ascii=False)
+
+        # clamp & validate
+        valid_boxes = []
+        valid_annotations = []
+        for i, b in enumerate(boxes_input):
+            clamped = _clamp_box(b, _width, _height)
+            if clamped is not None:
+                valid_boxes.append(clamped)
+                ann = annotations_input[i] if i < len(annotations_input) else ""
+                valid_annotations.append(ann)
+
+        if not valid_boxes:
+            return json.dumps({"error": "有効なボックスがありません。座標を確認してください。"}, ensure_ascii=False)
+
+        # 重複統合
+        if merge_overlapping:
+            valid_boxes, valid_annotations = _merge_overlapping_boxes(valid_boxes, valid_annotations)
+
+        # トリミング処理
+        crop_info: Optional[CropInfo] = None
+        verification_image_path = image_path
+        if crop_for_verification:
+            cropped_path = output_dir / f"{image_path.stem}__cropped.png"
+            cropped_path, crop_info = _crop_image_to_boxes(
+                image_path=image_path,
+                boxes=valid_boxes,
+                output_path=cropped_path,
+                margin_px=crop_margin_px,
+                snap_to_grid=50,
+            )
+            verification_image_path = cropped_path
+            _state["crop_info"] = crop_info
+            v_width = crop_info.crop_x2 - crop_info.crop_x1
+            v_height = crop_info.crop_y2 - crop_info.crop_y1
+            current_boxes = [crop_info.to_cropped_coords(b) for b in valid_boxes]
+        else:
+            v_width = _width
+            v_height = _height
+            current_boxes = valid_boxes
+
+        _state["current_boxes"] = current_boxes
+        _state["current_annotations"] = valid_annotations
+        _state["verification_image_path"] = verification_image_path
+        _state["verification_width"] = v_width
+        _state["verification_height"] = v_height
+        _state["iteration"] += 1
+        iteration = _state["iteration"]
+
+        # 赤枠を描画
+        iter_path = output_dir / f"{image_path.stem}__boxed_iter{iteration:02}.png"
+        boxed_im = _draw_red_boxes_on_image(
+            verification_image_path,
+            current_boxes,
+            stroke_width=stroke_width,
+            padding_px=padding_px,
+            annotations=None,
+        )
+        _save_image_as_png(boxed_im, iter_path)
+
+        # 定規付き検証画像を生成
+        iter_ruler_path = output_dir / f"{image_path.stem}__boxed_iter{iteration:02}__ruler.png"
+        _save_ruler_image(
+            image_path=iter_path,
+            output_path=iter_ruler_path,
+            boxes=current_boxes if iteration > 1 else None,
+        )
+
+        # 検証用の定規付き元画像
+        if crop_info:
+            cropped_ruler_path = output_dir / f"{image_path.stem}__cropped__ruler.png"
+            _save_ruler_image(image_path=verification_image_path, output_path=cropped_ruler_path)
+            _state["verification_ruler_path"] = cropped_ruler_path
+        else:
+            _state["verification_ruler_path"] = ruler_original_path
+
+        # 結果をdata URLで返す（エージェントが Vision で確認できるように）
+        boxed_data_url = _encode_image_as_data_url(iter_ruler_path)
+        original_data_url = _encode_image_as_data_url(_state["verification_ruler_path"])
+
+        boxes_info = []
+        for i, box in enumerate(current_boxes):
+            boxes_info.append(f"  box_index={i}: x1={box['x1']}, y1={box['y1']}, x2={box['x2']}, y2={box['y2']}")
+
+        return json.dumps({
+            "status": "drawn",
+            "iteration": iteration,
+            "boxes": current_boxes,
+            "boxes_info": "\n".join(boxes_info),
+            "original_image_data_url": original_data_url,
+            "boxed_image_data_url": boxed_data_url,
+            "verification_width": v_width,
+            "verification_height": v_height,
+            "instruction": (
+                "赤枠付き画像（boxed_image_data_url）と元画像（original_image_data_url）を比較し、"
+                "対象フレーズが正しく枠で囲まれているか確認してください。\n"
+                "- 正しければ finalize ツールを呼んでください。\n"
+                "- 修正が必要なら adjust_boxes ツールで調整してください。"
+            ),
+        }, ensure_ascii=False)
+
+    @tool
+    def adjust_boxes(
+        adjustments_json: str,
+        new_boxes_json: str,
+        target_phrases: list[str],
+    ) -> str:
+        """バウンディングボックスを調整し、再描画して検証画像を返す。
+
+        Args:
+            adjustments_json: 調整のJSON配列。例: [{"box_index":0,"dx1":-50,"dy1":0,"dx2":50,"dy2":0,"delete":false}]
+            new_boxes_json: 新規追加ボックスのJSON配列。例: [{"x1":100,"y1":200,"x2":300,"y2":400,"phrase":"追加フレーズ"}]
+            target_phrases: 検出対象のフレーズリスト
+        """
+        try:
+            adjustments = json.loads(adjustments_json)
+        except json.JSONDecodeError as e:
+            return json.dumps({"error": f"adjustments_json のパースに失敗: {e}"}, ensure_ascii=False)
+        try:
+            new_boxes_to_add = json.loads(new_boxes_json)
+        except json.JSONDecodeError as e:
+            return json.dumps({"error": f"new_boxes_json のパースに失敗: {e}"}, ensure_ascii=False)
+
+        current_boxes = list(_state["current_boxes"])
+        current_annotations = list(_state["current_annotations"])
+        v_width = _state["verification_width"]
+        v_height = _state["verification_height"]
+
+        # 削除対象のインデックスを収集
+        delete_indices: set[int] = set()
+        for adj in adjustments:
+            box_idx = adj.get("box_index", -1)
+            if adj.get("delete", False) and 0 <= box_idx < len(current_boxes):
+                delete_indices.add(box_idx)
+
+        # 調整を適用（削除対象以外）
+        for adj in adjustments:
+            box_idx = adj.get("box_index", -1)
+            if box_idx in delete_indices:
+                continue
+            if 0 <= box_idx < len(current_boxes):
+                dx1 = adj.get("dx1", 0)
+                dy1 = adj.get("dy1", 0)
+                dx2 = adj.get("dx2", 0)
+                dy2 = adj.get("dy2", 0)
+                old_box = current_boxes[box_idx]
+                adjusted_box = {
+                    "x1": old_box["x1"] + dx1,
+                    "y1": old_box["y1"] + dy1,
+                    "x2": old_box["x2"] + dx2,
+                    "y2": old_box["y2"] + dy2,
+                }
+                clamped = _clamp_box(adjusted_box, v_width, v_height)
+                if clamped is not None:
+                    current_boxes[box_idx] = clamped
+
+        # 削除処理（インデックス降順）
+        for idx in sorted(delete_indices, reverse=True):
+            del current_boxes[idx]
+            if idx < len(current_annotations):
+                del current_annotations[idx]
+
+        # 新規ボックスの追加
+        for new_box in new_boxes_to_add:
+            if isinstance(new_box, dict):
+                box_coords = {
+                    "x1": new_box.get("x1", 0),
+                    "y1": new_box.get("y1", 0),
+                    "x2": new_box.get("x2", 0),
+                    "y2": new_box.get("y2", 0),
+                }
+                clamped = _clamp_box(box_coords, v_width, v_height)
+                if clamped is not None:
+                    current_boxes.append(clamped)
+                    current_annotations.append(new_box.get("phrase", ""))
+
+        _state["current_boxes"] = current_boxes
+        _state["current_annotations"] = current_annotations
+        _state["iteration"] += 1
+        iteration = _state["iteration"]
+
+        verification_image_path = _state["verification_image_path"]
+
+        # 再描画
+        iter_path = output_dir / f"{image_path.stem}__boxed_iter{iteration:02}.png"
+        boxed_im = _draw_red_boxes_on_image(
+            verification_image_path,
+            current_boxes,
+            stroke_width=stroke_width,
+            padding_px=padding_px,
+            annotations=None,
+        )
+        _save_image_as_png(boxed_im, iter_path)
+
+        iter_ruler_path = output_dir / f"{image_path.stem}__boxed_iter{iteration:02}__ruler.png"
+        _save_ruler_image(
+            image_path=iter_path,
+            output_path=iter_ruler_path,
+            boxes=current_boxes,
+        )
+
+        boxed_data_url = _encode_image_as_data_url(iter_ruler_path)
+        original_data_url = _encode_image_as_data_url(_state["verification_ruler_path"])
+
+        boxes_info = []
+        for i, box in enumerate(current_boxes):
+            boxes_info.append(f"  box_index={i}: x1={box['x1']}, y1={box['y1']}, x2={box['x2']}, y2={box['y2']}")
+
+        return json.dumps({
+            "status": "adjusted",
+            "iteration": iteration,
+            "boxes": current_boxes,
+            "boxes_info": "\n".join(boxes_info),
+            "original_image_data_url": original_data_url,
+            "boxed_image_data_url": boxed_data_url,
+            "verification_width": v_width,
+            "verification_height": v_height,
+            "instruction": (
+                "調整後の赤枠付き画像を確認してください。\n"
+                "- 正しければ finalize ツールを呼んでください。\n"
+                "- さらに修正が必要なら adjust_boxes ツールで再度調整してください。"
+            ),
+        }, ensure_ascii=False)
+
+    @tool
+    def finalize() -> str:
+        """バウンディングボックスが正しいと判断した場合に呼ぶ。最終画像を生成して完了する。"""
+        current_boxes = _state["current_boxes"]
+        current_annotations = _state["current_annotations"]
+        crop_info = _state["crop_info"]
+
+        # トリミング座標を元画像座標に変換
+        if crop_info:
+            final_boxes = [crop_info.to_original_coords(b) for b in current_boxes]
+        else:
+            final_boxes = current_boxes
+
+        # 最終画像を描画
+        final_path = output_dir / f"{image_path.stem}__boxed_final.png"
+        final_im = _draw_red_boxes_on_image(
+            image_path,
+            final_boxes,
+            stroke_width=stroke_width,
+            padding_px=padding_px,
+            annotations=None,
+        )
+        _save_image_as_png(final_im, final_path)
+
+        final_ruler_path = output_dir / f"{image_path.stem}__boxed_final__ruler.png"
+        _save_ruler_image(image_path=final_path, output_path=final_ruler_path, boxes=final_boxes)
+
+        _state["finalized"] = True
+
+        # アノテーション情報を構築
+        result_annotations = []
+        for j, box in enumerate(final_boxes):
+            annotation_text = current_annotations[j] if j < len(current_annotations) else ""
+            parts = annotation_text.split('\n', 1)
+            phrase = parts[0] if parts else ""
+            reason = parts[1].strip("()") if len(parts) > 1 else ""
+            result_annotations.append({
+                "phrase": phrase,
+                "reason": reason,
+                "box": box,
+            })
+
+        return json.dumps({
+            "status": "finalized",
+            "final_image_path": str(final_path),
+            "final_boxes": final_boxes,
+            "annotations": result_annotations,
+            "image_width": _width,
+            "image_height": _height,
+        }, ensure_ascii=False)
+
+    return [detect_phrases, draw_and_verify, adjust_boxes, finalize], _state
+
+
+def _annotate_image_with_agent(
+    *,
+    llm: Any,
+    image_path: Path,
+    target_phrases: list[str],
+    output_dir: Path,
+    stroke_width: int = 6,
+    padding_px: int = 6,
+    embed_text_in_image: bool = False,
+    crop_for_verification: bool = True,
+    crop_margin_px: int = 100,
+    merge_overlapping: bool = False,
+) -> AnnotationResult:
+    """
+    create_agent を使ったエージェントベースのアノテーション。
+
+    エージェントが会話履歴を保持しながら、自律的に以下のフローを実行する:
+    1) detect_phrases ツールで対象フレーズの位置を取得
+    2) draw_and_verify ツールで赤枠を描画し、検証画像を確認
+    3) 正しければ finalize、修正が必要なら adjust_boxes → 再確認
+    4) エージェントが完了と判断するまでループ
+    """
+    from langchain.agents import create_agent
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    with Image.open(image_path) as im:
+        width, height = im.size
+
+    tools, agent_state = _build_annotation_agent_tools(
+        image_path=image_path,
+        output_dir=output_dir,
+        stroke_width=stroke_width,
+        padding_px=padding_px,
+        crop_for_verification=crop_for_verification,
+        crop_margin_px=crop_margin_px,
+        merge_overlapping=merge_overlapping,
+    )
+
+    phrases_str = "\n".join([f"- {p}" for p in target_phrases])
+
+    system_prompt = f"""あなたは画像内の特定のフレーズを検出し、バウンディングボックスで囲むタスクを行うエージェントです。
+
+# 作業手順
+1. detect_phrases ツールを使って、画像内の対象フレーズの位置を検出してください。
+2. 検出結果に基づき、draw_and_verify ツールでバウンディングボックスを描画してください。
+3. 返された検証画像を確認し、赤枠が正しいか判断してください。
+   - 正しい場合: finalize ツールを呼んで完了してください。
+   - 修正が必要な場合: adjust_boxes ツールで座標を調整してください。
+4. 調整後は再度検証画像を確認し、満足するまで繰り返してください。
+
+# ルール
+- 座標は50px単位で指定してください。
+- バウンディングボックスは対象フレーズを適切に囲むようにしてください。
+- 余白が少し含まれていても、対象が全て囲まれていれば問題ありません。
+- 不要な枠は削除してください。
+- 最終的に満足できたら必ず finalize ツールを呼んでください。
+
+# 画像情報
+- 画像サイズ: width={width}, height={height}
+- 画像には「ピクセル定規」と「薄いグリッド」が重ねられています。
+"""
+
+    user_message = f"""以下のフレーズを画像内で検出し、バウンディングボックスで囲んでください。
+
+対象フレーズ:
+{phrases_str}
+
+まず detect_phrases ツールで画像を確認してください。"""
+
+    agent = create_agent(
+        model=llm,
+        tools=tools,
+        system_prompt=system_prompt,
+    )
+
+    result = agent.invoke({
+        "messages": [{"role": "user", "content": user_message}],
+    })
+
+    # エージェント結果からアノテーション情報を構築
+    if agent_state["finalized"]:
+        current_boxes = agent_state["current_boxes"]
+        current_annotations = agent_state["current_annotations"]
+        crop_info = agent_state["crop_info"]
+
+        if crop_info:
+            final_boxes = [crop_info.to_original_coords(b) for b in current_boxes]
+        else:
+            final_boxes = current_boxes
+
+        final_path = output_dir / f"{image_path.stem}__boxed_final.png"
+
+        result_annotations = []
+        for j, box in enumerate(final_boxes):
+            annotation_text = current_annotations[j] if j < len(current_annotations) else ""
+            parts = annotation_text.split('\n', 1)
+            phrase = parts[0] if parts else ""
+            reason = parts[1].strip("()") if len(parts) > 1 else ""
+            result_annotations.append(AnnotationInfo(
+                phrase=phrase,
+                reason=reason,
+                box=BoundingBox(x1=box["x1"], y1=box["y1"], x2=box["x2"], y2=box["y2"]),
+            ))
+
+        if embed_text_in_image and final_boxes:
+            final_annotated_path = output_dir / f"{image_path.stem}__boxed_final_annotated.png"
+            final_annotations_text = [
+                current_annotations[j] if j < len(current_annotations) else ""
+                for j in range(len(final_boxes))
+            ]
+            final_annotated_im = _draw_red_boxes_on_image(
+                image_path,
+                final_boxes,
+                stroke_width=stroke_width,
+                padding_px=padding_px,
+                annotations=final_annotations_text,
+            )
+            _save_image_as_png(final_annotated_im, final_annotated_path)
+            return AnnotationResult(
+                image_path=final_annotated_path,
+                original_image_path=image_path,
+                annotations=result_annotations,
+                image_width=width,
+                image_height=height,
+            )
+
+        return AnnotationResult(
+            image_path=final_path,
+            original_image_path=image_path,
+            annotations=result_annotations,
+            image_width=width,
+            image_height=height,
+        )
+
+    # finalize されなかった場合（対象なし等）
+    return AnnotationResult(
+        image_path=image_path,
+        original_image_path=image_path,
+        annotations=[],
+        image_width=width,
+        image_height=height,
+    )
+
+
 def llm_find_phrase_bounding_boxes(
     *,
     llm: Any,
@@ -1774,19 +2286,21 @@ def annotate_image_with_llm_red_boxes(
     merge_overlapping: bool = False,
 ) -> AnnotationResult:
     """
+    create_agent ベースのエージェントが会話履歴を保持しながら、
+    完了と判断するまで自律的にバウンディングボックスの検出→描画→検証→調整を繰り返す。
+
     フロー:
-    1) LLMで対象文言の有無を判定し、あればbboxを取得
-    2) bboxを含む領域で画像をトリミング（crop_for_verification=True時）
-    3) トリミング画像に赤枠を描画してPNGとして保存
-    4) LLMで赤枠の妥当性を再確認し、NGなら修正bboxで描き直し
-    5) 最終画像は元画像に赤枠を描画して保存
+    1) エージェントが detect_phrases ツールで対象フレーズの位置を検出
+    2) draw_and_verify ツールで赤枠を描画し、検証画像を Vision で確認
+    3) 正しければ finalize ツールで完了、修正が必要なら adjust_boxes で調整
+    4) エージェントが満足するまで 2-3 を繰り返す（会話履歴を保持）
 
     Args:
-        llm: LLMインスタンス
+        llm: LLMインスタンス（Vision対応）
         image_path: 入力画像パス
         target_phrases: 検出対象フレーズのリスト
         output_dir: 出力ディレクトリ
-        max_iters: 検証の最大イテレーション回数
+        max_iters: 未使用（エージェントが自律的に判断）
         stroke_width: 赤枠の太さ
         padding_px: 赤枠のパディング
         embed_text_in_image: 注釈テキストを画像に埋め込むか
@@ -1794,382 +2308,17 @@ def annotate_image_with_llm_red_boxes(
         crop_margin_px: トリミング時のマージン（px）
         merge_overlapping: 重複した枠を一つの大きな枠に統合するか
     """
-    image_path = Path(image_path)
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    with Image.open(image_path) as im:
-        width, height = im.size
-
-    # LLM入力用に「定規付き」画像を用意（座標系は変えない）
-    ruler_original_path = output_dir / f"{image_path.stem}__ruler.png"
-    _save_ruler_image(image_path=image_path, output_path=ruler_original_path)
-
-    # 1) 検出（定規付き画像を入力にする）
-    det = llm_find_phrase_bounding_boxes(llm=llm, image_path=ruler_original_path, target_phrases=target_phrases)
-    if not det.get("contains"):
-        return AnnotationResult(
-            image_path=image_path,
-            original_image_path=image_path,
-            annotations=[],
-            image_width=width,
-            image_height=height,
-        )
-
-    boxes_raw = []
-    annotations_raw = []  # 各BBに対応する注釈テキスト
-    for m in det.get("matches", []):
-        if isinstance(m, dict) and isinstance(m.get("box"), dict):
-            b = _clamp_box(m["box"], width, height)
-            if b is not None:
-                boxes_raw.append(b)
-                # 注釈テキストを作成（phraseとreasonを組み合わせ）
-                phrase = m.get("phrase", "")
-                reason = m.get("reason", "")
-                if phrase and reason:
-                    annotation = f"{phrase}\n({reason})"
-                elif phrase:
-                    annotation = phrase
-                elif reason:
-                    annotation = reason
-                else:
-                    annotation = ""
-                annotations_raw.append(annotation)
-    if not boxes_raw:
-        return AnnotationResult(
-            image_path=image_path,
-            original_image_path=image_path,
-            annotations=[],
-            image_width=width,
-            image_height=height,
-        )
-
-    # 重複した枠を統合（merge_overlapping=True時）
-    if merge_overlapping:
-        boxes_raw, annotations_raw = _merge_overlapping_boxes(boxes_raw, annotations_raw)
-
-    # トリミング処理: 検証時にトリミング画像を使用する場合
-    crop_info: Optional[CropInfo] = None
-    cropped_image_path: Optional[Path] = None
-    if crop_for_verification:
-        cropped_image_path = output_dir / f"{image_path.stem}__cropped.png"
-        cropped_image_path, crop_info = _crop_image_to_boxes(
-            image_path=image_path,
-            boxes=boxes_raw,
-            output_path=cropped_image_path,
-            margin_px=crop_margin_px,
-            snap_to_grid=50,
-        )
-        # トリミング画像用の定規付き画像を作成
-        cropped_ruler_path = output_dir / f"{image_path.stem}__cropped__ruler.png"
-        _save_ruler_image(image_path=cropped_image_path, output_path=cropped_ruler_path)
-
-    # 検証用の画像パスとボックス座標を決定
-    verification_image_path = cropped_image_path if crop_info else image_path
-    verification_ruler_path = output_dir / f"{image_path.stem}__cropped__ruler.png" if crop_info else ruler_original_path
-
-    # 検証用のボックス座標（トリミング画像基準）
-    if crop_info:
-        current_boxes = [crop_info.to_cropped_coords(b) for b in boxes_raw]
-        verification_width = crop_info.crop_x2 - crop_info.crop_x1
-        verification_height = crop_info.crop_y2 - crop_info.crop_y1
-    else:
-        current_boxes = boxes_raw
-        verification_width = width
-        verification_height = height
-
-    # 描画→検証→修正ループ
-    #
-    # 目的:
-    # - `ok=False` が続くときにどの段階で何が起きているか追えるよう、
-    #   各イテレーションの「断面」画像をすべて保存する。
-    #
-    # 保存先:
-    # - <stem>__boxed_iter01.png, <stem>__boxed_iter02.png, ...
-    # - <stem>__boxed_final.png（最後の採用結果）
-    current_annotations = annotations_raw  # 注釈情報も保持
-    iters = max(1, int(max_iters))
-
-    last_iter_path: Optional[Path] = None
-    for i in range(iters):
-        iter_path = output_dir / f"{image_path.stem}__boxed_iter{i+1:02}.png"
-        # 検証ループ中は注釈なしで描画（ノイズを避けるため）
-        # トリミング画像に赤枠を描画
-        boxed_im = _draw_red_boxes_on_image(
-            verification_image_path,
-            current_boxes,
-            stroke_width=stroke_width,
-            padding_px=padding_px,
-            annotations=None,  # 注釈なし
-        )
-        _save_image_as_png(boxed_im, iter_path)
-        last_iter_path = iter_path
-
-        # 検証用：定規を重ねた断面画像も保存（2回目以降はバウンディングボックス情報を渡す）
-        iter_ruler_path = output_dir / f"{image_path.stem}__boxed_iter{i+1:02}__ruler.png"
-        _save_ruler_image(image_path=iter_path, output_path=iter_ruler_path, boxes=current_boxes if i > 0 else None)
-
-        ver = llm_verify_boxes_on_annotated_image(
-            llm=llm,
-            current_boxes=current_boxes,
-            original_image_path=verification_ruler_path,
-            boxed_image_path=iter_ruler_path,
-            target_phrases=target_phrases,
-        )
-        if bool(ver.get("ok")):
-            # OKになった → 元画像に赤枠を描画して最終画像を生成
-            # トリミング座標を元画像座標に変換
-            final_boxes = [crop_info.to_original_coords(b) for b in current_boxes] if crop_info else current_boxes
-
-            final_path = output_dir / f"{image_path.stem}__boxed_final.png"
-            final_im = _draw_red_boxes_on_image(
-                image_path,  # 元画像に描画
-                final_boxes,
-                stroke_width=stroke_width,
-                padding_px=padding_px,
-                annotations=None,
-            )
-            _save_image_as_png(final_im, final_path)
-
-            # 定規付きfinalも保存（バウンディングボックス情報を渡す）
-            final_ruler_path = output_dir / f"{image_path.stem}__boxed_final__ruler.png"
-            _save_ruler_image(image_path=final_path, output_path=final_ruler_path, boxes=final_boxes)
-
-            # アノテーション情報を構築（元画像座標）
-            result_annotations = []
-            for j, box in enumerate(final_boxes):
-                annotation_text = current_annotations[j] if j < len(current_annotations) else ""
-                # annotation_textは "phrase\n(reason)" の形式なのでパース
-                parts = annotation_text.split('\n', 1)
-                phrase = parts[0] if parts else ""
-                reason = parts[1].strip("()") if len(parts) > 1 else ""
-                result_annotations.append(AnnotationInfo(
-                    phrase=phrase,
-                    reason=reason,
-                    box=BoundingBox(x1=box["x1"], y1=box["y1"], x2=box["x2"], y2=box["y2"]),
-                ))
-
-            # embed_text_in_image=Trueの場合は注釈付き画像を生成
-            if embed_text_in_image:
-                final_annotated_path = output_dir / f"{image_path.stem}__boxed_final_annotated.png"
-                final_annotations_text = []
-                for j, box in enumerate(final_boxes):
-                    if j < len(current_annotations):
-                        final_annotations_text.append(current_annotations[j])
-                    else:
-                        final_annotations_text.append("")
-                final_annotated_im = _draw_red_boxes_on_image(
-                    image_path,
-                    final_boxes,
-                    stroke_width=stroke_width,
-                    padding_px=padding_px,
-                    annotations=final_annotations_text,
-                )
-                _save_image_as_png(final_annotated_im, final_annotated_path)
-                return AnnotationResult(
-                    image_path=final_annotated_path,
-                    original_image_path=image_path,
-                    annotations=result_annotations,
-                    image_width=width,
-                    image_height=height,
-                )
-
-            return AnnotationResult(
-                image_path=final_path,
-                original_image_path=image_path,
-                annotations=result_annotations,
-                image_width=width,
-                image_height=height,
-            )
-
-        # adjustmentsから相対調整を取得
-        adjustments: list[dict[str, Any]] = []
-        for adj in (ver.get("adjustments") or [])[:10]:
-            if isinstance(adj, dict) and "box_index" in adj:
-                adjustments.append(adj)
-        if not adjustments:
-            # 修正が取れないなら現在のボックスで最終画像を生成
-            # トリミング座標を元画像座標に変換
-            final_boxes = [crop_info.to_original_coords(b) for b in current_boxes] if crop_info else current_boxes
-
-            final_path = output_dir / f"{image_path.stem}__boxed_final.png"
-            final_im = _draw_red_boxes_on_image(
-                image_path,  # 元画像に描画
-                final_boxes,
-                stroke_width=stroke_width,
-                padding_px=padding_px,
-                annotations=None,
-            )
-            _save_image_as_png(final_im, final_path)
-            final_ruler_path = output_dir / f"{image_path.stem}__boxed_final__ruler.png"
-            _save_ruler_image(image_path=final_path, output_path=final_ruler_path, boxes=final_boxes)
-
-            # アノテーション情報を構築（元画像座標）
-            result_annotations = []
-            for j, box in enumerate(final_boxes):
-                annotation_text = current_annotations[j] if j < len(current_annotations) else ""
-                parts = annotation_text.split('\n', 1)
-                phrase = parts[0] if parts else ""
-                reason = parts[1].strip("()") if len(parts) > 1 else ""
-                result_annotations.append(AnnotationInfo(
-                    phrase=phrase,
-                    reason=reason,
-                    box=BoundingBox(x1=box["x1"], y1=box["y1"], x2=box["x2"], y2=box["y2"]),
-                ))
-
-            # embed_text_in_image=Trueの場合は注釈付き画像を生成
-            if embed_text_in_image:
-                final_annotated_path = output_dir / f"{image_path.stem}__boxed_final_annotated.png"
-                final_annotations_text = []
-                for j, box in enumerate(final_boxes):
-                    if j < len(current_annotations):
-                        final_annotations_text.append(current_annotations[j])
-                    else:
-                        final_annotations_text.append("")
-                final_annotated_im = _draw_red_boxes_on_image(
-                    image_path,
-                    final_boxes,
-                    stroke_width=stroke_width,
-                    padding_px=padding_px,
-                    annotations=final_annotations_text,
-                )
-                _save_image_as_png(final_annotated_im, final_annotated_path)
-                return AnnotationResult(
-                    image_path=final_annotated_path,
-                    original_image_path=image_path,
-                    annotations=result_annotations,
-                    image_width=width,
-                    image_height=height,
-                )
-
-            return AnnotationResult(
-                image_path=final_path,
-                original_image_path=image_path,
-                annotations=result_annotations,
-                image_width=width,
-                image_height=height,
-            )
-
-        # adjustmentsを適用: box_indexで指定されたボックスに相対調整/削除を適用
-        # 削除対象のインデックスを収集
-        delete_indices: set[int] = set()
-        for adj in adjustments:
-            box_idx = adj.get("box_index", -1)
-            if adj.get("delete", False) and 0 <= box_idx < len(current_boxes):
-                delete_indices.add(box_idx)
-
-        # 調整を適用（削除対象以外）
-        new_boxes = list(current_boxes)
-        new_annotations = list(current_annotations)
-        for adj in adjustments:
-            box_idx = adj.get("box_index", -1)
-            if box_idx in delete_indices:
-                continue  # 削除対象は調整不要
-            if 0 <= box_idx < len(new_boxes):
-                # 相対調整を適用（50px単位）
-                dx1 = adj.get("dx1", 0)
-                dy1 = adj.get("dy1", 0)
-                dx2 = adj.get("dx2", 0)
-                dy2 = adj.get("dy2", 0)
-
-                old_box = new_boxes[box_idx]
-                adjusted_box = {
-                    "x1": old_box["x1"] + dx1,
-                    "y1": old_box["y1"] + dy1,
-                    "x2": old_box["x2"] + dx2,
-                    "y2": old_box["y2"] + dy2,
-                }
-                # clampして範囲内に収める（トリミング画像サイズを使用）
-                clamped = _clamp_box(adjusted_box, verification_width, verification_height)
-                if clamped is not None:
-                    new_boxes[box_idx] = clamped
-
-        # 削除処理: インデックス降順で削除（インデックスずれを防ぐ）
-        for idx in sorted(delete_indices, reverse=True):
-            del new_boxes[idx]
-            if idx < len(new_annotations):
-                del new_annotations[idx]
-
-        # 新規ボックスの追加
-        new_boxes_to_add = ver.get("new_boxes", [])
-        for new_box in new_boxes_to_add:
-            if isinstance(new_box, dict):
-                box_coords = {
-                    "x1": new_box.get("x1", 0),
-                    "y1": new_box.get("y1", 0),
-                    "x2": new_box.get("x2", 0),
-                    "y2": new_box.get("y2", 0),
-                }
-                clamped = _clamp_box(box_coords, verification_width, verification_height)
-                if clamped is not None:
-                    new_boxes.append(clamped)
-                    phrase = new_box.get("phrase", "")
-                    new_annotations.append(phrase)
-
-        current_boxes = new_boxes
-        current_annotations = new_annotations
-
-    # ここまで来たら「max_iters回の検証でokにならなかった」。
-    # 最後の修正案を反映した画像を final として保存（再検証はしない）。
-    # トリミング座標を元画像座標に変換
-    final_boxes = [crop_info.to_original_coords(b) for b in current_boxes] if crop_info else current_boxes
-
-    final_path = output_dir / f"{image_path.stem}__boxed_final.png"
-    boxed_im = _draw_red_boxes_on_image(
-        image_path,  # 元画像に描画
-        final_boxes,
+    return _annotate_image_with_agent(
+        llm=llm,
+        image_path=Path(image_path),
+        target_phrases=target_phrases,
+        output_dir=Path(output_dir),
         stroke_width=stroke_width,
         padding_px=padding_px,
-        annotations=None,  # 赤枠のみ
-    )
-    _save_image_as_png(boxed_im, final_path)
-    final_ruler_path = output_dir / f"{image_path.stem}__boxed_final__ruler.png"
-    _save_ruler_image(image_path=final_path, output_path=final_ruler_path, boxes=final_boxes)
-
-    # アノテーション情報を構築（元画像座標）
-    result_annotations = []
-    for j, box in enumerate(final_boxes):
-        annotation_text = current_annotations[j] if j < len(current_annotations) else ""
-        parts = annotation_text.split('\n', 1)
-        phrase = parts[0] if parts else ""
-        reason = parts[1].strip("()") if len(parts) > 1 else ""
-        result_annotations.append(AnnotationInfo(
-            phrase=phrase,
-            reason=reason,
-            box=BoundingBox(x1=box["x1"], y1=box["y1"], x2=box["x2"], y2=box["y2"]),
-        ))
-
-    # embed_text_in_image=Trueの場合は注釈付き画像を生成
-    if embed_text_in_image:
-        final_annotated_path = output_dir / f"{image_path.stem}__boxed_final_annotated.png"
-        final_annotations_text = []
-        for j, box in enumerate(final_boxes):
-            if j < len(current_annotations):
-                final_annotations_text.append(current_annotations[j])
-            else:
-                final_annotations_text.append("")
-        final_annotated_im = _draw_red_boxes_on_image(
-            image_path,
-            final_boxes,
-            stroke_width=stroke_width,
-            padding_px=padding_px,
-            annotations=final_annotations_text,
-        )
-        _save_image_as_png(final_annotated_im, final_annotated_path)
-        return AnnotationResult(
-            image_path=final_annotated_path,
-            original_image_path=image_path,
-            annotations=result_annotations,
-            image_width=width,
-            image_height=height,
-        )
-
-    return AnnotationResult(
-        image_path=final_path,
-        original_image_path=image_path,
-        annotations=result_annotations,
-        image_width=width,
-        image_height=height,
+        embed_text_in_image=embed_text_in_image,
+        crop_for_verification=crop_for_verification,
+        crop_margin_px=crop_margin_px,
+        merge_overlapping=merge_overlapping,
     )
 
 # %%
